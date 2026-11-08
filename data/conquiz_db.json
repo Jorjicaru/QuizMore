@@ -49,6 +49,56 @@
         "highestScore": 0,
         "createdAt": "2026-11-08T18:49:21.449Z"
       }
+    },
+    "guest_1794169705223_ilv9": {
+      "id": "guest_1794169705223_ilv9",
+      "username": "Capitanul_Dunarean_786",
+      "email": "capitanul_dunarean_786@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-08T20:28:25.223Z",
+      "profile": {
+        "id": "guest_1794169705223_ilv9",
+        "username": "Capitanul_Dunarean_786",
+        "email": "capitanul_dunarean_786@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-08T20:28:25.223Z"
+      }
+    },
+    "guest_1794169944837_5mei": {
+      "id": "guest_1794169944837_5mei",
+      "username": "Arcasul_Stefan_565",
+      "email": "arcasul_stefan_565@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-08T20:32:24.837Z",
+      "profile": {
+        "id": "guest_1794169944837_5mei",
+        "username": "Arcasul_Stefan_565",
+        "email": "arcasul_stefan_565@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-08T20:32:24.837Z"
+      }
     }
   },
   "questions": [

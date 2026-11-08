@@ -203,8 +203,16 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
+  const isGameActive = Boolean(currentUser && activeTab === 'game' && activeGame);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950 font-sans">
+    <div
+      className={
+        isGameActive
+          ? "min-h-dvh lg:h-dvh lg:max-h-dvh w-full max-w-full overflow-x-hidden lg:overflow-hidden bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950 font-sans"
+          : "min-h-dvh w-full max-w-full overflow-x-hidden bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950 font-sans"
+      }
+    >
       {/* Navigation Header */}
       <Navbar
         user={currentUser}
@@ -219,10 +227,10 @@ export default function App() {
       {/* Main Content Area */}
       <main className={
         !currentUser
-          ? "flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-center"
-          : activeTab === 'game'
-          ? "flex-1 w-full max-w-[1600px] mx-auto p-1 sm:p-2 md:p-3 overflow-hidden flex flex-col min-h-0"
-          : "flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6"
+          ? "flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 flex items-center justify-center"
+          : isGameActive
+          ? "flex-1 min-h-0 w-full max-w-[1600px] mx-auto px-1.5 py-1 sm:px-2.5 sm:py-1.5 lg:px-3 lg:py-2 lg:overflow-hidden flex flex-col"
+          : "flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6"
       }>
         {!currentUser ? (
           <AuthView

@@ -25,7 +25,7 @@ export const GameView: React.FC<GameViewProps> = ({
   const activePlayer = game.players[game.activePlayerIndex];
 
   return (
-    <div className="relative w-full h-full flex flex-col min-h-0 gap-1.5 sm:gap-2.5 overflow-hidden animate-fadeIn">
+    <div className="relative w-full flex-1 min-h-0 flex flex-col gap-1.5 sm:gap-2 lg:h-full lg:overflow-hidden animate-fadeIn">
       {/* Top HUD with scores, turn status & round */}
       <GameHUD
         game={game}
@@ -33,7 +33,7 @@ export const GameView: React.FC<GameViewProps> = ({
         onLeaveGame={onLeaveGame}
       />
 
-      {/* Main Romania Map (flex-1 fills available vertical space without scroll) */}
+      {/* Main Romania Map (flex-1 fills available vertical space without scroll on desktop/laptop) */}
       <RomaniaMap
         territories={game.territories}
         players={game.players}

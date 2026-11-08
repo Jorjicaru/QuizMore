@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Territory, Player, GamePhase } from '../types/game';
 import { canTargetTerritory, canSelectBase } from '../game/rules';
 import { sound } from '../services/audio';
-import { Shield, Castle, Crosshair, Award, AlertCircle } from 'lucide-react';
+import { Crosshair, Award, ZoomIn, ZoomOut, RotateCcw, MapPin } from 'lucide-react';
 
 interface RomaniaMapProps {
   territories: Record<string, Territory>;
@@ -13,6 +13,16 @@ interface RomaniaMapProps {
   selectedTerritoryId?: string | null;
   onSelectTerritory: (territoryId: string) => void;
   disabled?: boolean;
+}
+
+interface LabelPlacement {
+  cx: number;
+  cy: number;
+  boxW: number;
+  boxH: number;
+  displayText: string;
+  fontSize: number;
+  hasLeader: boolean;
 }
 
 export const RomaniaMap: React.FC<RomaniaMapProps> = ({
@@ -26,20 +36,52 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   disabled = false,
 }) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(960);
+
+  // Zoom & Pan state (Initial state is Fit to Screen: zoom = 1, pan = 0,0)
+  const [zoom, setZoom] = useState<number>(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const didDragRef = useRef<boolean>(false);
+  const mapWrapperRef = useRef<HTMLDivElement>(null);
+
+  // Observe map container width for responsive SVG label scaling
+  useEffect(() => {
+    const el = mapWrapperRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) {
+        setContainerWidth(rect.width);
+      }
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const targetedId = selectedTerritoryId || null;
   const isMyTurn = currentUserId !== undefined && activePlayerId === currentUserId && !disabled;
-  const activePlayer = players.find(p => p.id === activePlayerId);
+  const currentUserPlayer = players.find((p) => p.id === currentUserId);
 
-  // Helper to find player owning a territory
   const getOwner = (ownerId: string | null): Player | undefined => {
     if (!ownerId) return undefined;
-    return players.find(p => p.id === ownerId);
+    return players.find((p) => p.id === ownerId);
   };
 
-  const currentUserPlayer = players.find(p => p.id === currentUserId);
-
   const handleTerritoryClick = (t: Territory) => {
-    if (!isMyTurn || disabled || !currentUserPlayer) return;
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+
+    // Always set inspected territory on tap/click so mobile users can inspect any region
+    setInspectedId(t.id);
+
+    if (!isMyTurn || !currentUserPlayer) return;
 
     const check = canTargetTerritory(t.id, currentUserPlayer, territories, gamePhase as any);
     if (!check.allowed) {
@@ -51,54 +93,274 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     onSelectTerritory(t.id);
   };
 
+  // Zoom helpers keeping pan within [0, 960] x [0, 660]
+  const clampPan = (nx: number, ny: number, z: number) => {
+    const vw = 960 / z;
+    const vh = 660 / z;
+    return {
+      x: Math.max(0, Math.min(960 - vw, nx)),
+      y: Math.max(0, Math.min(660 - vh, ny)),
+    };
+  };
+
+  const handleZoomIn = () => {
+    setZoom((prev) => {
+      const next = Math.min(2.5, Number((prev + 0.4).toFixed(2)));
+      const prevW = 960 / prev;
+      const prevH = 660 / prev;
+      const nextW = 960 / next;
+      const nextH = 660 / next;
+      setPan((p) => clampPan(p.x + (prevW - nextW) / 2, p.y + (prevH - nextH) / 2, next));
+      return next;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoom((prev) => {
+      const next = Math.max(1, Number((prev - 0.4).toFixed(2)));
+      if (next === 1) {
+        setPan({ x: 0, y: 0 });
+      } else {
+        const prevW = 960 / prev;
+        const prevH = 660 / prev;
+        const nextW = 960 / next;
+        const nextH = 660 / next;
+        setPan((p) => clampPan(p.x - (nextW - prevW) / 2, p.y - (nextH - prevH) / 2, next));
+      }
+      return next;
+    });
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (zoom <= 1) return;
+    setIsDragging(true);
+    didDragRef.current = false;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDragging || !dragStartRef.current || zoom <= 1) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    if (Math.hypot(dx, dy) > 6) {
+      didDragRef.current = true;
+    }
+    const scaleFactor = (960 / zoom) / Math.max(320, containerWidth);
+    const nextPan = clampPan(
+      dragStartRef.current.panX - dx * scaleFactor,
+      dragStartRef.current.panY - dy * scaleFactor,
+      zoom
+    );
+    setPan(nextPan);
+  };
+
+  const handlePointerUp = () => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  };
+
   const territoryList = Object.values(territories);
-  const hoveredTerritory = hoveredId ? territories[hoveredId] : null;
-  const hoveredOwner = hoveredTerritory ? getOwner(hoveredTerritory.ownerId) : null;
+  const activeInspectId = hoveredId || inspectedId || targetedId;
+  const activeTerritory = activeInspectId ? territories[activeInspectId] : null;
+  const activeOwner = activeTerritory ? getOwner(activeTerritory.ownerId) : null;
+
+  // Responsive scale factor so labels stay readable on small mobile viewports
+  const isMobileMap = containerWidth < 560;
+  const labelScale = containerWidth < 400 ? 1.45 : containerWidth < 600 ? 1.25 : 1.05;
+
+  // Compute collision-free label placements for all Base Castles
+  const baseLabelPlacements = useMemo(() => {
+    const placements: Record<string, LabelPlacement> = {};
+    const occupied: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+
+    const bases = territoryList
+      .filter((t) => t.isBase && getOwner(t.ownerId))
+      .sort((a, b) => a.labelY - b.labelY || a.labelX - b.labelX);
+
+    // Reserve medallion + towers + 1000 score area for every base first
+    for (const b of bases) {
+      occupied.push({
+        x1: b.labelX - 24,
+        y1: b.labelY - 18,
+        x2: b.labelX + 24,
+        y2: b.labelY + 46,
+      });
+    }
+
+    for (const b of bases) {
+      const owner = getOwner(b.ownerId)!;
+      const maxChars = isMobileMap ? 12 : 16;
+      const displayText =
+        owner.username.length > maxChars
+          ? `${owner.username.slice(0, maxChars - 1)}…`
+          : owner.username;
+
+      const fontSize = Number((10 * labelScale).toFixed(1));
+      const charWidth = fontSize * 0.62;
+      const boxW = Math.max(66 * labelScale, displayText.length * charWidth + 16 * labelScale);
+      const boxH = Math.round(18 * labelScale);
+
+      const candidates = [
+        { dx: 0, dy: -29 * labelScale },
+        { dx: 0, dy: 54 * labelScale },
+        { dx: -52 * labelScale, dy: -26 * labelScale },
+        { dx: 52 * labelScale, dy: -26 * labelScale },
+        { dx: -68 * labelScale, dy: 2 },
+        { dx: 68 * labelScale, dy: 2 },
+        { dx: -52 * labelScale, dy: 50 * labelScale },
+        { dx: 52 * labelScale, dy: 50 * labelScale },
+        { dx: 0, dy: -46 * labelScale },
+      ];
+
+      let bestCx = b.labelX;
+      let bestCy = b.labelY - 29 * labelScale;
+      let bestOverlap = Number.POSITIVE_INFINITY;
+
+      for (const cand of candidates) {
+        const cx = Math.max(boxW / 2 + 8, Math.min(952 - boxW / 2, b.labelX + cand.dx));
+        const cy = Math.max(boxH / 2 + 8, Math.min(652 - boxH / 2, b.labelY + cand.dy));
+        const rect = {
+          x1: cx - boxW / 2 - 3,
+          y1: cy - boxH / 2 - 2,
+          x2: cx + boxW / 2 + 3,
+          y2: cy + boxH / 2 + 2,
+        };
+
+        let overlapArea = 0;
+        for (const occ of occupied) {
+          const ox = Math.max(0, Math.min(rect.x2, occ.x2) - Math.max(rect.x1, occ.x1));
+          const oy = Math.max(0, Math.min(rect.y2, occ.y2) - Math.max(rect.y1, occ.y1));
+          overlapArea += ox * oy;
+        }
+
+        if (overlapArea < bestOverlap) {
+          bestOverlap = overlapArea;
+          bestCx = cx;
+          bestCy = cy;
+          if (overlapArea === 0) break;
+        }
+      }
+
+      occupied.push({
+        x1: bestCx - boxW / 2,
+        y1: bestCy - boxH / 2,
+        x2: bestCx + boxW / 2,
+        y2: bestCy + boxH / 2,
+      });
+
+      const dist = Math.hypot(bestCx - b.labelX, bestCy - (b.labelY - 28 * labelScale));
+      placements[b.id] = {
+        cx: bestCx,
+        cy: bestCy,
+        boxW,
+        boxH,
+        displayText,
+        fontSize,
+        hasLeader: dist > 14,
+      };
+    }
+
+    return placements;
+  }, [territoryList, players, isMobileMap, labelScale]);
+
+  const viewBoxStr = `${pan.x.toFixed(1)} ${pan.y.toFixed(1)} ${(960 / zoom).toFixed(1)} ${(660 / zoom).toFixed(1)}`;
 
   return (
     <div
-      className="relative flex-1 min-h-0 w-full overflow-hidden rounded-2xl sm:rounded-3xl border-2 border-stone-800/90 p-1 sm:p-2 shadow-2xl select-none flex flex-col items-center justify-center"
+      ref={mapWrapperRef}
+      className="relative flex-1 min-h-0 w-full overflow-hidden rounded-2xl border-2 border-stone-800/90 shadow-2xl select-none flex flex-col justify-between"
       style={{
-        background: 'radial-gradient(ellipse at 50% 45%, #4a2d18 0%, #2e1a0d 45%, #180d06 90%, #0d0703 100%)',
+        background:
+          'radial-gradient(ellipse at 50% 45%, #4a2d18 0%, #2e1a0d 45%, #180d06 90%, #0d0703 100%)',
         boxShadow: 'inset 0 0 60px rgba(0, 0, 0, 0.9), 0 10px 30px rgba(0, 0, 0, 0.8)',
       }}
     >
-      {/* Map Header Status & Mode (subtle compact overlay) */}
-      <div className="pointer-events-none absolute top-2 left-3 right-3 z-10 flex items-center justify-between">
-        <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-stone-950/80 px-2.5 py-1 text-[11px] shadow-lg backdrop-blur-md">
-          <Crosshair className="h-3.5 w-3.5 text-amber-400 animate-spin-slow" />
-          <span className="font-serif font-bold tracking-wider text-amber-200">
+      {/* Top Overlay Header: Zone Count & Current Phase Action Prompt */}
+      <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-stone-950/85 px-2.5 py-1 text-[10px] sm:text-[11px] shadow-lg backdrop-blur-md">
+          <Crosshair className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-400 shrink-0" />
+          <span className="font-serif font-bold tracking-wider text-amber-200 whitespace-nowrap">
             Harta României &bull; {territoryList.length} Zone
           </span>
         </div>
 
         {isMyTurn && (
-          <div className="flex items-center gap-1.5 rounded-full border border-amber-400/60 bg-amber-500/20 px-3 py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md animate-pulse">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            </span>
-            <span className="text-[11px] font-serif font-black tracking-wide text-amber-200">
+          <div className="flex items-center gap-1.5 rounded-full border border-amber-400/60 bg-amber-500/25 px-2.5 py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md">
+            <span className="text-[10px] sm:text-[11px] font-serif font-black tracking-wide text-amber-200 whitespace-nowrap">
               {gamePhase === 'base_selection'
                 ? 'ALEGE BAZA TA (1000 PCT)'
                 : gamePhase === 'conquest'
-                ? 'CUCEREȘTE O ZONĂ VECINĂ (200 PCT)'
+                ? 'CUCEREȘTE ZONĂ (200 PCT)'
                 : gamePhase === 'allocation'
                 ? 'ALEGE TERITORIU (300 PCT)'
-                : 'ATACĂ UN TERITORIU INAMIC (400 PCT)'}
+                : 'ATACĂ INAMIC (400 PCT)'}
             </span>
           </div>
         )}
       </div>
 
-      {/* SVG Canvas for Romania Map (fits 100% available space with object-contain) */}
-      <div className="w-full h-full flex-1 min-h-0 flex items-center justify-center p-0.5 sm:p-2">
+      {/* Zoom & Fit-to-Screen Controls (Top/Bottom Right Corner) */}
+      <div className="
+        absolute bottom-11 right-2.5 z-20 flex flex-col gap-1
+        rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md
+      ">
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          title="Mărește Harta (Zoom In)"
+          aria-label="Zoom In"
+          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
+        >
+          <ZoomIn className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          disabled={zoom <= 1}
+          title="Micșorează Harta (Zoom Out)"
+          aria-label="Zoom Out"
+          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
+        >
+          <ZoomOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        </button>
+        {zoom > 1 && (
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            title="Încadrează toată harta (Fit to Screen)"
+            aria-label="Reset Zoom"
+            className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
+          >
+            <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* SVG Canvas Container - Preserves 960:660 aspect ratio and fits 100% inside viewport */}
+      <div className="w-full flex-1 min-h-0 flex items-center justify-center p-1 sm:p-2 overflow-hidden">
         <svg
-          viewBox="0 0 960 660"
-          className="w-full h-full max-h-full object-contain filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.95)]"
+          viewBox={viewBoxStr}
+          preserveAspectRatio="xMidYMid meet"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          className={`w-full h-full max-h-full aspect-[960/660] filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.95)] ${
+            zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''
+          }`}
         >
           <defs>
-            {/* Diamond / Crosshatch Pattern - Matches image_b5a87907.png */}
+            {/* Diamond / Crosshatch Pattern */}
             <pattern
               id="diamond-hatch"
               width="24"
@@ -119,7 +381,15 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               patternUnits="userSpaceOnUse"
               patternTransform="rotate(-45)"
             >
-              <line x1="0" y1="0" x2="0" y2="14" stroke="#38bdf8" strokeWidth="2.5" strokeOpacity="0.4" />
+              <line
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="14"
+                stroke="#38bdf8"
+                strokeWidth="2.5"
+                strokeOpacity="0.4"
+              />
             </pattern>
 
             {/* 3D Arrow Filter */}
@@ -133,344 +403,501 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
             </filter>
           </defs>
 
-          {/* Render All Map Territories */}
-          {territoryList.map((t) => {
-            const owner = getOwner(t.ownerId);
-            const isHovered = hoveredId === t.id;
-            const isSelected = targetedId === t.id;
+          {/* ============================================================
+              LAYER 1: TERRITORY POLYGONS & TEXTURES
+          ============================================================ */}
+          <g id="layer-territories">
+            {territoryList.map((t) => {
+              const owner = getOwner(t.ownerId);
+              const isSelected = targetedId === t.id;
+              const isInspected = inspectedId === t.id;
 
-            // Check if actionable by current user
-            let isActionable = false;
-            let isForbiddenBase = false;
+              let isActionable = false;
+              let isForbiddenBase = false;
 
-            if (isMyTurn && currentUserPlayer) {
-              const check = canTargetTerritory(t.id, currentUserPlayer, territories, gamePhase as any);
-              isActionable = check.allowed;
+              if (isMyTurn && currentUserPlayer) {
+                const check = canTargetTerritory(
+                  t.id,
+                  currentUserPlayer,
+                  territories,
+                  gamePhase as any
+                );
+                isActionable = check.allowed;
 
-              if (gamePhase === 'base_selection' && t.ownerId === null && !canSelectBase(t.id, territories)) {
-                isForbiddenBase = true;
+                if (
+                  gamePhase === 'base_selection' &&
+                  t.ownerId === null &&
+                  !canSelectBase(t.id, territories)
+                ) {
+                  isForbiddenBase = true;
+                }
               }
-            }
 
-            // Fill color
-            let fillColor = '#d5c4a1'; // Unclaimed territory base warm parchment
-            let fillOpacity = 0.88;
+              let fillColor = '#d5c4a1';
+              let fillOpacity = 0.88;
 
-            if (owner) {
-              fillColor = owner.color;
-              fillOpacity = 0.92;
-            } else if (isForbiddenBase) {
-              fillColor = '#78716c';
-              fillOpacity = 0.5;
-            }
+              if (owner) {
+                fillColor = owner.color;
+                fillOpacity = 0.92;
+              } else if (isForbiddenBase) {
+                fillColor = '#78716c';
+                fillOpacity = 0.5;
+              }
 
-            // Outer boundary relief stroke
-            const strokeColor = isSelected
-              ? '#38bdf8'
-              : isActionable
-              ? '#fbbf24'
-              : owner
-              ? '#fef08a'
-              : '#92734a';
+              const strokeColor = isSelected
+                ? '#38bdf8'
+                : isInspected
+                ? '#f59e0b'
+                : isActionable
+                ? '#fbbf24'
+                : owner
+                ? '#fef08a'
+                : '#92734a';
 
-            const strokeWidth = isSelected ? 4 : isActionable ? 3 : owner ? 2.5 : 2;
-            const isPath = t.svgPath.startsWith('M');
+              const strokeWidth = isSelected
+                ? 4
+                : isInspected
+                ? 3
+                : isActionable
+                ? 2.8
+                : owner
+                ? 2.2
+                : 1.8;
+              const isPath = t.svgPath.startsWith('M');
 
-            return (
-              <g
-                key={t.id}
-                className={`transition-all duration-150 ${
-                  isActionable ? 'cursor-pointer hover:filter-brightness-110' : 'cursor-default'
-                }`}
-                onMouseEnter={() => setHoveredId(t.id)}
-                onMouseLeave={() => setHoveredId(null)}
-                onClick={() => handleTerritoryClick(t)}
-              >
-                {/* 1. Base Polygon or Path */}
-                {isPath ? (
-                  <path
-                    d={t.svgPath}
-                    fill={fillColor}
-                    fillOpacity={fillOpacity}
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    strokeDasharray={isSelected ? '6 4' : undefined}
-                    filter="url(#border-relief)"
-                    className={isSelected ? 'animate-pulse' : ''}
-                  />
-                ) : (
-                  <polygon
-                    points={t.svgPath}
-                    fill={fillColor}
-                    fillOpacity={fillOpacity}
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    strokeDasharray={isSelected ? '6 4' : undefined}
-                    filter="url(#border-relief)"
-                    className={isSelected ? 'animate-pulse' : ''}
-                  />
-                )}
-
-                {/* 2. Diamond Texture Overlay for Owned Territories (from image_b5a87907.png) */}
-                {owner && (
-                  isPath ? (
+              return (
+                <g
+                  key={t.id}
+                  className={`transition-all duration-150 ${
+                    isActionable ? 'cursor-pointer hover:brightness-110' : 'cursor-pointer'
+                  }`}
+                  onMouseEnter={() => setHoveredId(t.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  onClick={() => handleTerritoryClick(t)}
+                >
+                  {isPath ? (
                     <path
                       d={t.svgPath}
-                      fill="url(#diamond-hatch)"
-                      stroke="none"
-                      className="pointer-events-none"
+                      fill={fillColor}
+                      fillOpacity={fillOpacity}
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      strokeDasharray={isSelected ? '6 4' : undefined}
+                      filter="url(#border-relief)"
                     />
                   ) : (
                     <polygon
                       points={t.svgPath}
-                      fill="url(#diamond-hatch)"
-                      stroke="none"
-                      className="pointer-events-none"
+                      fill={fillColor}
+                      fillOpacity={fillOpacity}
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      strokeDasharray={isSelected ? '6 4' : undefined}
+                      filter="url(#border-relief)"
                     />
-                  )
-                )}
+                  )}
 
-                {/* 3. Cross-hatch Overlay if selected */}
-                {isSelected && (
-                  isPath ? (
-                    <path
-                      d={t.svgPath}
-                      fill="url(#selected-hatch)"
-                      stroke="none"
-                      className="pointer-events-none animate-pulse"
-                    />
-                  ) : (
-                    <polygon
-                      points={t.svgPath}
-                      fill="url(#selected-hatch)"
-                      stroke="none"
-                      className="pointer-events-none animate-pulse"
-                    />
-                  )
-                )}
-
-                {/* 4. Center Indicators: Base Medallion or Points */}
-                <g transform={`translate(${t.labelX}, ${t.labelY})`} className="pointer-events-none">
-                  {/* BASE CASTLE MEDALLION - Matches Conquiztador layout with 3 Castle Towers */}
-                  {t.isBase && owner ? (
-                    <g transform="translate(0, 0)">
-                      {/* Name Plate above Medallion */}
-                      <g transform="translate(0, -26)">
-                        <rect
-                          x={-Math.max(32, owner.username.length * 4.2)}
-                          y="-10"
-                          width={Math.max(64, owner.username.length * 8.4)}
-                          height="16"
-                          rx="4"
-                          fill="#1c1109"
-                          fillOpacity="0.9"
-                          stroke="#eab308"
-                          strokeWidth="1.2"
-                        />
-                        <text
-                          x="0"
-                          y="2"
-                          textAnchor="middle"
-                          fontSize="9.5"
-                          fontWeight="800"
-                          fill="#fef08a"
-                          fontFamily="sans-serif"
-                        >
-                          {owner.username}
-                        </text>
-                      </g>
-
-                      {/* Golden Circular Medallion */}
-                      <circle
-                        cx="0"
-                        cy="2"
-                        r="16"
-                        fill={owner.color}
-                        stroke="#fef08a"
-                        strokeWidth="2.5"
-                        filter="drop-shadow(0 2px 5px rgba(0,0,0,0.8))"
+                  {owner &&
+                    (isPath ? (
+                      <path
+                        d={t.svgPath}
+                        fill="url(#diamond-hatch)"
+                        stroke="none"
+                        className="pointer-events-none"
                       />
-                      <circle
-                        cx="0"
-                        cy="2"
-                        r="13"
-                        fill="none"
-                        stroke="#b45309"
-                        strokeWidth="1.5"
+                    ) : (
+                      <polygon
+                        points={t.svgPath}
+                        fill="url(#diamond-hatch)"
+                        stroke="none"
+                        className="pointer-events-none"
                       />
-                      {/* Crest / Knight Helmet Icon inside Medallion */}
-                      <text
-                        x="0"
-                        y="8"
-                        textAnchor="middle"
-                        fontSize="14"
-                        fill="#fef08a"
-                        fontWeight="bold"
-                      >
-                        ♞
-                      </text>
+                    ))}
 
-                      {/* 3 Castle Towers Indicators (Turnurile Cetății) */}
-                      <g transform="translate(0, 24)">
-                        {[0, 1, 2].map((idx) => {
-                          const intact = idx < (t.castleTowers ?? 3);
-                          const posX = (idx - 1) * 9;
-                          return (
-                            <g key={idx} transform={`translate(${posX}, 0)`}>
-                              <rect
-                                x="-3.5"
-                                y="-5"
-                                width="7"
-                                height="8"
-                                rx="1.5"
-                                fill={intact ? '#f59e0b' : '#3f3f46'}
-                                stroke={intact ? '#fef08a' : '#18181b'}
-                                strokeWidth="0.8"
-                              />
-                              {/* Tower Battlements */}
-                              <rect x="-3.5" y="-7" width="2" height="2" fill={intact ? '#fef08a' : '#71717a'} />
-                              <rect x="1.5" y="-7" width="2" height="2" fill={intact ? '#fef08a' : '#71717a'} />
-                            </g>
-                          );
-                        })}
-                      </g>
+                  {isSelected &&
+                    (isPath ? (
+                      <path
+                        d={t.svgPath}
+                        fill="url(#selected-hatch)"
+                        stroke="none"
+                        className="pointer-events-none animate-pulse"
+                      />
+                    ) : (
+                      <polygon
+                        points={t.svgPath}
+                        fill="url(#selected-hatch)"
+                        stroke="none"
+                        className="pointer-events-none animate-pulse"
+                      />
+                    ))}
+                </g>
+              );
+            })}
+          </g>
 
-                      {/* Base Score 1000 */}
+          {/* ============================================================
+              LAYER 2: REGULAR TERRITORY SCORES (200 / 300 / 400) & FORBIDDEN MARKERS
+              Rendered above all territory polygons so numbers are never clipped.
+          ============================================================ */}
+          <g id="layer-regular-scores" className="pointer-events-none">
+            {territoryList.map((t) => {
+              const owner = getOwner(t.ownerId);
+              const isForbiddenBase =
+                isMyTurn &&
+                currentUserPlayer &&
+                gamePhase === 'base_selection' &&
+                t.ownerId === null &&
+                !canSelectBase(t.id, territories);
+
+              if (t.isBase && owner) return null;
+
+              const scoreFontSize = Number((13 * labelScale).toFixed(1));
+
+              return (
+                <g key={`score_${t.id}`} transform={`translate(${t.labelX}, ${t.labelY})`}>
+                  {owner ? (
+                    <g>
+                      <rect
+                        x={-16 * labelScale}
+                        y={-9 * labelScale}
+                        width={32 * labelScale}
+                        height={18 * labelScale}
+                        rx={5 * labelScale}
+                        fill="#1c1109"
+                        fillOpacity="0.72"
+                        stroke="#fde68a"
+                        strokeOpacity="0.45"
+                        strokeWidth="1"
+                      />
                       <text
                         x="0"
-                        y="39"
+                        y={4.5 * labelScale}
                         textAnchor="middle"
-                        fontSize="10"
+                        fontSize={scoreFontSize}
                         fontWeight="900"
-                        fill="#1c1109"
+                        fill="#fef3c7"
                         fontFamily="Georgia, serif"
-                      >
-                        1000
-                      </text>
-                    </g>
-                  ) : owner ? (
-                    /* OWNED REGULAR TERRITORY SCORE (200, 300, 400) + DEFENSIVE BONUS IF APPLICABLE */
-                    <g transform="translate(0, 0)">
-                      <text
-                        x="0"
-                        y="4"
-                        textAnchor="middle"
-                        fontSize="12.5"
-                        fontWeight="900"
-                        fill="#1c1109"
-                        fontFamily="Georgia, serif"
-                        filter="drop-shadow(0 1px 1px rgba(255,255,255,0.4))"
                       >
                         {t.points || 200}
                       </text>
-                      {/* Defensive Bonus Badge */}
+
                       {!!t.defensiveBonus && (
-                        <g transform="translate(14, -8)">
-                          <circle cx="0" cy="0" r="7" fill="#059669" stroke="#34d399" strokeWidth="1" />
-                          <text x="0" y="3" textAnchor="middle" fontSize="6.5" fontWeight="bold" fill="#ffffff">
+                        <g transform={`translate(${20 * labelScale}, ${-10 * labelScale})`}>
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r={8 * labelScale}
+                            fill="#059669"
+                            stroke="#34d399"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="0"
+                            y={3 * labelScale}
+                            textAnchor="middle"
+                            fontSize={7 * labelScale}
+                            fontWeight="bold"
+                            fill="#ffffff"
+                          >
                             +100
                           </text>
                         </g>
                       )}
                     </g>
-                  ) : (
-                    /* Neutral territories never show point values, including while selected. */
-                    null
-                  )}
+                  ) : null}
 
-                  {/* Forbidden Base Indicator */}
                   {isForbiddenBase && (
-                    <g transform="translate(0, 0)">
-                      <circle cx="0" cy="0" r="10" fill="#dc2626" fillOpacity="0.8" />
-                      <line x1="-5" y1="-5" x2="5" y2="5" stroke="#ffffff" strokeWidth="2" />
+                    <g>
+                      <circle cx="0" cy="0" r={10 * labelScale} fill="#dc2626" fillOpacity="0.85" />
+                      <line
+                        x1={-5 * labelScale}
+                        y1={-5 * labelScale}
+                        x2={5 * labelScale}
+                        y2={5 * labelScale}
+                        stroke="#ffffff"
+                        strokeWidth="2.2"
+                      />
                     </g>
                   )}
                 </g>
+              );
+            })}
+          </g>
 
-                {/* 5. 3D BLUE DOWNWARD POINTER ARROW OVER SELECTED TERRITORY (Faithfully matching image_b5a87907.png) */}
-                {isSelected && (
-                  <g
-                    transform={`translate(${t.labelX}, ${t.labelY - 32})`}
-                    className="pointer-events-none animate-bounce"
-                    filter="url(#arrow-glow)"
-                  >
-                    {/* 3D Arrow Shaft */}
-                    <rect x="-6" y="-36" width="12" height="22" fill="#0284c7" stroke="#38bdf8" strokeWidth="1.5" rx="2" />
-                    {/* 3D Arrow Head */}
-                    <polygon
-                      points="0,0 -16,-16 -6,-16 -6,-36 6,-36 6,-16 16,-16"
-                      fill="#0284c7"
-                      stroke="#e0f2fe"
-                      strokeWidth="2"
-                      strokeLinejoin="round"
+          {/* ============================================================
+              LAYER 3: CASTLE MEDALLIONS, TOWERS, 1000 SCORES,
+                       COLLISION-FREE NAMEPLATES & 3D ARROWS
+              Rendered on top so no adjacent territory polygon ever covers a castle!
+          ============================================================ */}
+          <g id="layer-castles" className="pointer-events-none">
+            {territoryList.map((t) => {
+              const owner = getOwner(t.ownerId);
+              if (!t.isBase || !owner) return null;
+
+              const placement = baseLabelPlacements[t.id];
+
+              return (
+                <g key={`castle_${t.id}`}>
+                  {/* Leader line if nameplate was offset to avoid collision */}
+                  {placement && placement.hasLeader && (
+                    <line
+                      x1={t.labelX}
+                      y1={t.labelY}
+                      x2={placement.cx}
+                      y2={placement.cy}
+                      stroke="#fde047"
+                      strokeWidth="1.5"
+                      strokeDasharray="3 2"
+                      opacity="0.85"
                     />
-                    {/* Arrow 3D light reflection */}
-                    <polygon
-                      points="0,-2 -12,-15 -4,-15 -4,-34 0,-34"
-                      fill="#38bdf8"
-                      opacity="0.6"
+                  )}
+
+                  {/* Medallion + 3 Towers + 1000 Score at exact geographic (t.labelX, t.labelY) */}
+                  <g transform={`translate(${t.labelX}, ${t.labelY})`}>
+                    {/* Golden Circular Medallion */}
+                    <circle
+                      cx="0"
+                      cy="2"
+                      r="16"
+                      fill={owner.color}
+                      stroke="#fef08a"
+                      strokeWidth="2.5"
+                      filter="drop-shadow(0 2px 5px rgba(0,0,0,0.85))"
                     />
+                    <circle
+                      cx="0"
+                      cy="2"
+                      r="13"
+                      fill="none"
+                      stroke="#b45309"
+                      strokeWidth="1.5"
+                    />
+                    {/* Crest / Knight Icon inside Medallion */}
+                    <text
+                      x="0"
+                      y="7.5"
+                      textAnchor="middle"
+                      fontSize="14"
+                      fill="#fef08a"
+                      fontWeight="bold"
+                    >
+                      ♞
+                    </text>
+
+                    {/* 3 Castle Towers Indicators */}
+                    <g transform="translate(0, 23)">
+                      {[0, 1, 2].map((idx) => {
+                        const intact = idx < (t.castleTowers ?? 3);
+                        const posX = (idx - 1) * 9;
+                        return (
+                          <g key={idx} transform={`translate(${posX}, 0)`}>
+                            <rect
+                              x="-3.5"
+                              y="-5"
+                              width="7"
+                              height="8"
+                              rx="1.5"
+                              fill={intact ? '#f59e0b' : '#3f3f46'}
+                              stroke={intact ? '#fef08a' : '#18181b'}
+                              strokeWidth="0.9"
+                            />
+                            <rect
+                              x="-3.5"
+                              y="-7"
+                              width="2"
+                              height="2"
+                              fill={intact ? '#fef08a' : '#71717a'}
+                            />
+                            <rect
+                              x="1.5"
+                              y="-7"
+                              width="2"
+                              height="2"
+                              fill={intact ? '#fef08a' : '#71717a'}
+                            />
+                          </g>
+                        );
+                      })}
+                    </g>
+
+                    {/* Base Score 1000 Pill Badge */}
+                    <g transform="translate(0, 36)">
+                      <rect
+                        x="-18"
+                        y="-7"
+                        width="36"
+                        height="13"
+                        rx="4"
+                        fill="#1c1109"
+                        fillOpacity="0.88"
+                        stroke="#eab308"
+                        strokeWidth="0.9"
+                      />
+                      <text
+                        x="0"
+                        y="2.5"
+                        textAnchor="middle"
+                        fontSize="9.5"
+                        fontWeight="900"
+                        fill="#fef08a"
+                        fontFamily="Georgia, serif"
+                      >
+                        1000
+                      </text>
+                    </g>
                   </g>
-                )}
-              </g>
-            );
-          })}
+
+                  {/* Collision-Free Castle Nameplate */}
+                  {placement && (
+                    <g transform={`translate(${placement.cx}, ${placement.cy})`}>
+                      <rect
+                        x={-placement.boxW / 2}
+                        y={-placement.boxH / 2}
+                        width={placement.boxW}
+                        height={placement.boxH}
+                        rx="4.5"
+                        fill="#1c1109"
+                        fillOpacity="0.92"
+                        stroke="#eab308"
+                        strokeWidth="1.3"
+                        filter="drop-shadow(0 2px 4px rgba(0,0,0,0.85))"
+                      />
+                      <text
+                        x="0"
+                        y={placement.fontSize * 0.36}
+                        textAnchor="middle"
+                        fontSize={placement.fontSize}
+                        fontWeight="800"
+                        fill="#fef08a"
+                        fontFamily="sans-serif"
+                      >
+                        {placement.displayText}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* 3D Blue Downward Pointer Arrow over Selected Territory */}
+            {territoryList.map((t) => {
+              if (targetedId !== t.id) return null;
+              return (
+                <g
+                  key={`arrow_${t.id}`}
+                  transform={`translate(${t.labelX}, ${t.labelY - 32})`}
+                  className="animate-bounce"
+                  filter="url(#arrow-glow)"
+                >
+                  <rect
+                    x="-6"
+                    y="-36"
+                    width="12"
+                    height="22"
+                    fill="#0284c7"
+                    stroke="#38bdf8"
+                    strokeWidth="1.5"
+                    rx="2"
+                  />
+                  <polygon
+                    points="0,0 -16,-16 -6,-16 -6,-36 6,-36 6,-16 16,-16"
+                    fill="#0284c7"
+                    stroke="#e0f2fe"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <polygon
+                    points="0,-2 -12,-15 -4,-15 -4,-34 0,-34"
+                    fill="#38bdf8"
+                    opacity="0.6"
+                  />
+                </g>
+              );
+            })}
+          </g>
         </svg>
       </div>
 
-      {/* Floating Hover Tooltip / Status Information Card */}
-      {hoveredTerritory && (
-        <div className="pointer-events-none absolute bottom-4 left-4 z-20 max-w-xs rounded-2xl border border-stone-700 bg-stone-950/95 p-3.5 shadow-2xl backdrop-blur-xl text-left animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-stone-800 pb-2 mb-2">
-            <div>
-              <h4 className="font-serif font-bold text-sm text-stone-100 flex items-center gap-1.5">
-                {hoveredTerritory.isBase && <span title="Bază Principală">🏰</span>}
-                {hoveredTerritory.name}
-              </h4>
-              <span className="text-[11px] text-amber-400/80 font-mono">{hoveredTerritory.region}</span>
+      {/* ============================================================
+          BOTTOM INTERACTIVE REGION DETAILS BAR (Works on Tap AND Hover!)
+          Solves mobile touch inspection and displays full region + player info.
+      ============================================================ */}
+      <div className="w-full shrink-0 border-t border-stone-800/90 bg-stone-950/90 px-3 py-1.5 backdrop-blur-md">
+        {activeTerritory ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <MapPin className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span className="font-serif font-bold text-stone-100 truncate">
+                {activeTerritory.isBase ? '🏰 ' : ''}
+                {activeTerritory.name}
+              </span>
+              <span className="text-[10px] font-mono text-amber-400/80 hidden sm:inline shrink-0">
+                ({activeTerritory.region})
+              </span>
             </div>
-            {hoveredOwner && (
-              <div className="flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-300 border border-amber-500/30">
-                <Award className="h-3.5 w-3.5" />
-                {hoveredTerritory.points} pct
-              </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              {activeOwner ? (
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: activeOwner.color }}
+                  />
+                  <span className="font-bold text-stone-100" style={{ color: activeOwner.color }}>
+                    {activeOwner.username}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300 tabular-nums">
+                    <Award className="h-3 w-3" />
+                    {activeTerritory.points} pct
+                  </span>
+                </div>
+              ) : (
+                <span className="text-stone-400 italic text-[11px]">Teritoriu Neutru</span>
+              )}
+
+              <span className="text-[11px] font-semibold">
+                {isMyTurn && currentUserPlayer ? (
+                  canTargetTerritory(
+                    activeTerritory.id,
+                    currentUserPlayer,
+                    territories,
+                    gamePhase as any
+                  ).allowed ? (
+                    <span className="text-emerald-400 font-bold">
+                      &bull; Apasă pentru acțiune
+                    </span>
+                  ) : (
+                    <span className="text-stone-500">
+                      &bull;{' '}
+                      {canTargetTerritory(
+                        activeTerritory.id,
+                        currentUserPlayer,
+                        territories,
+                        gamePhase as any
+                      ).reason || 'Neeligibil'}
+                    </span>
+                  )
+                ) : null}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between text-[11px] text-stone-400">
+            <span>
+              Atinge sau plasează cursorul pe orice regiune pentru detalii complete.
+            </span>
+            {zoom > 1 && (
+              <span className="font-mono text-amber-300">
+                Zoom: {Math.round(zoom * 100)}%
+              </span>
             )}
           </div>
-
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between text-stone-300">
-              <span className="text-stone-400">Stăpânit de:</span>
-              {hoveredOwner ? (
-                <span className="font-bold flex items-center gap-1.5" style={{ color: hoveredOwner.color }}>
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: hoveredOwner.color }} />
-                  {hoveredOwner.username} {hoveredTerritory.isBase ? '(Castelul Bază)' : ''}
-                </span>
-              ) : (
-                <span className="text-stone-500 italic">Teritoriu Liber (Neutru)</span>
-              )}
-            </div>
-
-            <div className="pt-2 border-t border-stone-800 text-[11px] flex items-center justify-between">
-              <span className="text-stone-400">Vecini: {hoveredTerritory.neighbors.length}</span>
-              {isMyTurn && currentUserPlayer ? (
-                canTargetTerritory(hoveredTerritory.id, currentUserPlayer, territories, gamePhase as any).allowed ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1">
-                    <Crosshair className="h-3 w-3" /> CLICK PENTRU ACȚIUNE
-                  </span>
-                ) : (
-                  <span className="text-stone-600">Acțiune nepermisă</span>
-                )
-              ) : (
-                <span className="text-stone-600">Nu e rândul tău</span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
