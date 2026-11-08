@@ -1,0 +1,1374 @@
+{
+  "users": {
+    "guest_1794163754700_aqj4": {
+      "id": "guest_1794163754700_aqj4",
+      "username": "Banul_Oltean_271",
+      "email": "banul_oltean_271@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-08T18:49:14.700Z",
+      "profile": {
+        "id": "guest_1794163754700_aqj4",
+        "username": "Banul_Oltean_271",
+        "email": "banul_oltean_271@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-08T18:49:14.700Z"
+      }
+    },
+    "guest_1794163761449_l7fc": {
+      "id": "guest_1794163761449_l7fc",
+      "username": "Pribeagul_Transilvan_134",
+      "email": "pribeagul_transilvan_134@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-08T18:49:21.449Z",
+      "profile": {
+        "id": "guest_1794163761449_l7fc",
+        "username": "Pribeagul_Transilvan_134",
+        "email": "pribeagul_transilvan_134@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-08T18:49:21.449Z"
+      }
+    }
+  },
+  "questions": [
+    {
+      "id": "ist_01",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "usor",
+      "question": "În ce an a avut loc Marea Unire de la Alba Iulia?",
+      "options": [
+        "1916",
+        "1918",
+        "1920",
+        "1922"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Marea Unire a avut loc la 1 Decembrie 1918 la Alba Iulia."
+    },
+    {
+      "id": "ist_02",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Cine a fost primul rege al României încoronat în 1881?",
+      "options": [
+        "Ferdinand I",
+        "Carol I",
+        "Alexandru Ioan Cuza",
+        "Mihai I"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Carol I a fost proclamat Rege al României la 14/26 martie 1881."
+    },
+    {
+      "id": "ist_03",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "usor",
+      "question": "În ce an a realizat Mihai Viteazul prima unire a țărilor române?",
+      "options": [
+        "1595",
+        "1600",
+        "1605",
+        "1610"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "În anul 1600 Mihai Viteazul a unit Țara Românească, Transilvania și Moldova."
+    },
+    {
+      "id": "ist_04",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Ce bătălie celebră a câștigat Ștefan cel Mare la 10 ianuarie 1475?",
+      "options": [
+        "Bătălia de la Rovine",
+        "Bătălia de la Vaslui (Podul Înalt)",
+        "Bătălia de la Călugăreni",
+        "Bătălia de la Războieni"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Bătălia de la Podul Înalt (Vaslui) a fost o victorie strălucită împotriva armatei otomane."
+    },
+    {
+      "id": "ist_05",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "Care împărat roman a cucerit Dacia în urma războaielor din 101-102 și 105-106 d.Hr.?",
+      "options": [
+        "Iulius Cezar",
+        "Traian",
+        "Augustus",
+        "Hadrian"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Împăratul Traian a cucerit Dacia și a transformat-o în provincie romană."
+    },
+    {
+      "id": "ist_06",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce localitate a fost semnat tratatul de pace dintre Germania și puterile aliate la 28 iunie 1919?",
+      "options": [
+        "Geneva",
+        "Versailles",
+        "Viena",
+        "Trianon"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Tratatul de la Versailles a fost semnat la 28 iunie 1919, în Sala Oglinzilor de la Palatul Versailles."
+    },
+    {
+      "id": "ist_07",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "usor",
+      "question": "În ce an a căzut Zidul Berlinului?",
+      "options": [
+        "1985",
+        "1989",
+        "1991",
+        "1993"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Zidul Berlinului a căzut în noaptea de 9 noiembrie 1989."
+    },
+    {
+      "id": "ist_08",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "Cine a fost conducătorul dac care a unit pentru prima oară triburile geto-dace în secolul I î.Hr.?",
+      "options": [
+        "Decebal",
+        "Burebista",
+        "Dromichete",
+        "Deceneu"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Burebista a fost primul rege care a unit toate triburile geto-dace într-un regat puternic."
+    },
+    {
+      "id": "geo_01",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "usor",
+      "question": "Care este cel mai înalt vârf muntos din România?",
+      "options": [
+        "Vârful Negoiu",
+        "Vârful Moldoveanu",
+        "Vârful Omu",
+        "Vârful Parângu Mare"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Vârful Moldoveanu din Munții Făgăraș are o altitudine de 2544 metri."
+    },
+    {
+      "id": "geo_02",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "usor",
+      "question": "Pe teritoriul sau de-a lungul graniței câtor țări curge fluviul Dunărea?",
+      "options": [
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Cursul principal al Dunării traversează sau formează granița a 10 țări, de la Germania până la România."
+    },
+    {
+      "id": "geo_03",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Care este cel mai mare lac vulcanic natural din România?",
+      "options": [
+        "Lacul Roșu",
+        "Lacul Sfânta Ana",
+        "Lacul Bâlea",
+        "Lacul Vidraru"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Lacul Sfânta Ana, aflat în masivul Ciomatu din Munții Harghita, este cel mai mare lac vulcanic natural din România."
+    },
+    {
+      "id": "geo_04",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Care este capitala Australiei?",
+      "options": [
+        "Sydney",
+        "Melbourne",
+        "Canberra",
+        "Brisbane"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Canberra este capitala federală a Australiei, aleasă ca compromis între Sydney și Melbourne."
+    },
+    {
+      "id": "geo_05",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Care este cel mai adânc lac din lume?",
+      "options": [
+        "Lacul Superior",
+        "Marea Caspică",
+        "Lacul Baikal",
+        "Lacul Victoria"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Lacul Baikal din Siberia atinge o adâncime maximă de circa 1642 metri."
+    },
+    {
+      "id": "geo_06",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "usor",
+      "question": "Ce strâmtoare desparte Europa de Africa?",
+      "options": [
+        "Strâmtoarea Bosfor",
+        "Strâmtoarea Gibraltar",
+        "Strâmtoarea Dardanele",
+        "Strâmtoarea Bering"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Strâmtoarea Gibraltar leagă Oceanul Atlantic de Marea Mediterană și separă Spania de Maroc."
+    },
+    {
+      "id": "bio_01",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "usor",
+      "question": "Care este cel mai mare organ al corpului uman?",
+      "options": [
+        "Ficatul",
+        "Pielea",
+        "Creierul",
+        "Plămânii"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Pielea este cel mai mare organ uman, acoperind aproximativ 1.5 - 2 metri pătrați."
+    },
+    {
+      "id": "bio_02",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "mediu",
+      "question": "Ce moleculă este considerată „moneda energetică” a celulei vii?",
+      "options": [
+        "ADN",
+        "ARN",
+        "ATP (adenozintrifosfat)",
+        "Glucoza"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "ATP-ul stochează și transferă energia chimică în toate procesele biochimice celulare."
+    },
+    {
+      "id": "bio_03",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "usor",
+      "question": "Câte camere are inima umană?",
+      "options": [
+        "2",
+        "3",
+        "4",
+        "6"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Inima umană are 4 camere: două atrii și două ventricule."
+    },
+    {
+      "id": "bio_04",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "greu",
+      "question": "Ce mamifer marin este cel mai mare animal cunoscut care a trăit vreodată pe Pământ?",
+      "options": [
+        "Balena albastră",
+        "Cașalotul",
+        "Balena cu cocoașă",
+        "Megalodonul"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Balena albastră este cel mai mare animal cunoscut, atât dintre cele actuale, cât și dintre cele dispărute."
+    },
+    {
+      "id": "fiz_01",
+      "type": "choice",
+      "category": "fizica",
+      "difficulty": "usor",
+      "question": "Care este viteza luminii în vid (aproximativ)?",
+      "options": [
+        "150.000 km/s",
+        "300.000 km/s",
+        "500.000 km/s",
+        "1.000.000 km/s"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Viteza luminii în vid este de aproximativ 299.792 km/s (~300.000 km/s)."
+    },
+    {
+      "id": "chm_01",
+      "type": "choice",
+      "category": "chimie",
+      "difficulty": "usor",
+      "question": "Care este simbolul chimic pentru Aur?",
+      "options": [
+        "Ag",
+        "Au",
+        "Fe",
+        "Cu"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Au provine din latinescul „Aurum”. Ag este argint, Fe este fier."
+    },
+    {
+      "id": "fiz_02",
+      "type": "choice",
+      "category": "fizica",
+      "difficulty": "mediu",
+      "question": "Cine a formulat Teoria Relativității Generale în 1915?",
+      "options": [
+        "Isaac Newton",
+        "Albert Einstein",
+        "Niels Bohr",
+        "Nikola Tesla"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Albert Einstein a publicat Teoria Relativității Generale în anul 1915."
+    },
+    {
+      "id": "chm_02",
+      "type": "choice",
+      "category": "chimie",
+      "difficulty": "mediu",
+      "question": "Ce element constituie aproximativ 78% din atmosfera Pământului?",
+      "options": [
+        "Oxigenul",
+        "Azotul (Nitrogen)",
+        "Dioxidul de carbon",
+        "Argonul"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Azotul (N2) reprezintă circa 78% din volumul aerului, iar oxigenul circa 21%."
+    },
+    {
+      "id": "chm_03",
+      "type": "choice",
+      "category": "chimie",
+      "difficulty": "greu",
+      "question": "Care este singurul metal lichid la temperatura camerei standard (20°C)?",
+      "options": [
+        "Galiu",
+        "Mercur",
+        "Cesiu",
+        "Plumb"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Mercurul (Hg) este singurul metal care este lichid la temperatura și presiunea standard."
+    },
+    {
+      "id": "mat_01",
+      "type": "choice",
+      "category": "matematica",
+      "difficulty": "usor",
+      "question": "Cât este suma unghiurilor interioare ale unui triunghi plan?",
+      "options": [
+        "90°",
+        "180°",
+        "270°",
+        "360°"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Suma unghiurilor în orice triunghi euclidian este întotdeauna egală cu 180 de grade."
+    },
+    {
+      "id": "inf_01",
+      "type": "choice",
+      "category": "informatica",
+      "difficulty": "usor",
+      "question": "Câți biți are un octet (byte)?",
+      "options": [
+        "4",
+        "8",
+        "16",
+        "32"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Un octet (byte) este format din 8 biți."
+    },
+    {
+      "id": "inf_02",
+      "type": "choice",
+      "category": "informatica",
+      "difficulty": "mediu",
+      "question": "Cine este considerat părintele informaticii moderne și al inteligenței artificiale?",
+      "options": [
+        "Bill Gates",
+        "Alan Turing",
+        "Steve Jobs",
+        "Ada Lovelace"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Alan Turing a inventat conceptul de mașină Turing și a spart codul Enigma."
+    },
+    {
+      "id": "tec_01",
+      "type": "choice",
+      "category": "tehnologie",
+      "difficulty": "usor",
+      "question": "Ce companie a lansat primul iPhone în 2007?",
+      "options": [
+        "Google",
+        "Microsoft",
+        "Apple",
+        "Nokia"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Steve Jobs a prezentat primul model de iPhone în ianuarie 2007."
+    },
+    {
+      "id": "lit_01",
+      "type": "choice",
+      "category": "literatura",
+      "difficulty": "usor",
+      "question": "Cine a scris poemul național „Luceafărul”?",
+      "options": [
+        "George Coșbuc",
+        "Mihai Eminescu",
+        "Lucian Blaga",
+        "Tudor Arghezi"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Mihai Eminescu a publicat „Luceafărul” în 1883 la Viena."
+    },
+    {
+      "id": "art_01",
+      "type": "choice",
+      "category": "arta",
+      "difficulty": "usor",
+      "question": "Unde se află expusă celebra pictură „Mona Lisa” a lui Leonardo da Vinci?",
+      "options": [
+        "Muzeul Prado (Madrid)",
+        "Muzeul Luvru (Paris)",
+        "Galeria Uffizi (Florența)",
+        "British Museum (Londra)"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Mona Lisa este expusă permanent la Muzeul Luvru din Paris."
+    },
+    {
+      "id": "art_02",
+      "type": "choice",
+      "category": "arta",
+      "difficulty": "mediu",
+      "question": "Cine a sculptat capodoperele „Coloana Infinitului” și „Poarta Sărutului” de la Târgu Jiu?",
+      "options": [
+        "Dimitrie Paciurea",
+        "Constantin Brâncuși",
+        "Ion Irimescu",
+        "Corneliu Baba"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Ansamblul monumental de la Târgu Jiu a fost realizat de titanul sculpturii moderne, Constantin Brâncuși."
+    },
+    {
+      "id": "lit_02",
+      "type": "choice",
+      "category": "literatura",
+      "difficulty": "mediu",
+      "question": "Cine este autorul romanului clasic de război și dragoste „Ultima noapte de dragoste, întâia noapte de război”?",
+      "options": [
+        "Liviu Rebreanu",
+        "Camil Petrescu",
+        "Marin Preda",
+        "Mircea Eliade"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Camil Petrescu a publicat această capodoperă a romanului psihologic în 1930."
+    },
+    {
+      "id": "spo_01",
+      "type": "choice",
+      "category": "sport",
+      "difficulty": "usor",
+      "question": "Cine a primit prima notă perfectă de 10 la gimnastică artistică feminină la Jocurile Olimpice?",
+      "options": [
+        "Nadia Comăneci",
+        "Simona Amânar",
+        "Larisa Latynina",
+        "Ecaterina Szabo"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Nadia Comăneci a obținut prima notă de 10 din istoria gimnasticii olimpice, la Montreal, în 1976."
+    },
+    {
+      "id": "spo_02",
+      "type": "choice",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "Câte titluri de Grand Slam la simplu a câștigat Simona Halep?",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Simona Halep a câștigat Roland Garros în 2018 și Wimbledon în 2019."
+    },
+    {
+      "id": "muz_01",
+      "type": "choice",
+      "category": "muzica",
+      "difficulty": "usor",
+      "question": "Din ce oraș englezesc provenea legendara trupă The Beatles?",
+      "options": [
+        "Londra",
+        "Manchester",
+        "Liverpool",
+        "Birmingham"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "John, Paul, George și Ringo au format trupa The Beatles în Liverpool în 1960."
+    },
+    {
+      "id": "cin_01",
+      "type": "choice",
+      "category": "cinematografie",
+      "difficulty": "usor",
+      "question": "Cine a regizat filmele iconice „Titanic” (1997) și „Avatar” (2009)?",
+      "options": [
+        "Steven Spielberg",
+        "James Cameron",
+        "Christopher Nolan",
+        "Martin Scorsese"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "James Cameron a regizat ambele filme care au doborât recordurile de box office global."
+    },
+    {
+      "id": "cul_01",
+      "type": "choice",
+      "category": "cultura_generala",
+      "difficulty": "usor",
+      "question": "Care este moneda oficială a Japoniei?",
+      "options": [
+        "Yuan",
+        "Won",
+        "Yen",
+        "Ringgit"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Yenul japonez (JPY) este moneda oficială a Japoniei."
+    },
+    {
+      "id": "cul_02",
+      "type": "choice",
+      "category": "cultura_generala",
+      "difficulty": "mediu",
+      "question": "Câte minuni ale lumii antice existau în lista clasică?",
+      "options": [
+        "5",
+        "7",
+        "9",
+        "12"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Lista antică conținea 7 minuni, din care doar Marea Piramidă din Giza a supraviețuit."
+    },
+    {
+      "id": "est_01",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an s-a stins din viață domnitorul Moldovei Ștefan cel Mare?",
+      "targetNumber": 1504,
+      "unit": "anul",
+      "explanation": "Ștefan cel Mare a murit la 2 iulie 1504 și a fost înmormântat la Mănăstirea Putna."
+    },
+    {
+      "id": "est_02",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "usor",
+      "question": "Câți metri înălțime are Vârful Moldoveanu, cel mai înalt punct din România?",
+      "targetNumber": 2544,
+      "unit": "metri",
+      "explanation": "Vârful Moldoveanu din Munții Făgăraș are exact 2544 metri altitudine."
+    },
+    {
+      "id": "est_03",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Care este lungimea totală a fluviului Dunărea în kilometri (de la izvor la vărsare)?",
+      "targetNumber": 2850,
+      "unit": "km",
+      "explanation": "Dunărea are o lungime de aproximativ 2850 km."
+    },
+    {
+      "id": "est_04",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "usor",
+      "question": "În ce an a avut loc Revoluția Română prin care a căzut regimul comunist?",
+      "targetNumber": 1989,
+      "unit": "anul",
+      "explanation": "Revoluția Română s-a desfășurat în decembrie 1989."
+    },
+    {
+      "id": "est_05",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a aderat România la Uniunea Europeană?",
+      "targetNumber": 2007,
+      "unit": "anul",
+      "explanation": "România a devenit stat membru al Uniunii Europene la 1 ianuarie 2007."
+    },
+    {
+      "id": "est_06",
+      "type": "estimation",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "În ce an a câștigat echipa Steaua București Cupa Campionilor Europeni la Sevilla?",
+      "targetNumber": 1986,
+      "unit": "anul",
+      "explanation": "La 7 mai 1986, Steaua a învins FC Barcelona la penalty-uri apărate de Helmuth Duckadam."
+    },
+    {
+      "id": "est_07",
+      "type": "estimation",
+      "category": "chimie",
+      "difficulty": "greu",
+      "question": "Câte elemente chimice se află în Tabelul Periodic al lui Mendeleev recunoscute oficial?",
+      "targetNumber": 118,
+      "unit": "elemente",
+      "explanation": "Tabelul periodic modern conține oficial 118 elemente chimice."
+    },
+    {
+      "id": "est_08",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a început Primul Război Mondial?",
+      "targetNumber": 1914,
+      "unit": "anul",
+      "explanation": "Primul Război Mondial a izbucnit la 28 iulie 1914."
+    },
+    {
+      "id": "est_09",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "usor",
+      "question": "În ce an a ajuns omul pentru prima oară pe Lună cu misiunea Apollo 11?",
+      "targetNumber": 1969,
+      "unit": "anul",
+      "explanation": "Neil Armstrong a pășit pe Lună la 20 iulie 1969."
+    },
+    {
+      "id": "est_10",
+      "type": "estimation",
+      "category": "literatura",
+      "difficulty": "mediu",
+      "question": "În ce an s-a născut poetul Mihai Eminescu?",
+      "targetNumber": 1850,
+      "unit": "anul",
+      "explanation": "Mihai Eminescu s-a născut la Botoșani la 15 ianuarie 1850."
+    },
+    {
+      "id": "est_11",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Câte județe are România (fără Municipiul București)?",
+      "targetNumber": 41,
+      "unit": "județe",
+      "explanation": "România este împărțită administrativ în 41 de județe și municipiul București."
+    },
+    {
+      "id": "est_12",
+      "type": "estimation",
+      "category": "tehnologie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost lansat public rețeaua de socializare Facebook?",
+      "targetNumber": 2004,
+      "unit": "anul",
+      "explanation": "Facebook a fost fondat de Mark Zuckerberg în căminul de la Harvard în februarie 2004."
+    },
+    {
+      "id": "est_13",
+      "type": "estimation",
+      "category": "arta",
+      "difficulty": "mediu",
+      "question": "Câți metri înălțime are sculptura monumentală Coloana Infinitului de Constantin Brâncuși?",
+      "targetNumber": 29,
+      "unit": "metri (aprox 29.3m)",
+      "explanation": "Coloana Infinitului măsoară 29.33 metri înălțime și are 16 module romboidale."
+    },
+    {
+      "id": "est_14",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a avut loc Bătălia de la Călugăreni condusă de Mihai Viteazul?",
+      "targetNumber": 1595,
+      "unit": "anul",
+      "explanation": "Bătălia de la Călugăreni a avut loc la 23 august 1595."
+    },
+    {
+      "id": "est_15",
+      "type": "estimation",
+      "category": "cultura_generala",
+      "difficulty": "usor",
+      "question": "Câte zile are un an bisect?",
+      "targetNumber": 366,
+      "unit": "zile",
+      "explanation": "Un an bisect conține 366 de zile, adăugându-se ziua de 29 februarie."
+    },
+    {
+      "id": "est_16",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Care este suprafața aproximativă a României în mii de kilometri pătrați?",
+      "targetNumber": 238,
+      "unit": "mii km² (238.397 km²)",
+      "explanation": "România are o suprafață de 238.397 kilometri pătrați."
+    },
+    {
+      "id": "est_17",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a urcat Mircea cel Bătrân pe tronul Țării Românești?",
+      "targetNumber": 1386,
+      "unit": "anul",
+      "explanation": "Mircea cel Bătrân a domnit din 1386 până la moartea sa în 1418."
+    },
+    {
+      "id": "est_18",
+      "type": "estimation",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "Câte goluri a marcat Gheorghe Hagi pentru echipa națională a României (record egalat cu Mutu)?",
+      "targetNumber": 35,
+      "unit": "goluri",
+      "explanation": "Gheorghe Hagi și Adrian Mutu dețin recordul de 35 de goluri marcate pentru România."
+    },
+    {
+      "id": "est_19",
+      "type": "estimation",
+      "category": "cinematografie",
+      "difficulty": "mediu",
+      "question": "În ce an a avut loc prima ceremonie de decernare a Premiilor Oscar?",
+      "targetNumber": 1929,
+      "unit": "anul",
+      "explanation": "Prima ceremonie a Premiilor Oscar a avut loc la 16 mai 1929, la Hollywood Roosevelt Hotel. Academia a fost fondată în 1927.",
+      "sourceUrl": "https://www.oscars.org/oscars/ceremonies/1929"
+    },
+    {
+      "id": "est_20",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "În ce an a fost adoptată prima Constituție modernă a României, sub domnia lui Carol I?",
+      "targetNumber": 1866,
+      "unit": "anul",
+      "explanation": "Constituția din 1866 a fost una dintre cele mai liberale din Europa epocii."
+    },
+    {
+      "id": "seed2_ist_01",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Care tratat de pace a consfințit recunoașterea internațională a Marii Uniri de la 1 Decembrie 1918 cu Transilvania?",
+      "options": [
+        "Tratatul de la Versailles",
+        "Tratatul de la Trianon",
+        "Tratatul de la Saint-Germain",
+        "Tratatul de la Neuilly"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Tratatul de la Trianon a fost semnat la 4 iunie 1920 și a consfințit unirea Transilvaniei cu România."
+    },
+    {
+      "id": "seed2_ist_02",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost ucis Mihai Viteazul pe Câmpia Turzii, în timpul conflictului cu trupele imperiale conduse de generalul Basta?",
+      "options": [
+        "1599",
+        "1600",
+        "1601",
+        "1603"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Mihai Viteazul a fost ucis la 9/19 august 1601 pe Câmpia Turzii."
+    },
+    {
+      "id": "seed2_ist_03",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Cine a fost domnitorul Moldovei care a construit Mănăstirea Voroneț în doar trei luni și trei săptămâni?",
+      "options": [
+        "Petru Rareș",
+        "Alexandru cel Bun",
+        "Ștefan cel Mare",
+        "Ieremia Movilă"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Ștefan cel Mare a ridicat Mănăstirea Voroneț în anul 1488, drept mulțumire după o victorie militară."
+    },
+    {
+      "id": "seed2_ist_04",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Ce funcție a deținut Ion C. Brătianu în timpul domniei lui Carol I?",
+      "options": [
+        "Prim-ministru al României",
+        "Guvernator al BNR",
+        "Mitropolit Primat",
+        "Președinte al Senatului"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Ion C. Brătianu a fost prim-ministru și una dintre figurile fondatoare ale statului român modern."
+    },
+    {
+      "id": "seed2_ist_05",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "Unde a avut loc bătălia din 1330 în care Basarab I a învins armata regală maghiară a lui Carol Robert de Anjou?",
+      "options": [
+        "Rovine",
+        "Posada",
+        "Călugăreni",
+        "Vaslui"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Bătălia de la Posada (9–12 noiembrie 1330) a consfințit independența Țării Românești."
+    },
+    {
+      "id": "seed2_ist_06",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Ce capitală istorică a avut Țara Românească înainte de a fi mutată la București?",
+      "options": [
+        "Câmpulung, Curtea de Argeș și Târgoviște",
+        "Brașov",
+        "Craiova",
+        "Turnu Măgurele"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Capitalele Țării Românești au fost succesiv Câmpulung, Curtea de Argeș, Târgoviște și apoi București."
+    },
+    {
+      "id": "seed2_ist_07",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "Cine a fost cărturarul umanist român ales membru al Academiei din Berlin în 1714?",
+      "options": [
+        "Miron Costin",
+        "Dimitrie Cantemir",
+        "Grigore Ureche",
+        "Ion Neculce"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Dimitrie Cantemir, autorul operelor Descriptio Moldaviae și Istoria Ieroglifică, a fost membru al Academiei din Berlin."
+    },
+    {
+      "id": "seed2_ist_08",
+      "type": "choice",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "Ce regină a României a pledat cauza țării la Conferința de Pace de la Paris din 1919?",
+      "options": [
+        "Regina Elisabeta",
+        "Regina Maria",
+        "Regina Elena",
+        "Regina Ana"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Regina Maria a avut un rol diplomatic covârșitor la Paris pentru recunoașterea Marii Uniri."
+    },
+    {
+      "id": "seed2_geo_01",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Care este al doilea cel mai înalt vârf muntos din România după Moldoveanu?",
+      "options": [
+        "Vârful Parângu Mare",
+        "Vârful Negoiu",
+        "Vârful Omu",
+        "Vârful Peleaga"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Vârful Negoiu (Munții Făgăraș) are 2535 metri, fiind al doilea cel mai înalt vârf din țară."
+    },
+    {
+      "id": "seed2_geo_02",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Ce defileu săpat de Dunăre desparte Munții Carpați de Munții Balcani?",
+      "options": [
+        "Defileul Jiului",
+        "Defileul Crișului Repede",
+        "Clisura Dunării (Cazanele Dunării)",
+        "Cheile Bicazului"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Cazanele Dunării formează cel mai lung și spectaculos defileu fluvial din Europa."
+    },
+    {
+      "id": "seed2_geo_03",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Care este cel mai adânc lac glaciar din România, situat în Munții Retezat?",
+      "options": [
+        "Lacul Bucura",
+        "Lacul Zănoaga",
+        "Lacul Bâlea",
+        "Lacul Călcescu"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Lacul Zănoaga din Retezat are o adâncime maximă de circa 29 de metri.",
+      "sourceUrl": "https://www.retezat.ro/index.php/intrebari-frecvente/119/tourist-information"
+    },
+    {
+      "id": "seed2_geo_04",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Ce braț al Deltei Dunării transportă cel mai mare volum de apă spre Marea Neagră?",
+      "options": [
+        "Brațul Chilia",
+        "Brațul Sulina",
+        "Brațul Sfântu Gheorghe",
+        "Canalul Dunăre-Marea Neagră"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Brațul Chilia transportă aproximativ 60% din debitul total al fluviului Dunărea."
+    },
+    {
+      "id": "seed2_geo_05",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "În ce masiv muntos se află Peștera Scărișoara, celebră pentru ghețarul său subteran?",
+      "options": [
+        "Munții Apuseni (Bihor)",
+        "Munții Bucegi",
+        "Munții Rodnei",
+        "Munții Ceahlău"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Peștera Scărișoara se află în Munții Apuseni, în masivul Bihor, și adăpostește un ghețar subteran."
+    },
+    {
+      "id": "seed2_geo_06",
+      "type": "choice",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Ce râu traversează Carpații Meridionali prin defileul Turnu Roșu–Cozia?",
+      "options": [
+        "Mureșul",
+        "Oltul",
+        "Siretul",
+        "Jiul"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Râul Olt străbate Carpații Meridionali prin defileul de la Turnu Roșu - Cozia."
+    },
+    {
+      "id": "seed2_lit_01",
+      "type": "choice",
+      "category": "literatura",
+      "difficulty": "mediu",
+      "question": "Cine a scris trilogia dramatică a istoriei naționale: Apus de soare, Viforul și Luceafărul?",
+      "options": [
+        "Barbu Ștefănescu Delavrancea",
+        "Camil Petrescu",
+        "Lucian Blaga",
+        "Alexandru Davila"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Delavrancea a scris celebra trilogie a Moldovei, centrată pe Ștefan cel Mare și urmașii săi."
+    },
+    {
+      "id": "seed2_art_01",
+      "type": "choice",
+      "category": "arta",
+      "difficulty": "mediu",
+      "question": "Ce tablou iconic a fost pictat de Nicolae Grigorescu și înfățișează o fată cu broboadă roșie?",
+      "options": [
+        "Car cu boi",
+        "Țărăncuță din Muscel",
+        "Atacul de la Smârdan",
+        "Evreul cu gâscă"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Țărăncuță din Muscel este una dintre cele mai renumite capodopere ale lui Nicolae Grigorescu."
+    },
+    {
+      "id": "seed2_lit_02",
+      "type": "choice",
+      "category": "literatura",
+      "difficulty": "greu",
+      "question": "Ce poet român a scris volumul de debut „Poemele luminii” în 1919?",
+      "options": [
+        "Tudor Arghezi",
+        "Lucian Blaga",
+        "Ion Barbu",
+        "George Bacovia"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Lucian Blaga a publicat Poemele luminii la Sibiu în 1919."
+    },
+    {
+      "id": "seed2_art_02",
+      "type": "choice",
+      "category": "arta",
+      "difficulty": "mediu",
+      "question": "Câte module romboidale compun sculptura Coloana Infinitului a lui Constantin Brâncuși de la Târgu Jiu?",
+      "options": [
+        "12 module",
+        "15 module întregi și două jumătăți",
+        "18 module",
+        "20 de module"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Coloana fără sfârșit este compusă din 15 module romboidale întregi și două semimodule la capete."
+    },
+    {
+      "id": "seed2_st_01",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "mediu",
+      "question": "Ce medic român a publicat în 1921 cercetări asupra extractului pancreatic numit „pancreină”, cu efect antidiabetic?",
+      "options": [
+        "Nicolae Paulescu",
+        "Victor Babeș",
+        "Gheorghe Marinescu",
+        "Ana Aslan"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Nicolae Paulescu a publicat în 1921 rezultate experimentale privind efectul antidiabetic al extractului pancreatic numit pancreină. Purificarea preparatului pentru utilizare clinică și primele tratamente cu insulină au fost realizate ulterior de echipa de la Toronto.",
+      "sourceUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8919497/"
+    },
+    {
+      "id": "seed2_st_02",
+      "type": "choice",
+      "category": "fizica",
+      "difficulty": "mediu",
+      "question": "Ce inventator român a construit aparatul experimental Coandă-1910, echipat cu un motor cu reacție?",
+      "options": [
+        "Traian Vuia",
+        "Aurel Vlaicu",
+        "Henri Coandă",
+        "Gogu Constantinescu"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Henri Coandă a construit aparatul Coandă-1910. Afirmația că acesta a realizat primul zbor cu reacție este disputată de istorici, din cauza documentării limitate a zborului.",
+      "sourceUrl": "https://airandspace.si.edu/collection-archive/henri-coanda-papers-stine/sova-nasm-xxxx-0170"
+    },
+    {
+      "id": "seed2_st_03",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "mediu",
+      "question": "Cine a fost singurul savant român laureat al Premiului Nobel pentru Fiziologie sau Medicină (1974)?",
+      "options": [
+        "George Emil Palade",
+        "Emil Racoviță",
+        "Horia Hulubei",
+        "Ștefan Odobleja"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "George Emil Palade a primit Premiul Nobel pentru descoperirea ribozomilor și structurii celulare."
+    },
+    {
+      "id": "seed2_st_04",
+      "type": "choice",
+      "category": "biologie",
+      "difficulty": "mediu",
+      "question": "Cine a fondat biospeologia mondială și a participat la expediția antarctică pe nava Belgica?",
+      "options": [
+        "Grigore Antipa",
+        "Emil Racoviță",
+        "Ion Borcea",
+        "Simion Mehedinți"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Emil Racoviță a fost naturalistul expediției Belgica (1897-1899) și întemeietorul biospeologiei."
+    },
+    {
+      "id": "seed2_sp_01",
+      "type": "choice",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "Ce mare canotor român a cucerit 4 medalii de aur și 3 de argint la Jocurile Olimpice?",
+      "options": [
+        "Ivan Patzaichin",
+        "Toma Simionov",
+        "Vasile Dîba",
+        "Florin Popescu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Legendarul Ivan Patzaichin a concurat la cinci ediții ale Jocurilor Olimpice."
+    },
+    {
+      "id": "seed2_sp_02",
+      "type": "choice",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "În ce an a devenit Ilie Năstase primul lider mondial ATP din istoria tenisului profesionist masculin?",
+      "options": [
+        "1971",
+        "1973",
+        "1975",
+        "1977"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "La 23 august 1973 a fost inaugurat clasamentul computerizat ATP, Ilie Năstase fiind primul număr 1 mondial."
+    },
+    {
+      "id": "seed2_cin_01",
+      "type": "choice",
+      "category": "cinematografie",
+      "difficulty": "mediu",
+      "question": "Ce film regizat de Cristian Mungiu a câștigat Palme d’Or la Festivalul de Film de la Cannes în 2007?",
+      "options": [
+        "Moartea domnului Lăzărescu",
+        "4 luni, 3 săptămâni și 2 zile",
+        "După dealuri",
+        "Poziția copilului"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Filmul „4 luni, 3 săptămâni și 2 zile” a obținut cel mai important trofeu din istoria cinematografiei românești."
+    },
+    {
+      "id": "seed2_est_01",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost asasinat Mihai Viteazul pe Câmpia Turzii?",
+      "targetNumber": 1601,
+      "unit": "anul",
+      "explanation": "Mihai Viteazul a fost asasinat în august 1601."
+    },
+    {
+      "id": "seed2_est_02",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Câți metri înălțime are Vârful Negoiu, al doilea cel mai înalt vârf din România?",
+      "targetNumber": 2535,
+      "unit": "metri",
+      "explanation": "Vârful Negoiu are o altitudine oficială de 2535 metri."
+    },
+    {
+      "id": "seed2_est_03",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a avut loc Bătălia de la Posada, în care Basarab I a învins armata regelui Carol Robert de Anjou?",
+      "targetNumber": 1330,
+      "unit": "anul",
+      "explanation": "Bătălia de la Posada a avut loc în noiembrie 1330."
+    },
+    {
+      "id": "seed2_est_04",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Câți kilometri are lungimea sectorului românesc al fluviului Dunărea (de la Baziaș la vărsare)?",
+      "targetNumber": 1075,
+      "unit": "km",
+      "explanation": "Dunărea străbate România pe o distanță de 1075 km (peste o treime din cursul total)."
+    },
+    {
+      "id": "seed2_est_05",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost promulgată proclamarea Independenței de Stat a României de către Mihail Kogălniceanu?",
+      "targetNumber": 1877,
+      "unit": "anul",
+      "explanation": "La 9 mai 1877 Mihail Kogălniceanu a rostit în Parlament celebra declarație de independență."
+    },
+    {
+      "id": "seed2_est_06",
+      "type": "estimation",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "În ce an a obținut Nadia Comăneci prima notă de 10.00 la Jocurile Olimpice de la Montreal?",
+      "targetNumber": 1976,
+      "unit": "anul",
+      "explanation": "Nadia Comăneci a marcat istoria sportului mondial în iulie 1976."
+    },
+    {
+      "id": "seed2_est_07",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "În ce an a început domnia lui Ștefan cel Mare în Moldova?",
+      "targetNumber": 1457,
+      "unit": "anul",
+      "explanation": "Ștefan cel Mare a urcat pe tron în aprilie 1457 la Direptate."
+    },
+    {
+      "id": "seed2_est_08",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Câți metri înălțime are barajul Vidraru de pe râul Argeș?",
+      "targetNumber": 166,
+      "unit": "metri",
+      "explanation": "Barajul Vidraru are o înălțime de 166 metri și o lungime a coronamentului de 305 metri."
+    },
+    {
+      "id": "seed2_est_09",
+      "type": "estimation",
+      "category": "cultura_generala",
+      "difficulty": "mediu",
+      "question": "În ce an a fost încoronat regele Ferdinand I și regina Maria la Alba Iulia ca suverani ai României Mari?",
+      "targetNumber": 1922,
+      "unit": "anul",
+      "explanation": "Încoronarea a avut loc la 15 octombrie 1922 la Catedrala Încoronării din Alba Iulia."
+    },
+    {
+      "id": "seed2_est_10",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Câți metri lungime are Podul Anghel Saligny (Podul Carol I) peste Dunăre la Cernavodă?",
+      "targetNumber": 4088,
+      "unit": "metri (cu rampe)",
+      "explanation": "La inaugurarea sa în 1895, podul proiectat de Anghel Saligny era cel mai lung complex de poduri din Europa (4088 m)."
+    },
+    {
+      "id": "seed2_est_11",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "greu",
+      "question": "În ce an s-a încheiat prima domnie a lui Vlad Țepeș, în timpul căreia a avut loc Atacul de Noapte de la Târgoviște?",
+      "targetNumber": 1462,
+      "unit": "anul",
+      "explanation": "Atacul de noapte a avut loc în noaptea de 17 iunie 1462."
+    },
+    {
+      "id": "seed2_est_12",
+      "type": "estimation",
+      "category": "literatura",
+      "difficulty": "mediu",
+      "question": "Câte strofe are varianta canonică a poemului „Luceafărul” de Mihai Eminescu?",
+      "targetNumber": 98,
+      "unit": "strofe",
+      "explanation": "Poemul Luceafărul este compus din 98 de catrene."
+    },
+    {
+      "id": "seed2_est_13",
+      "type": "estimation",
+      "category": "sport",
+      "difficulty": "mediu",
+      "question": "Câte penalty-uri consecutive a apărat portarul Helmuth Duckadam în finala de la Sevilla din 1986?",
+      "targetNumber": 4,
+      "unit": "penalty-uri",
+      "explanation": "Helmuth Duckadam a intrat în Cartea Recordurilor apărând toate cele 4 lovituri de la 11 metri executate de FC Barcelona."
+    },
+    {
+      "id": "seed2_est_14",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "greu",
+      "question": "Câți kilometri lungime are celebra șosea montană Transfăgărășan (DN7C)?",
+      "targetNumber": 151,
+      "unit": "km",
+      "explanation": "Transfăgărășanul leagă Muntenia de Transilvania pe o distanță de circa 151 km."
+    },
+    {
+      "id": "seed2_est_15",
+      "type": "estimation",
+      "category": "istorie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost ales Alexandru Ioan Cuza domnitor al Moldovei și apoi al Țării Românești (Mica Unire)?",
+      "targetNumber": 1859,
+      "unit": "anul",
+      "explanation": "La 5 ianuarie în Moldova și la 24 ianuarie 1859 în Țara Românească a fost ales Cuza Vodă."
+    },
+    {
+      "id": "seed2_est_16",
+      "type": "estimation",
+      "category": "geografie",
+      "difficulty": "mediu",
+      "question": "Câte brațe principale are Delta Dunării la vărsarea în mare?",
+      "targetNumber": 3,
+      "unit": "brațe (Chilia, Sulina, Sf. Gheorghe)",
+      "explanation": "Dunărea se bifurcă în trei brațe principale: Chilia, Sulina și Sfântu Gheorghe."
+    },
+    {
+      "id": "seed2_est_17",
+      "type": "estimation",
+      "category": "cultura_generala",
+      "difficulty": "mediu",
+      "question": "În ce an a fost introdus leul ca unitate monetară a României prin legea monetară?",
+      "targetNumber": 1867,
+      "unit": "anul",
+      "explanation": "Legea monetară din 1867 a instituit leul divizat în 100 de bani ca unitate monetară."
+    },
+    {
+      "id": "seed2_est_18",
+      "type": "estimation",
+      "category": "fizica",
+      "difficulty": "mediu",
+      "question": "În ce an a efectuat Traian Vuia testul aparatului său autopropulsat la Montesson, lângă Paris?",
+      "targetNumber": 1906,
+      "unit": "metri",
+      "explanation": "Aparatul Vuia I s-a desprins de la sol prin mijloace proprii de propulsie pe o distanță de 12 metri."
+    }
+  ],
+  "games": [],
+  "friends": [],
+  "notifications": [],
+  "questionBankVersion": 2
+}

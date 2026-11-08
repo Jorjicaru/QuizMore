@@ -1,0 +1,1921 @@
+# CONQUIZ – RECONSTRUIREA MECANICILOR COMPLETE DE JOC
+
+## 0. CONTEXT ȘI OBIECTIV
+
+Lucrezi la proiectul existent CONQUIZ – Trivia Strategy România.
+
+Vreau să îmbunătățești în profunzime motorul jocului, mecanicile de cucerire și interacțiunea dintre jucători, astfel încât experiența să reproducă cât mai fidel stilul și logica jocului clasic ConQUIZtador.
+
+Nu vreau să transformi proiectul într-un simplu quiz în care jucătorii răspund la întrebări și acumulează puncte.
+
+Elementul principal trebuie să fie HARTA și lupta strategică pentru controlul teritoriilor.
+
+Fiecare întrebare trebuie să aibă un efect concret asupra jocului:
+- Poate permite ocuparea unui teritoriu.
+- Poate permite câștigarea unui teritoriu la împărțire.
+- Poate permite atacarea unui adversar.
+- Poate permite apărarea unui teritoriu.
+- Poate duce la distrugerea unui turn al cetății.
+- Poate determina eliminarea unui adversar.
+
+Jocul trebuie să aibă un flux clar, cu început, etape, runde, ture, întrebări, rezultate și final.
+
+### Ce trebuie eliminat
+
+Nu implementa:
+- Monede virtuale.
+- Galbeni.
+- Magazin.
+- Avataruri cumpărabile.
+- Niveluri.
+- XP.
+- Recompense zilnice.
+- Misiuni.
+- Realizări cosmetice.
+- Sisteme de pay-to-win.
+- Funcționalități fără legătură directă cu jocul.
+
+Nu vreau ca aceste elemente să distragă atenția de la mecanica principală.
+
+Păstrează autentificarea ca utilizator guest și autentificarea cu email și parolă.
+
+Păstrează posibilitatea camerelor private și a jocului împotriva AI-ului.
+
+Nu introduce un buton mare „Joacă acum” care pornește instantaneu un meci public. Utilizatorul trebuie să poată crea sau accesa o cameră și să configureze categoriile de întrebări.
+
+---
+
+# 1. CONCEPTUL FUNDAMENTAL AL JOCULUI
+
+Jocul este destinat unui grup de jucători care se confruntă pe o hartă a României împărțită în teritorii.
+
+Fiecare jucător:
+- Își alege o regiune de bază.
+- Construiește un domeniu în jurul acesteia.
+- Cucerește teritorii neutre.
+- Primește puncte în funcție de etapa în care a ocupat teritoriul.
+- Atacă teritoriile adversarilor.
+- Își apără teritoriile.
+- Încearcă să distrugă cetățile adversarilor.
+- Încearcă să termine partida cu cel mai mare punctaj.
+
+Scopul final nu este neapărat eliminarea tuturor adversarilor.
+
+Un jucător poate rămâne în viață până la sfârșitul meciului și totuși să piardă partida din cauza unui punctaj inferior.
+
+Câștigătorul normal este jucătorul cu valoarea totală cea mai mare a teritoriilor și bonusurilor sale la sfârșitul meciului.
+
+Dacă un jucător își pierde cetatea principală, este eliminat din joc.
+
+În această situație, jucătorul care a cucerit cetatea primește toate teritoriile adversarului eliminat.
+
+## 1.1 Numărul de jucători
+
+Aplicația trebuie să suporte între 2 și 10 participanți, incluzând adversarii AI.
+
+Totuși, jocul standard de referință trebuie să fie cel cu trei jucători.
+
+Într-un meci cu trei jucători, harta trebuie să conțină exact 15 teritorii.
+
+Pentru numere mai mari de jucători, numărul teritoriilor trebuie să crească pentru a menține un echilibru între participanți.
+
+Folosește următoarea distribuție inițială:
+
+| Jucători | Număr teritorii |
+|---:|---:|
+| 2 | 10 |
+| 3 | 15 |
+| 4 | 24 |
+| 5 | 24 |
+| 6 | 37 |
+| 7 | 37 |
+| 8 | 37 |
+| 9 | 37 |
+| 10 | 37 |
+
+Această distribuție trebuie implementată într-o configurație centrală, nu scrisă separat în mai multe componente.
+
+Numărul de teritorii trebuie să fie disponibil motorului jocului înainte de generarea meciului.
+
+Harta trebuie să conțină teritorii suficient de numeroase pentru ca fiecare jucător să aibă posibilități de expansiune și atac.
+
+Nu permite selectarea unui teritoriu deja ocupat.
+
+---
+
+# 2. REGULILE GENERALE DE PUNCTAJ
+
+Aceste valori sunt obligatorii și trebuie respectate în toate meciurile.
+
+| Tip teritoriu / eveniment | Puncte |
+|---|---:|
+| Regiunea de bază | 1.000 |
+| Teritoriu cucerit în prima fază | 200 |
+| Teritoriu câștigat la împărțire | 300 |
+| Teritoriu cucerit în război | 400 |
+| Apărare reușită | +100 bonus |
+
+## 2.1 Regiunea de bază
+
+Fiecare regiune de bază valorează 1.000 de puncte.
+
+Este teritoriul în care se află cetatea principală a jucătorului.
+
+Valoarea aceasta rămâne asociată regiunii de bază pe toată durata jocului, inclusiv atunci când aceasta este cucerită.
+
+## 2.2 Teritorii obținute prin cucerire
+
+Orice teritoriu obținut în prima fază valorează 200 de puncte.
+
+Valoarea se atribuie imediat după ce serverul confirmă răspunsul corect.
+
+## 2.3 Teritorii obținute prin împărțire
+
+Orice teritoriu obținut în faza a doua valorează 300 de puncte.
+
+## 2.4 Teritorii obținute în război
+
+Orice teritoriu normal cucerit de la un adversar în faza de război valorează 400 de puncte pentru noul proprietar.
+
+Când se schimbă proprietarul, punctele vechi ale regiunii sunt eliminate și înlocuite cu valoarea de 400.
+
+Jucătorul care pierde regiunea pierde automat și valoarea aferentă acesteia.
+
+## 2.5 Bonusul defensiv
+
+Dacă un jucător apără corect un teritoriu, iar atacatorul răspunde greșit, apărătorul primește un bonus separat de 100 de puncte.
+
+Acest bonus:
+- Se adaugă scorului jucătorului.
+- Nu schimbă valoarea intrinsecă a teritoriului.
+- Trebuie afișat separat de punctele teritoriilor.
+- Se anulează dacă teritoriul pentru care a fost acordat este cucerit ulterior.
+
+Nu acorda bonus defensiv în cazul în care ambii jucători răspund greșit sau nu răspund.
+
+---
+
+# 3. STRUCTURA COMPLETĂ A UNEI PARTIDE
+
+O partidă trebuie să aibă următoarea structură:
+
+1. Pregătirea camerei.
+2. Alegerea bazelor.
+3. Faza I – Cucerirea.
+4. Faza II – Împărțirea teritoriilor libere.
+5. Faza III – Războiul.
+6. Calcularea rezultatului final.
+
+Alegerea bazelor este etapa inițială, separată de cele trei faze competitive.
+
+Nu modifica ordinea acestor etape.
+
+Nu permite începerea războiului înainte de terminarea cuceririi și a împărțirii.
+
+Nu permite jucătorilor să atace teritorii în primele două faze.
+
+---
+
+# 4. ETAPA INIȚIALĂ – ALEGEREA REGIUNII DE BAZĂ
+
+Aceasta este prima interacțiune reală cu harta.
+
+Fiecare jucător trebuie să își aleagă regiunea de bază.
+
+## 4.1 Ordinea selecției
+
+La începutul meciului:
+- Sistemul stabilește aleatoriu ordinea inițială a jucătorilor.
+- Primul jucător primește dreptul de a selecta o regiune.
+- După confirmarea selecției, urmează al doilea jucător.
+- După al doilea, urmează al treilea.
+- Procesul continuă până când toți jucătorii au o bază.
+
+Ordinea trebuie să fie vizibilă.
+
+Jucătorii trebuie să vadă:
+- Cine este la alegerea bazei.
+- Cine a ales deja.
+- Cine urmează.
+- Câte selecții mai sunt.
+
+## 4.2 Reguli de selecție
+
+Un jucător poate selecta orice regiune liberă care respectă regula distanței față de bazele deja alese.
+
+Bazele nu au voie să fie vecine.
+
+Mai exact, dacă un jucător alege o bază:
+- Teritoriul respectiv devine ocupat.
+- Toți vecinii săi direcți devin indisponibili pentru alegerea unei alte baze.
+- Acești vecini rămân teritorii neutre și pot fi cuceriți ulterior în prima fază.
+- Nu sunt blocați pentru tot jocul.
+
+Prin urmare, între două baze trebuie să existe minimum un teritoriu tampon.
+
+Verificarea trebuie făcută folosind graful real de vecinătate al hărții.
+
+Nu verifica distanța doar pe baza poziției vizuale sau a coordonatelor aproximative.
+
+## 4.3 Timer
+
+Pentru selectarea bazei există un cronometru de 15 secunde.
+
+Dacă jucătorul nu selectează nimic:
+- Sistemul identifică toate regiunile valide.
+- Selectează automat una dintre acestea.
+- Baza este atribuită.
+- Următorul jucător primește rândul.
+
+Alegerea automată trebuie să respecte obligatoriu regula teritoriilor tampon.
+
+Dacă nu există nicio regiune validă, sistemul trebuie să detecteze situația înainte de începerea selecției și să regenereze distribuția hărții sau configurația partidei.
+
+## 4.4 Atribuirea punctelor
+
+După selectarea bazei:
+- Regiunea devine proprietatea jucătorului.
+- Primește valoarea de 1.000 de puncte.
+- Apare cetatea principală.
+- Cetatea trebuie să aibă trei turnuri intacte.
+- Regiunea primește culoarea jucătorului.
+- Numele jucătorului este afișat lângă cetate.
+- Punctajul devine vizibil.
+
+Nu afișa punctajul regiunilor încă neutre.
+
+După terminarea selecției bazelor, începe automat Faza I.
+
+---
+
+# 5. FAZA I – CUCERIREA TERITORIILOR NEUTRE
+
+Aceasta este faza de expansiune.
+
+Este foarte important ca jucătorii să nu poată ataca între ei în această fază.
+
+Singurul obiectiv este ocuparea teritoriilor neutre.
+
+## 5.1 Regula de bază
+
+Fiecare jucător primește mai multe ture în care trebuie să:
+1. Selecteze un teritoriu neutru.
+2. Răspundă la o întrebare.
+3. Primească teritoriul dacă răspunsul este corect.
+
+Teritoriul selectat trebuie să fie adiacent cu cel puțin un teritoriu deținut deja de jucător.
+
+Nu este permisă selectarea unui teritoriu care nu are legătură directă cu domeniul jucătorului.
+
+Nu se poate ataca un teritoriu al altui jucător.
+
+Nu există dueluri în această fază.
+
+## 5.2 Numărul rundelor
+
+Numărul rundelor nu trebuie configurat de utilizator în camera de joc.
+
+Este o regulă standard a jocului.
+
+Calculează numărul inițial de runde per jucător folosind:
+
+`roundsPerPlayer = clamp(ceil((territoryCount - playerCount) / playerCount), 4, 6)`
+
+Astfel:
+- Pentru 3 jucători și 15 teritorii sunt 4 runde per jucător.
+- Pentru 4 jucători și 24 de teritorii sunt 5 runde per jucător.
+- Pentru 6 jucători și 37 de teritorii sunt 6 runde per jucător.
+
+Formula trebuie calculată o singură dată la începutul partidei.
+
+Dacă toate teritoriile au fost ocupate înainte de terminarea numărului maxim de runde, faza se încheie imediat.
+
+Nu trebuie continuate ture fără teritorii disponibile.
+
+## 5.3 Ordinea jucătorilor
+
+Nu utiliza aceeași ordine în fiecare rundă.
+
+În fiecare rundă:
+- Sistemul stabilește aleatoriu ordinea jucătorilor activi.
+- Fiecare jucător are o singură oportunitate de cucerire.
+- După ce toți au acționat, începe următoarea rundă.
+
+Această regulă previne avantajul permanent al primului jucător.
+
+Ordinea trebuie să apară pe bara de rundă.
+
+## 5.4 Alegerea teritoriului
+
+Când vine rândul unui jucător:
+- Acesta devine activ.
+- Regiunile neutre valide devin interactive.
+- Regiunile ocupate nu pot fi selectate.
+- Regiunile neutre care nu sunt conectate la domeniul jucătorului nu pot fi selectate.
+- Regiunile valide trebuie evidențiate discret.
+
+Jucătorul selectează manual regiunea dorită.
+
+La selectare:
+- Se aplică o hașură vizibilă.
+- Apare un indicator grafic, preferabil o săgeată albastră orientată spre regiune.
+- Se deschide o stare de confirmare vizuală.
+- Se pregătește întrebarea aferentă.
+
+Nu aloca automat un teritoriu după răspunsul corect dacă jucătorul a selectat deja unul.
+
+Teritoriul ocupat trebuie să fie exact cel selectat de jucător.
+
+## 5.5 Timer pentru selecție
+
+Pentru selecția regiunii se acordă 15 secunde.
+
+Dacă timerul ajunge la zero:
+- Se selectează automat o regiune validă.
+- Se continuă cu întrebarea.
+- Jucătorul nu primește un avantaj și niciun punct pentru simpla selecție.
+
+Selecția automată trebuie să aleagă doar teritorii neutre și adiacente.
+
+Dacă jucătorul nu are niciun teritoriu disponibil pentru expansiune, tura se marchează ca sărită.
+
+## 5.6 Întrebarea de cucerire
+
+După selectarea teritoriului:
+- Apare o întrebare cu patru variante.
+- Jucătorul activ este singurul care trebuie să răspundă.
+- Sunt afișate cele patru variante.
+- Există un cronometru de 12 secunde.
+- Este permis un singur răspuns.
+
+Răspunsul este transmis serverului.
+
+Dacă răspunsul este corect:
+- Teritoriul devine imediat proprietatea jucătorului.
+- Primește 200 de puncte.
+- Se colorează cu nuanța jucătorului.
+- Se actualizează scorul total.
+- Se actualizează numărul de teritorii.
+
+Dacă răspunsul este greșit:
+- Teritoriul rămâne neutru.
+- Jucătorul nu primește puncte.
+- Urmează următorul jucător.
+
+Dacă timpul expiră:
+- Răspunsul este considerat absent.
+- Nu se acordă puncte.
+- Nu se ocupă regiunea.
+- Tura este consumată.
+
+Nu permite reîncercarea aceleiași întrebări.
+
+Nu permite modificarea răspunsului după trimitere.
+
+## 5.7 Terminarea fazei
+
+Faza se termină în două situații:
+
+1. Toate teritoriile au fost ocupate.
+2. S-au terminat toate rundele stabilite pentru fază.
+
+Dacă toate regiunile sunt ocupate, Faza II este sărită.
+
+Dacă mai există regiuni neutre, începe Faza II – Împărțirea teritoriilor libere.
+
+---
+
+# 6. FAZA II – ÎMPĂRȚIREA TERITORIILOR LIBERE
+
+Această fază este foarte importantă și nu trebuie confundată cu prima fază.
+
+În prima fază, jucătorul selectează teritoriul și apoi răspunde la o întrebare.
+
+În faza a doua, jucătorii concurează simultan la o întrebare de estimare numerică, iar câștigătorul primește dreptul de a selecta un teritoriu neutru.
+
+## 6.1 Când începe
+
+Faza începe numai dacă după Faza I există încă teritorii neocupate.
+
+Dacă nu există niciun teritoriu liber, faza se sare complet.
+
+Nu afișa o fază goală.
+
+## 6.2 Structura unei runde de împărțire
+
+O rundă trebuie să se desfășoare astfel:
+
+1. Serverul selectează o întrebare numerică.
+2. Aceeași întrebare este trimisă tuturor jucătorilor activi.
+3. Toți jucătorii primesc întrebarea simultan.
+4. Fiecare își introduce răspunsul numeric.
+5. Serverul colectează răspunsurile.
+6. Se calculează apropierea fiecărui răspuns față de valoarea reală.
+7. Se identifică jucătorul cu răspunsul cel mai apropiat.
+8. În caz de egalitate, câștigă cel mai rapid răspuns.
+9. Câștigătorul primește dreptul de a alege un teritoriu neutru.
+10. Teritoriul ales primește 300 de puncte.
+11. Urmează o nouă întrebare dacă mai există regiuni neutre.
+
+## 6.3 Întrebările numerice
+
+Întrebările trebuie să conțină:
+- Textul întrebării.
+- Unitatea de măsură, dacă există.
+- Valoarea numerică de referință.
+- Explicația răspunsului.
+- Categoria.
+- Dificultatea.
+- Sursa de verificare.
+
+Exemple:
+- În ce an s-a produs un eveniment istoric?
+- Ce înălțime are un anumit munte?
+- Care este distanța dintre două localități?
+- Câte elemente conține o anumită colecție?
+- Care este temperatura de topire a unei substanțe?
+- Câte zile au trecut între două evenimente?
+
+Nu utiliza întrebări la care răspunsul depinde de o interpretare subiectivă.
+
+## 6.4 Introducerea răspunsului
+
+Jucătorii trebuie să poată introduce răspunsul prin două metode:
+
+**Tastatură fizică:**
+- Tastele numerice.
+- Backspace.
+- Delete.
+- Enter pentru trimitere, cu validarea timerului.
+
+**Tastatură virtuală:**
+- Butoane numerice 0–9.
+- Buton pentru ștergerea ultimului caracter.
+- Buton pentru resetarea întregului răspuns.
+- Buton pentru semnul minus, atunci când este necesar.
+- Buton pentru virgulă zecimală.
+- Buton de trimitere.
+
+Ambele metode trebuie să modifice același câmp de răspuns.
+
+Tastatura virtuală trebuie să funcționeze și pe dispozitive touch.
+
+Inputul trebuie să accepte și numere zecimale.
+
+Trebuie acceptate forme echivalente precum `1,5` și `1.5`.
+
+## 6.5 Calcularea câștigătorului
+
+Pentru fiecare răspuns calculează:
+
+`distance = abs(playerAnswer - correctAnswer)`
+
+Câștigă jucătorul care are cea mai mică diferență.
+
+Exemplu:
+
+Valoarea corectă: 1500.
+
+| Jucător | Răspuns | Diferență |
+|---|---:|---:|
+| A | 1450 | 50 |
+| B | 1530 | 30 |
+| C | 1600 | 100 |
+
+Jucătorul B câștigă runda.
+
+În cazul unei diferențe egale:
+- Compară timpul de răspuns măsurat de server.
+- Câștigă răspunsul trimis mai devreme.
+
+În cazul unei egalități perfecte inclusiv la timp:
+- Nu acorda două teritorii.
+- Generează o întrebare numerică suplimentară pentru departajare.
+
+## 6.6 Răspunsuri absente
+
+Dacă un jucător nu răspunde în timpul acordat:
+- Nu este inclus în comparația numerică.
+- Nu primește un răspuns artificial.
+- Nu primește puncte.
+- Nu poate câștiga regiunea respectivă.
+
+Dacă toți jucătorii nu răspund, nu se atribuie teritoriu.
+
+Se generează o nouă întrebare și runda se repetă.
+
+Nu trebuie blocată faza dacă participanții nu au răspuns.
+
+## 6.7 Selectarea teritoriului după câștig
+
+După stabilirea câștigătorului:
+- Întrebarea se închide.
+- Se afișează rezultatele tuturor jucătorilor.
+- Câștigătorul este evidențiat.
+- Acesta primește 15 secunde pentru a alege teritoriul.
+
+Poate selecta orice teritoriu încă neutru, nu doar unul adiacent domeniului său.
+
+Acesta este un avantaj specific fazei de împărțire.
+
+După selectare:
+- Teritoriul devine proprietatea câștigătorului.
+- Primește 300 de puncte.
+- Se colorează corespunzător.
+- Se actualizează scorurile.
+
+Dacă timpul pentru selecție expiră:
+- Sistemul alege automat un teritoriu neutru.
+- Teritoriul primește 300 de puncte.
+- Jocul continuă.
+
+Doar câștigătorul întrebării poate selecta regiunea respectivă.
+
+Nu permite ca doi jucători să câștige sau să selecteze același teritoriu.
+
+## 6.8 Sfârșitul fazei
+
+Faza continuă până când toate teritoriile sunt ocupate.
+
+După ocuparea ultimei regiuni:
+- Nu se mai generează alte întrebări de împărțire.
+- Se afișează o scurtă tranziție.
+- Se calculează scorurile actuale.
+- Începe automat Faza III – Războiul.
+
+---
+
+# 7. FAZA III – RĂZBOIUL
+
+Aceasta este faza principală de confruntare dintre jucători.
+
+În această fază nu mai există teritorii neutre.
+
+Toate regiunile au un proprietar.
+
+Jucătorii nu mai pot cuceri teritorii fără să înfrunte adversarii.
+
+Scopul este să:
+- Atace regiunile adversarilor.
+- Apere propriile regiuni.
+- Obțină teritorii în valoare de 400 de puncte.
+- Protejeze cetatea principală.
+- Încerce eliminarea adversarilor.
+
+## 7.1 Începutul războiului
+
+La începutul fazei:
+- Toate regiunile trebuie să aibă proprietar.
+- Se verifică din nou graful de vecinătate.
+- Se activează sistemul de atac și apărare.
+- Bara de progres trece la Faza III.
+- Se afișează câte runde de război au rămas.
+
+## 7.2 Numărul rundelor
+
+Războiul trebuie să fie mai lung decât faza inițială de cucerire.
+
+Setează implicit maximum 6 runde de război.
+
+Numărul nu trebuie configurat în lobby.
+
+Fiecare rundă trebuie să ofere fiecărui jucător activ câte o oportunitate de atac.
+
+La 3 jucători:
+- 3 oportunități de atac într-o rundă.
+- Maximum 18 oportunități de atac în 6 runde.
+
+Dacă un jucător este eliminat, acesta nu mai participă la rundele următoare.
+
+Dacă rămâne un singur jucător activ, jocul se încheie imediat.
+
+## 7.3 Ordinea jucătorilor
+
+Ordinea atacurilor trebuie amestecată la fiecare rundă.
+
+Nu folosi ordinea fixă A, B, C în toate rundele.
+
+Fiecare jucător activ poate ataca cel mult o dată într-o rundă.
+
+După ce toți jucătorii activi au avut posibilitatea de a ataca:
+- Runda se marchează terminată.
+- Se actualizează progresul.
+- Începe runda următoare.
+
+Ordinea trebuie afișată pe bara de rundă.
+
+## 7.4 Teritorii care pot fi atacate
+
+Un jucător poate selecta pentru atac un teritoriu advers numai dacă acesta este adiacent cu cel puțin un teritoriu deținut de atacator.
+
+Nu permite atacarea teritoriilor:
+- Deținute deja de atacator.
+- Neadiacente.
+- Fără proprietar.
+- Care aparțin unui jucător deja eliminat.
+
+Adiacența se verifică pe baza geometriilor reale ale hărții.
+
+Nu folosi distanța dintre centrele regiunilor.
+
+## 7.5 Alegerea atacului
+
+Când vine rândul jucătorului:
+- Jucătorul activ este evidențiat.
+- Teritoriile sale sunt vizibile.
+- Regiunile adverse atacabile sunt evidențiate.
+- Jucătorul selectează manual regiunea pe care vrea să o atace.
+
+La selectare:
+- Se aplică hașura.
+- Apare indicatorul de atac.
+- Este afișat numele proprietarului.
+- Este afișată valoarea regiunii.
+- Se indică tipul atacului: normal sau atac asupra cetății.
+
+Nu deschide automat o întrebare înainte de selectarea unei ținte.
+
+## 7.6 Timer pentru atac
+
+Jucătorul are 15 secunde să selecteze un teritoriu atacabil.
+
+Dacă nu selectează:
+- Sistemul alege automat o țintă validă.
+- Se continuă cu atacul.
+
+Dacă nu există nicio țintă validă:
+- Tura este sărită.
+- Nu se pierd puncte.
+- Urmează următorul jucător.
+
+O tură nu trebuie să blocheze întregul joc.
+
+---
+
+# 8. MECANICA ATACULUI NORMAL
+
+Un atac normal se desfășoară sub forma unui duel între doi jucători.
+
+Atacatorul și proprietarul regiunii atacate primesc exact aceeași întrebare.
+
+Întrebarea trebuie afișată simultan.
+
+Nu trebuie să existe două întrebări diferite pentru cei doi jucători.
+
+## 8.1 Desfășurarea duelului
+
+1. Jucătorul A selectează o regiune a jucătorului B.
+2. Serverul validează atacul.
+3. Atacatorul și apărătorul sunt identificați.
+4. Serverul selectează o întrebare grilă.
+5. Aceeași întrebare este transmisă ambilor.
+6. Ambii au 12 secunde pentru răspuns.
+7. Fiecare selectează o variantă.
+8. Serverul înregistrează răspunsurile.
+9. Se stabilește rezultatul.
+
+Niciun participant nu poate vedea răspunsul celuilalt înainte de închiderea întrebării.
+
+## 8.2 Rezultatele posibile
+
+### Situația A – Atacatorul răspunde corect, apărătorul greșește
+
+Atacatorul câștigă duelul.
+
+Teritoriul este cucerit.
+
+Se modifică proprietarul regiunii.
+
+Valoarea teritoriului devine 400 de puncte.
+
+Scorurile ambilor jucători sunt recalculate.
+
+### Situația B – Atacatorul greșește, apărătorul răspunde corect
+
+Apărătorul câștigă duelul.
+
+Teritoriul rămâne la proprietarul anterior.
+
+Apărătorul primește un bonus de 100 de puncte.
+
+Bonusul este separat de valoarea teritoriului.
+
+### Situația C – Ambii răspund corect
+
+Se deschide o întrebare suplimentară de estimare numerică.
+
+Aceasta este o departajare între atacator și apărător.
+
+Ambii trebuie să introducă un număr.
+
+Câștigă cel mai apropiat de răspunsul corect.
+
+În caz de egalitate câștigă cel mai rapid.
+
+Câștigătorul duelului primește teritoriul sau îl păstrează.
+
+### Situația D – Ambii răspund greșit
+
+Apărătorul păstrează teritoriul.
+
+Nu se acordă bonus defensiv.
+
+### Situația E – Atacatorul nu răspunde
+
+Lipsa răspunsului este tratată ca absența unui răspuns corect.
+
+Apărătorul păstrează teritoriul dacă răspunde corect sau dacă atacatorul este singurul care nu a răspuns.
+
+Dacă apărătorul a răspuns corect, primește bonusul defensiv de 100 de puncte.
+
+### Situația F – Apărătorul nu răspunde
+
+Dacă atacatorul răspunde corect, acesta câștigă teritoriul.
+
+Dacă atacatorul greșește și apărătorul nu răspunde, apărătorul păstrează teritoriul, dar nu primește bonus defensiv.
+
+### Situația G – Ambii nu răspund
+
+Apărătorul păstrează teritoriul.
+
+Nu se acordă bonusuri.
+
+Nu se generează o altă încercare pentru același atac.
+
+## 8.3 Departajarea numerică
+
+Întrebarea numerică trebuie să folosească aceeași logică din Faza II.
+
+Se calculează diferența absolută față de valoarea corectă.
+
+Cel mai apropiat câștigă.
+
+Dacă diferența este aceeași, câștigă cel mai rapid.
+
+Dacă există egalitate perfectă și la timp, apărătorul păstrează teritoriul.
+
+Această regulă oferă un avantaj defensiv în caz de egalitate absolută.
+
+## 8.4 Schimbarea proprietății
+
+Când atacatorul câștigă:
+- Proprietarul vechi pierde regiunea.
+- Proprietarul nou primește regiunea.
+- Valoarea sa devine 400.
+- Bonusurile defensive aferente teritoriului se anulează.
+- Harta se actualizează imediat.
+- Scorurile sunt recalculate.
+
+Nu permite să existe un moment în care două persoane dețin aceeași regiune.
+
+Toată schimbarea trebuie făcută într-o singură operație validată de server.
+
+---
+
+# 9. ATACUL ASUPRA CETĂȚII PRINCIPALE
+
+Aceasta este o mecanică specială și trebuie tratată diferit de atacurile normale.
+
+Fiecare jucător începe cu o cetate principală care conține trei turnuri.
+
+Cetatea este reprezentată pe regiunea de bază printr-un simbol distinct.
+
+## 9.1 Condiția atacului
+
+Atacul asupra cetății trebuie să respecte regula de acces la bază.
+
+În mod normal, o cetate poate fi atacată dacă atacatorul are un teritoriu ocupat adiacent acesteia.
+
+Păstrează și regula personalizată stabilită anterior:
+- Dacă nu există frontieră directă între domeniul atacatorului și cetatea țintă, este permisă cel mult o încercare specială asupra acelei cetăți pe toată durata partidei.
+- Dacă există frontieră directă, atacurile pot fi repetate în rundele următoare, cu respectarea limitei normale de un atac per jucător într-o rundă.
+
+Nu confunda atacul asupra cetății cu un atac normal asupra unui teritoriu.
+
+## 9.2 Turnurile cetății
+
+Fiecare cetate începe cu trei turnuri intacte.
+
+Reprezintă-le vizual separat.
+
+Exemplu:
+- Turn 1: intact.
+- Turn 2: intact.
+- Turn 3: intact.
+
+Când un atacator câștigă un duel asupra cetății:
+- Un turn este distrus.
+- Aspectul turnului trebuie modificat.
+- Turnul distrus rămâne distrus până la sfârșitul jocului.
+
+Nu reface automat turnurile după un atac pierdut.
+
+## 9.3 Continuarea asediului
+
+Pentru eliminarea completă a unui jucător, atacatorul trebuie să distrugă toate cele trei turnuri.
+
+Un atac câștigat distruge un singur turn.
+
+Dacă atacatorul pierde o confruntare:
+- Asediul curent se încheie.
+- Cetatea rămâne cu turnurile deja distruse.
+- Jocul continuă normal.
+- Atacatorul poate încerca ulterior un nou asediu dacă respectă regulile de atac.
+
+Astfel, un asediu poate necesita mai multe atacuri reușite în runde diferite.
+
+## 9.4 Eliminarea jucătorului
+
+Când toate cele trei turnuri sunt distruse:
+- Cetatea este cucerită.
+- Jucătorul este eliminat.
+- Acesta nu mai poate ataca.
+- Acesta nu mai poate apăra.
+- Toate regiunile sale sunt transferate atacatorului.
+- Punctele regiunilor transferate sunt adăugate noului proprietar.
+- Jucătorul eliminat este marcat vizual ca eliminat.
+
+Eliminarea trebuie să fie sincronizată pentru toți participanții.
+
+## 9.5 Regiunea de bază
+
+Teritoriul cetății nu trebuie să se comporte ca o regiune normală.
+
+Nu este suficient un singur duel câștigat pentru preluarea întregului domeniu.
+
+Cele trei turnuri sunt condiția eliminării.
+
+Regiunea de bază își păstrează valoarea de 1.000 de puncte, inclusiv la transferul final.
+
+Nu implementa mecanica reconstrucției turnurilor în această versiune. Vreau să păstrăm sistemul concentrat pe cucerire, apărare și distrugerea cetăților.
+
+---
+
+# 10. MANAGEMENTUL RUNDelor ȘI AL FAZELOR
+
+Vreau să existe permanent o componentă vizuală care arată stadiul exact al partidei.
+
+Nu vreau să fie nevoie ca jucătorul să își amintească singur câte ture au trecut.
+
+## 10.1 Bara fazelor
+
+În partea superioară a jocului trebuie să existe o bară cu:
+
+- Faza I – Cucerire.
+- Faza II – Împărțire.
+- Faza III – Război.
+
+Alegerea bazei poate fi afișată separat, înainte de aceste trei faze.
+
+Faza curentă trebuie evidențiată.
+
+Fazele finalizate trebuie marcate ca terminate.
+
+Fazele viitoare trebuie afișate dezactivate.
+
+## 10.2 Bara rundelor
+
+Sub bara fazelor vreau o componentă de urmărire a rundelor.
+
+Aceasta trebuie să conțină:
+- Numărul rundei curente.
+- Numărul total de runde.
+- Rundele terminate.
+- Rundele rămase.
+- Jucătorul activ.
+- Ordinea jucătorilor din rundă.
+
+În fiecare rundă trebuie să existe câte un marcaj pentru fiecare jucător.
+
+Culoarea marcajului trebuie să fie culoarea jucătorului.
+
+Jucătorul activ trebuie evidențiat clar printr-o lumină sau un contur.
+
+După terminarea turei, marcajul său trebuie să devină complet.
+
+Nu reseta bara vizuală până când runda nu s-a terminat.
+
+## 10.3 La tranziția dintre faze
+
+La schimbarea fazei:
+- Oprește timerul anterior.
+- Închide întrebarea curentă.
+- Salvează rezultatele.
+- Actualizează harta.
+- Recalculează punctajul.
+- Resetează contorul fazei noi.
+- Afișează un mesaj scurt de tranziție.
+
+Exemple:
+- „Cucerirea s-a încheiat!”
+- „Începe împărțirea teritoriilor libere!”
+- „Toate regiunile sunt ocupate. Începe războiul!”
+
+Nu permite să existe simultan două faze active.
+
+---
+
+# 11. SISTEMUL DE TIMER
+
+Timerul trebuie să existe în toate etapele în care utilizatorul are o acțiune de realizat.
+
+| Acțiune | Timp |
+|---|---:|
+| Alegere bază | 15 secunde |
+| Selectare teritoriu | 15 secunde |
+| Selectare atac | 15 secunde |
+| Întrebare grilă | 12 secunde |
+| Întrebare numerică | 10 secunde |
+| Alegere teritoriu după câștigarea împărțirii | 15 secunde |
+
+Timpii pentru întrebările grilă și numerice sunt setați ca valori implicite de referință pentru joc.
+
+Nu permite modificarea lor din lobby.
+
+## 11.1 Design timer
+
+Vreau un timer vizual modern.
+
+- Bara trebuie să scadă continuu.
+- Mișcarea trebuie să fie foarte fluidă.
+- Nu trebuie să scadă în salturi de câte o secundă.
+- Ultimele trei secunde trebuie evidențiate.
+- La expirare apare o animație discretă.
+
+Folosește animație bazată pe timpul real rămas, nu doar scăderea unui număr la fiecare secundă.
+
+## 11.2 Sincronizarea timerului
+
+Serverul este autoritatea asupra timpului.
+
+Clientul primește:
+- `startedAt`.
+- `deadline`.
+- Identificatorul acțiunii.
+
+Clientul desenează animația folosind deadline-ul primit.
+
+Nu utiliza cronometre independente care pot ajunge să fie decalate între jucători.
+
+## 11.3 Răspunsuri după expirarea timpului
+
+Dacă timpul expiră:
+- Nu mai accepta niciun răspuns.
+- Închide interacțiunea.
+- Marchează răspunsul ca absent.
+- Nu transforma automat un răspuns absent într-un răspuns numeric egal cu zero.
+- Nu accepta răspunsuri întârziate.
+
+Răspunsurile absente trebuie să fie reprezentate printr-o stare separată `NO_RESPONSE`.
+
+## 11.4 Închiderea întrebării înainte de expirare
+
+Dacă toți participanții necesari au răspuns:
+- Întrebarea se poate închide imediat.
+- Se oprește timerul.
+- Serverul calculează rezultatul.
+- Se trece la etapa următoare.
+
+Foarte important:
+
+Nu închide întrebarea după primul răspuns.
+
+Într-un duel trebuie așteptate răspunsurile ambilor participanți.
+
+Într-o întrebare de împărțire trebuie așteptate răspunsurile tuturor jucătorilor activi.
+
+Dacă un jucător nu răspunde, trebuie așteptat timeout-ul.
+
+În cazul întreruperilor de conexiune, nu considera întrebarea completă doar pentru că ai pierdut un eveniment Socket.IO.
+
+---
+
+# 12. BAZA DE DATE CU ÎNTREBĂRI
+
+Calitatea întrebărilor este esențială.
+
+Vreau foarte multe întrebări, nu un set mic demonstrativ care se repetă după câteva partide.
+
+Obiectivul este să construiești o bază de date extensibilă la zeci de mii de întrebări.
+
+## 12.1 Nivelul întrebărilor
+
+Întrebările trebuie să fie în principal de dificultate medie și mediu-ridicată.
+
+Nu vreau:
+- Întrebări exagerat de simple.
+- Întrebări triviale despre lucruri evidente.
+- Întrebări imposibile.
+- Întrebări de specializare foarte avansată.
+- Întrebări formulate ambiguu.
+- Întrebări cu răspunsuri discutabile.
+
+Vreau întrebări care să testeze cultura generală reală.
+
+Distribuție recomandată:
+- 10% ușoare.
+- 55% medii.
+- 35% grele.
+
+Dificultatea trebuie să reflecte cunoștințele necesare, nu doar formularea complicată.
+
+## 12.2 Categorii
+
+Baza de date trebuie să conțină întrebări din:
+
+- Istorie.
+- Geografie.
+- Biologie.
+- Fizică.
+- Chimie.
+- Matematică.
+- Astronomie.
+- Literatură.
+- Gramatică și limbă.
+- Artă.
+- Muzică.
+- Cinematografie.
+- Sport.
+- Tehnologie.
+- Informatică.
+- Economie.
+- Politică și instituții.
+- Cultură generală.
+- Mitologie.
+- Arhitectură.
+- Natură și mediu.
+
+Categoriile trebuie păstrate separat, astfel încât gazda să poată selecta domeniile din care vor proveni întrebările.
+
+## 12.3 Tipul 1 – Întrebări grilă
+
+Fiecare întrebare trebuie să aibă:
+- Textul întrebării.
+- Exact patru variante.
+- O singură variantă corectă.
+- Categoria.
+- Dificultatea.
+- Explicația răspunsului.
+- Sursa verificării.
+
+Răspunsurile trebuie amestecate aleatoriu, dar aceeași ordine trebuie transmisă tuturor participanților din aceeași întrebare.
+
+Nu trimite răspunsul corect către browser înainte de închiderea întrebării.
+
+## 12.4 Tipul 2 – Întrebări numerice
+
+Fiecare întrebare numerică trebuie să aibă:
+- Text.
+- Valoare numerică exactă.
+- Unitate.
+- Explicație.
+- Categoria.
+- Dificultate.
+- Sursa de verificare.
+
+Exemplu de întrebare:
+„În ce an a fost inaugurată prima linie de cale ferată din România?”
+
+Răspunsul trebuie să fie un număr introdus de jucător.
+
+Sistemul calculează distanța față de răspunsul corect.
+
+Nu confunda aceste întrebări cu întrebările grilă.
+
+## 12.5 Evitarea repetărilor
+
+Nu repeta aceeași întrebare în cadrul unei partide.
+
+Nu folosi aceeași întrebare în mai multe locuri din aceeași partidă.
+
+Întrebările trebuie să fie selectate aleatoriu din categoria permisă.
+
+Păstrează un istoric al întrebărilor utilizate în fiecare meci.
+
+Încearcă să eviți repetarea unei întrebări în ultimele meciuri ale aceluiași utilizator.
+
+## 12.6 Corectitudinea întrebărilor
+
+Nu genera întrebări în masă fără verificare.
+
+Nu utiliza întrebări doar pentru a crește artificial numărul.
+
+Nu accept duplicate cu formulări ușor schimbate.
+
+Fiecare întrebare trebuie să aibă un răspuns clar și verificabil.
+
+Pentru întrebările numerice trebuie să existe o unitate și o valoare de referință clară.
+
+Nu utiliza statistici care se schimbă în fiecare an decât dacă întrebarea menționează explicit anul de referință.
+
+Stochează sursa și data verificării.
+
+Pregătește un sistem prin care întrebările pot fi raportate, revizuite și dezactivate.
+
+## 12.7 Cantitatea
+
+Vreau o bază consistentă, nu 50 sau 100 de întrebări.
+
+Construiește un mecanism care poate gestiona minimum 5.000 de întrebări inițiale și se poate extinde la 25.000 sau mai multe.
+
+Dacă poți furniza un set inițial verificat mai mare, este preferabil.
+
+Raportează numărul real de întrebări introduse, separat pentru grilă și numeric.
+
+Nu declara că există 5.000 de întrebări dacă baza de date conține doar câteva sute.
+
+---
+
+# 13. HARTA ROMÂNIEI
+
+Harta este componenta vizuală principală.
+
+Nu vreau o reprezentare aproximativă a României.
+
+Nu vreau o hartă desenată arbitrar prin SVG-uri care doar seamănă cu forma României.
+
+Vreau o hartă geografică reală, cu conturul României corect și delimitări geografice reale.
+
+## 13.1 Sursa geografică
+
+Folosește un set de date geografice verificabil, preferabil GeoJSON cu limite administrative reale.
+
+Harta trebuie să respecte:
+- Forma reală a României.
+- Granițele externe.
+- Forma județelor.
+- Poziția relativă a județelor.
+- Vecinătățile geografice.
+- Forma Bucureștiului și a regiunii Ilfov.
+
+Nu desena județele manual.
+
+Nu genera puncte aleatorii.
+
+Nu aproxima regiunile prin dreptunghiuri.
+
+## 13.2 Construirea teritoriilor
+
+Pentru un meci standard de trei jucători, grupează județele în 15 teritorii de joc.
+
+Teritoriile trebuie să fie compacte geografic.
+
+Un teritoriu poate reprezenta mai multe județe apropiate, unite într-o singură regiune.
+
+Nu trebuie să existe regiuni separate geografic, fără legătură între ele, doar pentru a respecta numărul de teritorii.
+
+Pentru numere mai mari de jucători, folosește delimitări mai fine.
+
+Pentru harta de 37 teritorii, utilizează cât mai multe unități administrative individuale și grupează doar unde este necesar.
+
+## 13.3 Relațiile de vecinătate
+
+Fiecare teritoriu trebuie să aibă o listă cu vecinii săi.
+
+Relațiile trebuie generate din geometria reală.
+
+Două teritorii sunt vecine dacă au graniță comună.
+
+Simpla atingere a unui punct nu trebuie să fie suficientă pentru vecinătate.
+
+Exemplu de structură:
+
+`territoryId -> [neighborId1, neighborId2, neighborId3]`
+
+Folosește această structură pentru:
+- Selectarea bazelor.
+- Cucerirea teritoriilor.
+- Validarea atacurilor.
+- Verificarea atacurilor asupra cetăților.
+
+Nu calcula vecinătățile diferit în frontend și backend.
+
+Serverul trebuie să fie sursa unică de adevăr.
+
+## 13.4 Aspect vizual
+
+Vreau o hartă în stil medieval, asemănătoare ca atmosferă cu jocurile clasice ConQUIZtador.
+
+Elementele vizuale:
+- Fundal cald, discret.
+- Textură de pergament sau relief.
+- Granițe între regiuni.
+- Contururi aurii discrete.
+- Teritorii cu forme reale.
+- Culori distincte pentru jucători.
+- Cetăți principale.
+- Turnuri.
+- Indicator pentru regiunea selectată.
+- Hașură pentru regiunea activă.
+
+Nu supraîncărca harta cu elemente inutile.
+
+## 13.5 Vizibilitatea punctajelor
+
+Această regulă este obligatorie.
+
+Teritoriile neutre NU trebuie să afișeze punctaje.
+
+Un teritoriu neutru trebuie să arate doar ca o regiune liberă.
+
+Când jucătorul selectează un teritoriu:
+- Apare hașura.
+- Apare indicatorul de selecție.
+- Nu apare încă punctajul.
+
+După răspunsul corect și atribuirea regiunii:
+- Teritoriul primește culoarea proprietarului.
+- Punctajul devine vizibil.
+- Se afișează valoarea sa reală.
+
+Nu afișa 200, 300 sau 400 pe o regiune care nu are încă proprietar.
+
+## 13.6 Cetățile
+
+Fiecare bază trebuie să aibă:
+- Simbol de cetate.
+- Trei turnuri.
+- Medalion sau emblemă.
+- Numele jucătorului.
+- Culoarea jucătorului.
+
+Turnurile distruse trebuie să aibă un aspect vizual diferit.
+
+Nu afișa doar cifra 2/3. Vreau să se vadă vizual turnurile întregi și cele distruse.
+
+## 13.7 Interacțiunea cu harta
+
+La selectarea unei regiuni:
+- Regiunea se evidențiază.
+- Se aplică o hașură animată.
+- Apare săgeata de selecție.
+- Regiunea trebuie să fie clar identificabilă.
+
+La cucerire:
+- Schimbarea culorii trebuie animată.
+- Punctajul trebuie să apară.
+- Se redă un efect vizual discret.
+- HUD-ul se actualizează.
+
+Pe mobil:
+- Harta trebuie să poată fi mărită.
+- Trebuie să poată fi deplasată.
+- Regiunile trebuie să rămână ușor de selectat.
+- Nu trebuie să se suprapună textele.
+- Nu micșora harta atât de mult încât teritoriile să devină imposibil de selectat.
+
+---
+
+# 14. INTERFAȚA DIN TIMPUL JOCULUI
+
+Vreau ca în timpul meciului să fie vizibile simultan elementele importante.
+
+## 14.1 Header
+
+În partea superioară:
+- Numele jocului.
+- Faza curentă.
+- Numărul rundei.
+- Timerul.
+- Indicația jucătorului activ.
+
+## 14.2 Informațiile jucătorilor
+
+Pentru fiecare jucător afișează:
+- Nume.
+- Culoare.
+- Număr teritorii.
+- Punctaj total.
+- Turnurile cetății.
+- Starea jucătorului.
+
+La eliminare, jucătorul trebuie marcat vizual.
+
+## 14.3 Scorul
+
+Scorul trebuie actualizat imediat după:
+- Cucerire.
+- Împărțire.
+- Atac câștigat.
+- Apărare reușită.
+- Pierderea unei regiuni.
+- Eliminarea unui jucător.
+
+Nu afișa niveluri, XP sau monede.
+
+## 14.4 Istoricul partidei
+
+Poți introduce un jurnal simplu al evenimentelor.
+
+Exemple:
+- „Mihai a cucerit Moldova.”
+- „Ana a pierdut Transilvania.”
+- „Vlad a apărat Muntenia și a primit 100 puncte.”
+- „Un turn al cetății lui Mihai a fost distrus.”
+- „Ana a fost eliminată.”
+
+Jurnalul trebuie actualizat în timp real.
+
+---
+
+# 15. INTERFAȚA ÎNTREBĂRILOR
+
+Fiecare întrebare trebuie să apară într-un modal central.
+
+Modalul trebuie să fie clar și să nu ascundă complet harta.
+
+## 15.1 Întrebare grilă
+
+Componente:
+- Tipul întrebării.
+- Categoria.
+- Dificultatea, dacă este utilă.
+- Text.
+- Patru variante.
+- Timer.
+- Indicator de progres.
+
+Fiecare variantă trebuie să fie suficient de mare pentru click și touch.
+
+După alegerea unei variante:
+- Aceasta se marchează selectată.
+- Răspunsul se transmite imediat serverului.
+- Nu mai poate fi schimbat.
+
+După închiderea întrebării:
+- Se evidențiază răspunsul corect.
+- Se afișează răspunsul dat de utilizator.
+- Se arată scurt explicația.
+- Se trece la rezultatul acțiunii.
+
+## 15.2 Întrebare numerică
+
+Componente:
+- Textul întrebării.
+- Unitatea de măsură.
+- Input numeric.
+- Tastatură virtuală.
+- Timer.
+- Buton Trimitere.
+
+Atât tastatura fizică, cât și cea virtuală trebuie să funcționeze.
+
+Nu permite introducerea literelor atunci când întrebarea solicită o valoare numerică.
+
+Nu trimite automat numărul zero dacă inputul este gol.
+
+## 15.3 Întrebările în duel
+
+În duel, modalul trebuie să evidențieze:
+- Atacatorul.
+- Apărătorul.
+- Teritoriul atacat.
+- Valoarea teritoriului.
+- Întrebarea comună.
+
+Fiecare jucător trebuie să vadă că participă la aceeași confruntare.
+
+Nu afișa răspunsul atacatorului apărătorului înainte de închiderea întrebării și invers.
+
+---
+
+# 16. CAMERE ȘI LOBBY
+
+Toate camerele trebuie să utilizeze același set de reguli de joc.
+
+Nu permite gazdei să modifice:
+- Punctele bazei.
+- Punctele de cucerire.
+- Punctele de împărțire.
+- Punctele de atac.
+- Durata fazelor.
+- Numărul standard de runde.
+- Durata timerelor.
+
+Acestea sunt reguli globale.
+
+## 16.1 Crearea camerei
+
+Gazda poate:
+- Crea o cameră.
+- Selecta categoriile de întrebări.
+- Alege dacă este publică sau privată.
+- Invita prieteni.
+- Primi un cod al camerei.
+
+Nu afișa setări pentru numărul de runde.
+
+Nu afișa setări pentru punctaj.
+
+Nu afișa setări pentru timer.
+
+## 16.2 Categoriile
+
+Gazda poate selecta una sau mai multe categorii.
+
+Dacă nu selectează nimic, se utilizează toate categoriile active.
+
+Selecția trebuie salvată în configurația camerei.
+
+Toate întrebările din meci trebuie să provină din categoriile selectate.
+
+## 16.3 Lobby
+
+În lobby afișează:
+- Participanții.
+- Numele.
+- Culorile.
+- Status Ready.
+- Numărul de locuri ocupate.
+- Codul camerei.
+- Categoriile selectate.
+- Butonul de invitare.
+- Butonul de pornire pentru gazdă.
+
+Nu porni automat jocul înainte ca participanții să fie pregătiți.
+
+## 16.4 AI
+
+Păstrează posibilitatea de a completa locurile libere cu jucători controlați de AI.
+
+AI-ul trebuie să respecte aceleași reguli ca oamenii:
+- Alegere de bază.
+- Cucerire.
+- Împărțire.
+- Atac.
+- Apărare.
+- Timer.
+- Punctaj.
+
+AI-ul nu trebuie să cunoască răspunsurile corecte în timpul jocului.
+
+Dificultatea poate afecta probabilitatea de răspuns corect și strategia de alegere a regiunilor.
+
+Nu implementa avantaje artificiale pentru AI.
+
+---
+
+# 17. AUTENTIFICARE
+
+Păstrează două posibilități:
+
+### Intrare ca guest
+
+Utilizatorul poate începe fără cont.
+
+Sistemul generează un nume aleatoriu disponibil.
+
+Utilizatorul poate schimba numele înainte de intrarea în cameră.
+
+Sesiunea trebuie păstrată pe durata jocului.
+
+### Cont clasic
+
+Utilizatorul poate:
+- Înregistra un cont cu email și parolă.
+- Se autentifica.
+- Se deconecta.
+- Reseta parola.
+
+Nu condiționa accesul în joc de existența unui cont în această etapă de dezvoltare.
+
+Nu introduce sistem de niveluri sau progresie prin XP.
+
+---
+
+# 18. SERVERUL ȘI MOTORUL JOCULUI
+
+Logica jocului trebuie să fie controlată de server.
+
+Clientul doar afișează starea și trimite acțiuni.
+
+Nu permite frontend-ului să stabilească:
+- Corectitudinea răspunsului.
+- Punctajul.
+- Proprietarul unei regiuni.
+- Turnurile cetății.
+- Runda curentă.
+- Faza curentă.
+- Câștigătorul.
+
+Backend-ul verifică toate acțiunile.
+
+## 18.1 Mașina de stări
+
+Folosește o mașină de stări clară:
+
+`WAITING_ROOM`
+
+`BASE_SELECTION`
+
+`CONQUEST`
+
+`ALLOCATION`
+
+`WAR`
+
+`FINISHED`
+
+Fiecare fază trebuie să aibă propriile sub-stări.
+
+Exemplu pentru cucerire:
+
+`WAITING_FOR_PLAYER`
+
+`SELECTING_TERRITORY`
+
+`QUESTION_ACTIVE`
+
+`RESOLVING_ANSWER`
+
+`TURN_COMPLETE`
+
+Exemplu pentru împărțire:
+
+`NUMERIC_QUESTION_ACTIVE`
+
+`COLLECTING_ANSWERS`
+
+`DETERMINING_WINNER`
+
+`SELECTING_TERRITORY`
+
+`TERRITORY_ASSIGNED`
+
+Exemplu pentru război:
+
+`SELECTING_ATTACK`
+
+`ATTACK_QUESTION_ACTIVE`
+
+`WAITING_FOR_BOTH_PLAYERS`
+
+`NUMERIC_TIEBREAK`
+
+`RESOLVING_BATTLE`
+
+`APPLYING_RESULT`
+
+`TURN_COMPLETE`
+
+Nu permite tranziții arbitrare între stări.
+
+## 18.2 Evenimente multiplayer
+
+Folosește Socket.IO pentru comunicare în timp real.
+
+Evenimentele trebuie să includă:
+- playerJoined.
+- playerReady.
+- gameStarted.
+- baseSelected.
+- phaseChanged.
+- roundStarted.
+- playerTurnStarted.
+- territorySelected.
+- questionStarted.
+- answerSubmitted.
+- answerClosed.
+- questionResolved.
+- territoryClaimed.
+- attackStarted.
+- defenseStarted.
+- castleTowerDestroyed.
+- playerEliminated.
+- scoreUpdated.
+- gameFinished.
+
+Fiecare eveniment trebuie să conțină identificatorul meciului și un identificator al acțiunii.
+
+Evită duplicarea evenimentelor.
+
+## 18.3 Concurența și validarea
+
+Dacă doi jucători încearcă să selecteze aceeași regiune, serverul trebuie să accepte doar acțiunea validă.
+
+Toate schimbările de proprietate trebuie să fie atomice.
+
+Răspunsurile multiple ale aceluiași utilizator trebuie respinse.
+
+Răspunsurile întârziate trebuie respinse.
+
+Nu permite schimbarea fazei în timpul unei întrebări active.
+
+Nu permite ca aceeași întrebare să fie procesată de două ori.
+
+## 18.4 Reconectarea
+
+Dacă un jucător pierde conexiunea:
+- Starea jocului trebuie păstrată pe server.
+- Restul jucătorilor trebuie să poată continua.
+- Jucătorul trebuie să poată reveni.
+- După reconectare primește starea curentă completă.
+
+Nu porni din nou întrebarea doar pentru că cineva s-a reconectat.
+
+Nu reseta timerul pentru ceilalți jucători.
+
+---
+
+# 19. FINALUL PARTIDEI
+
+Jocul se termină când:
+
+1. A fost eliminat orice adversar în afară de un singur jucător.
+2. S-au terminat cele șase runde de război.
+3. Nu mai există atacuri legale și nu se mai poate desfășura nicio confruntare relevantă.
+
+La final se calculează:
+- Punctele bazei.
+- Punctele teritoriilor cucerite.
+- Punctele teritoriilor obținute la împărțire.
+- Punctele teritoriilor cucerite în război.
+- Bonusurile defensive active.
+
+Câștigătorul este participantul cu cel mai mare total.
+
+Dacă există egalitate:
+- Se generează o întrebare numerică de departajare.
+- Participanții răspund simultan.
+- Cel mai apropiat răspuns câștigă.
+- La egalitate câștigă cel mai rapid.
+
+## 19.1 Ecranul final
+
+Afișează:
+- Câștigătorul.
+- Poziția fiecărui jucător.
+- Punctajele.
+- Numărul de teritorii deținute.
+- Numărul de atacuri câștigate.
+- Numărul de apărări reușite.
+- Numărul de răspunsuri corecte.
+- Numărul de răspunsuri greșite.
+- Turnurile distruse.
+- Durata partidei.
+
+Harta finală trebuie să rămână vizibilă.
+
+Jucătorii trebuie să poată vedea cum s-a împărțit România la sfârșitul partidei.
+
+---
+
+# 20. DESIGN ȘI EXPERIENȚĂ
+
+Nu transforma jocul într-o pagină de quiz generică.
+
+Vreau o atmosferă de strategie medievală.
+
+Elementele principale:
+- Harta României în centrul interfeței.
+- HUD cu jucători.
+- Bara de faze.
+- Bara rundelor.
+- Timer animat.
+- Modal pentru întrebări.
+- Indicator vizual de atac și apărare.
+- Cetăți cu turnuri.
+- Culori distincte pentru fiecare participant.
+
+Nu supraîncărca interfața.
+
+## Desktop
+
+Pe desktop harta trebuie să fie elementul central.
+
+Panoul jucătorilor poate fi așezat sub hartă sau lateral.
+
+Bara rundelor trebuie să fie vizibilă permanent.
+
+## Telefon
+
+Pe telefon:
+- Harta trebuie să poată fi mărită.
+- HUD-ul trebuie compactat.
+- Întrebarea trebuie să fie ușor de citit.
+- Variantele trebuie să fie ușor de apăsat.
+- Tastatura numerică trebuie să încapă pe ecran.
+- Timerul trebuie să rămână vizibil.
+
+Nu elimina elementele importante pentru a face interfața mobilă mai simplă.
+
+---
+
+# 21. TESTE OBLIGATORII ALE MECANICILOR
+
+Nu considera motorul finalizat până când nu trece toate testele următoare.
+
+## Test 1 – Alegerea bazelor
+
+Meci cu trei jucători și 15 teritorii.
+
+Așteptări:
+- Toți aleg câte o bază.
+- Nicio bază nu este adiacentă alteia.
+- Fiecare bază valorează 1.000.
+- Fiecare cetate are trei turnuri.
+- Vecinii bazelor nu pot fi aleși ca alte baze.
+
+## Test 2 – Cucerire corectă
+
+Un jucător selectează o regiune neutră adiacentă.
+
+Răspunde corect.
+
+Așteptări:
+- Regiunea îi este alocată.
+- Primește 200 de puncte.
+- Harta se actualizează pentru toți.
+
+## Test 3 – Cucerire greșită
+
+Un jucător selectează o regiune neutră și răspunde greșit.
+
+Așteptări:
+- Regiunea rămâne neutră.
+- Nu primește puncte.
+- Tura este consumată.
+
+## Test 4 – Expirare timer
+
+Un jucător nu răspunde în 12 secunde.
+
+Așteptări:
+- Răspunsul este marcat absent.
+- Nu se alocă regiunea.
+- Jocul continuă.
+
+## Test 5 – Împărțire
+
+Mai există două regiuni neutre.
+
+Toți cei trei jucători primesc aceeași întrebare numerică.
+
+Așteptări:
+- Câștigă cel mai apropiat.
+- Câștigătorul alege un teritoriu.
+- Teritoriul valorează 300.
+- După prima întrebare rămâne o singură regiune.
+- Se desfășoară o nouă întrebare.
+- Nu pot fi acordate două regiuni pentru aceeași întrebare.
+
+## Test 6 – Atac câștigat
+
+Jucătorul A atacă teritoriul lui B.
+
+A răspunde corect, B greșește.
+
+Așteptări:
+- Regiunea trece la A.
+- Valorează 400.
+- B pierde punctele regiunii.
+
+## Test 7 – Apărare
+
+A atacă, dar greșește.
+
+B răspunde corect.
+
+Așteptări:
+- B păstrează teritoriul.
+- Primește 100 bonus.
+- Bonusul este separat de valoarea regiunii.
+
+## Test 8 – Departajare
+
+Ambii jucători răspund corect la grilă.
+
+Așteptări:
+- Se deschide o întrebare numerică.
+- Ambii introduc un număr.
+- Cel mai apropiat câștigă.
+- La diferență egală câștigă cel mai rapid.
+
+## Test 9 – Cetate
+
+A atacă cetatea lui B.
+
+A câștigă trei confruntări asupra cetății.
+
+Așteptări:
+- Primul atac distruge primul turn.
+- Al doilea distruge al doilea turn.
+- Al treilea distruge ultimul turn.
+- B este eliminat.
+- Toate regiunile lui B sunt transferate la A.
+
+## Test 10 – Eliminare și continuitate
+
+B este eliminat când mai sunt trei runde.
+
+Așteptări:
+- B nu mai primește ture.
+- Punctele și regiunile sale sunt transferate.
+- C și A continuă jocul.
+- Bara de progres se actualizează.
+
+## Test 11 – Sincronizare
+
+Deschide același meci în trei browsere diferite.
+
+Așteptări:
+- Toți văd aceeași hartă.
+- Toți văd același jucător activ.
+- Toți au același timer.
+- Toți văd rezultatul atacului simultan.
+- Nu există regiuni cu proprietari diferiți între clienți.
+
+## Test 12 – Întrebări fără răspuns
+
+Toți jucătorii lasă o întrebare numerică fără răspuns.
+
+Așteptări:
+- Nu câștigă nimeni regiunea.
+- Nu se atribuie zero ca valoare implicită.
+- Sistemul continuă cu o nouă întrebare.
+
+## Test 13 – Timpul este consumat de toți participanții
+
+Într-un duel, un jucător răspunde imediat, iar celălalt nu răspunde.
+
+Așteptări:
+- Întrebarea rămâne activă până la răspunsul celui de-al doilea sau timeout.
+- Nu se închide după primul răspuns.
+- Nu se dublează rezultatul.
+- Nu se blochează jocul.
+
+---
+
+# 22. MODUL DE IMPLEMENTARE
+
+Înainte de modificări, analizează integral proiectul existent.
+
+Fișierele importante sunt:
+- `src/types/game.ts`
+- `src/game/rules.ts`
+- `src/game/rules.test.ts`
+- `server/gameEngine.ts`
+- `server/romaniaMapData.ts`
+- `server/questionsData.ts`
+- `src/components/RoundTracker.tsx`
+- `src/components/RomaniaMap.tsx`
+- `src/components/QuestionModal.tsx`
+- `src/components/GameHUD.tsx`
+- `src/views/GameView.tsx`
+- `src/views/LobbyView.tsx`
+
+Verifică dacă mai există și alte fișiere care gestionează starea jocului și Socket.IO.
+
+Nu modifica doar interfața.
+
+Dacă motorul jocului este greșit, corectează motorul.
+
+Dacă bara rundelor nu reflectă starea reală, refă legătura dintre componentă și motor.
+
+Dacă harta nu este corectă geografic, înlocuiește datele geometrice, nu încerca să repari doar CSS-ul.
+
+Dacă întrebările se termină prea repede sau se blochează, verifică gestionarea stărilor și a răspunsurilor.
+
+Folosește funcții separate pentru:
+- Validarea selecției.
+- Verificarea vecinătății.
+- Calcularea punctajului.
+- Stabilirea câștigătorului.
+- Rezolvarea duelului.
+- Distrugerea turnurilor.
+- Eliminarea jucătorului.
+- Închiderea fazei.
+- Finalizarea meciului.
+
+Toate regulile trebuie să poată fi testate automat.
+
+## Rezultatul dorit
+
+Vreau să pot începe un meci cu trei jucători, să alegem bazele, să cucerim teritorii, să împărțim eventualele regiuni rămase și apoi să intrăm în război.
+
+Vreau să văd toate aceste lucruri pe o hartă reală a României.
+
+Vreau să înțeleg în fiecare moment:
+- Cine joacă.
+- Ce fază este activă.
+- Ce rundă este.
+- Câte runde mai sunt.
+- Ce teritorii pot fi selectate.
+- Ce teritorii pot fi atacate.
+- Cine deține fiecare teritoriu.
+- Cât valorează domeniul fiecărui jucător.
+- Câte turnuri mai are fiecare cetate.
+
+Nu vreau un joc care doar pare că funcționează.
+
+Vreau ca regulile să fie implementate efectiv în backend și sincronizate corect pentru toți participanții.
+
+La final, prezintă:
+1. Ce fișiere ai modificat.
+2. Ce mecanici ai implementat.
+3. Ce probleme ai descoperit.
+4. Ce teste ai executat.
+5. Rezultatul fiecărui test.
+6. Ce funcționalități au rămas incomplete.
+
+Nu declara implementarea finalizată dacă testele mecanicilor de joc nu trec.
