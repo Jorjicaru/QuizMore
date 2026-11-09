@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Territory, Player, GamePhase } from '../types/game';
+import { Territory, Player, GamePhase, WarRoundState } from '../types/game';
 import { canTargetTerritory, canSelectBase } from '../game/rules';
 import { sound } from '../services/audio';
 import { Crosshair, Award, ZoomIn, ZoomOut, RotateCcw, MapPin } from 'lucide-react';
@@ -11,6 +11,8 @@ interface RomaniaMapProps {
   currentUserId?: string;
   gamePhase: GamePhase;
   selectedTerritoryId?: string | null;
+  warRound?: WarRoundState | null;
+  mapPresetPlayerCount?: number;
   onSelectTerritory: (territoryId: string) => void;
   disabled?: boolean;
 }
@@ -32,6 +34,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   currentUserId,
   gamePhase,
   selectedTerritoryId,
+  warRound,
+  mapPresetPlayerCount,
   onSelectTerritory,
   disabled = false,
 }) => {
@@ -47,7 +51,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const didDragRef = useRef<boolean>(false);
   const mapWrapperRef = useRef<HTMLDivElement>(null);
 
-  // Observe map container width for responsive SVG label scaling
   useEffect(() => {
     const el = mapWrapperRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -64,8 +67,43 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   }, []);
 
   const targetedId = selectedTerritoryId || null;
-  const isMyTurn = currentUserId !== undefined && activePlayerId === currentUserId && !disabled;
   const currentUserPlayer = players.find((p) => p.id === currentUserId);
+
+  // Simultaneous War: check if currentUserId is an attacker who still needs to select a target
+  const myWarBattle =
+    gamePhase === 'war' && warRound
+      ? warRound.battles.find((b) => b.attackerId === currentUserId)
+      : undefined;
+
+  const isMyTurn =
+    !disabled &&
+    currentUserId !== undefined &&
+    (gamePhase === 'war' && warRound
+      ? Boolean(
+          warRound.status === 'selecting_targets' &&
+            myWarBattle &&
+            myWarBattle.targetTerritoryId === null
+        )
+      : activePlayerId === currentUserId);
+
+  const assignedDefenderId =
+    gamePhase === 'war' && myWarBattle ? myWarBattle.defenderId : null;
+
+  // All simultaneous war target territory IDs
+  const warTargetedByTerritoryId = useMemo(() => {
+    const map = new Map<string, { attacker: Player | undefined; defender: Player | undefined }>();
+    if (gamePhase === 'war' && warRound?.battles) {
+      for (const b of warRound.battles) {
+        if (b.targetTerritoryId) {
+          map.set(b.targetTerritoryId, {
+            attacker: players.find((p) => p.id === b.attackerId),
+            defender: players.find((p) => p.id === b.defenderId),
+          });
+        }
+      }
+    }
+    return map;
+  }, [gamePhase, warRound, players]);
 
   const getOwner = (ownerId: string | null): Player | undefined => {
     if (!ownerId) return undefined;
@@ -78,14 +116,20 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       return;
     }
 
-    // Always set inspected territory on tap/click so mobile users can inspect any region
     setInspectedId(t.id);
 
     if (!isMyTurn || !currentUserPlayer) return;
 
-    const check = canTargetTerritory(t.id, currentUserPlayer, territories, gamePhase as any);
+    const check = canTargetTerritory(
+      t.id,
+      currentUserPlayer,
+      territories,
+      gamePhase as any,
+      assignedDefenderId
+    );
     if (!check.allowed) {
       sound.playWrong();
+      onSelectTerritory(t.id); // Let server/GameView also show the exact rejection reason toast
       return;
     }
 
@@ -93,7 +137,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     onSelectTerritory(t.id);
   };
 
-  // Zoom helpers keeping pan within [0, 960] x [0, 660]
   const clampPan = (nx: number, ny: number, z: number) => {
     const vw = 960 / z;
     const vh = 660 / z;
@@ -174,7 +217,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const activeTerritory = activeInspectId ? territories[activeInspectId] : null;
   const activeOwner = activeTerritory ? getOwner(activeTerritory.ownerId) : null;
 
-  // Responsive scale factor so labels stay readable on small mobile viewports
   const isMobileMap = containerWidth < 560;
   const labelScale = containerWidth < 400 ? 1.45 : containerWidth < 600 ? 1.25 : 1.05;
 
@@ -187,7 +229,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       .filter((t) => t.isBase && getOwner(t.ownerId))
       .sort((a, b) => a.labelY - b.labelY || a.labelX - b.labelX);
 
-    // Reserve medallion + towers + 1000 score area for every base first
     for (const b of bases) {
       occupied.push({
         x1: b.labelX - 24,
@@ -274,10 +315,12 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   }, [territoryList, players, isMobileMap, labelScale]);
 
   const viewBoxStr = `${pan.x.toFixed(1)} ${pan.y.toFixed(1)} ${(960 / zoom).toFixed(1)} ${(660 / zoom).toFixed(1)}`;
+  const effectivePlayerPreset = mapPresetPlayerCount || Math.max(2, players.length);
 
   return (
     <div
       ref={mapWrapperRef}
+      data-testid="romania-map-container"
       className="relative flex-1 min-h-0 w-full overflow-hidden rounded-2xl border-2 border-stone-800/90 shadow-2xl select-none flex flex-col justify-between"
       style={{
         background:
@@ -285,12 +328,15 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         boxShadow: 'inset 0 0 60px rgba(0, 0, 0, 0.9), 0 10px 30px rgba(0, 0, 0, 0.8)',
       }}
     >
-      {/* Top Overlay Header: Zone Count & Current Phase Action Prompt */}
+      {/* Top Overlay Header: Preset & Zone Count + Current Phase Action Prompt */}
       <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-stone-950/85 px-2.5 py-1 text-[10px] sm:text-[11px] shadow-lg backdrop-blur-md">
+        <div
+          data-testid="map-preset-badge"
+          className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-stone-950/85 px-2.5 py-1 text-[10px] sm:text-[11px] shadow-lg backdrop-blur-md"
+        >
           <Crosshair className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-400 shrink-0" />
           <span className="font-serif font-bold tracking-wider text-amber-200 whitespace-nowrap">
-            Harta României &bull; {territoryList.length} Zone
+            Harta României &bull; {effectivePlayerPreset} Jucători &bull; {territoryList.length} Teritorii
           </span>
         </div>
 
@@ -300,20 +346,17 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               {gamePhase === 'base_selection'
                 ? 'ALEGE BAZA TA (1000 PCT)'
                 : gamePhase === 'conquest'
-                ? 'CUCEREȘTE ZONĂ (200 PCT)'
+                ? 'CUCEREȘTE ZONĂ ÎNVECINATĂ (200 PCT)'
                 : gamePhase === 'allocation'
                 ? 'ALEGE TERITORIU (300 PCT)'
-                : 'ATACĂ INAMIC (400 PCT)'}
+                : 'ATACĂ ȚINTA INAMICĂ (400 PCT)'}
             </span>
           </div>
         )}
       </div>
 
-      {/* Zoom & Fit-to-Screen Controls (Top/Bottom Right Corner) */}
-      <div className="
-        absolute bottom-11 right-2.5 z-20 flex flex-col gap-1
-        rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md
-      ">
+      {/* Zoom & Fit-to-Screen Controls */}
+      <div className="absolute bottom-11 right-2.5 z-20 flex flex-col gap-1 rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md">
         <button
           type="button"
           onClick={handleZoomIn}
@@ -346,9 +389,10 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         )}
       </div>
 
-      {/* SVG Canvas Container - Preserves 960:660 aspect ratio and fits 100% inside viewport */}
+      {/* SVG Canvas Container */}
       <div className="w-full flex-1 min-h-0 flex items-center justify-center p-1 sm:p-2 overflow-hidden">
         <svg
+          data-testid="romania-map-svg"
           viewBox={viewBoxStr}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={handlePointerDown}
@@ -360,7 +404,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           }`}
         >
           <defs>
-            {/* Diamond / Crosshatch Pattern */}
             <pattern
               id="diamond-hatch"
               width="24"
@@ -373,7 +416,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               <line x1="0" y1="0" x2="24" y2="0" stroke="rgba(0,0,0,0.18)" strokeWidth="1.2" />
             </pattern>
 
-            {/* Hatch pattern for current selection preview */}
             <pattern
               id="selected-hatch"
               width="14"
@@ -392,24 +434,23 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               />
             </pattern>
 
-            {/* 3D Arrow Filter */}
             <filter id="arrow-glow" x="-30%" y="-30%" width="160%" height="160%">
               <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#0284c7" floodOpacity="0.8" />
             </filter>
 
-            {/* Territory Relief Border Effect */}
             <filter id="border-relief" x="-10%" y="-10%" width="120%" height="120%">
               <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#000000" floodOpacity="0.8" />
             </filter>
           </defs>
 
           {/* ============================================================
-              LAYER 1: TERRITORY POLYGONS & TEXTURES
+              LAYER 1: DISSOLVED TERRITORY EXTERIOR POLYGONS & TEXTURES
           ============================================================ */}
           <g id="layer-territories">
             {territoryList.map((t) => {
               const owner = getOwner(t.ownerId);
-              const isSelected = targetedId === t.id;
+              const warTargetEntry = warTargetedByTerritoryId.get(t.id);
+              const isSelected = targetedId === t.id || Boolean(warTargetEntry);
               const isInspected = inspectedId === t.id;
 
               let isActionable = false;
@@ -420,7 +461,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   t.id,
                   currentUserPlayer,
                   territories,
-                  gamePhase as any
+                  gamePhase as any,
+                  assignedDefenderId
                 );
                 isActionable = check.allowed;
 
@@ -452,22 +494,24 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 ? '#fbbf24'
                 : owner
                 ? '#fef08a'
-                : '#92734a';
+                : '#785a32';
 
               const strokeWidth = isSelected
-                ? 4
+                ? 3.8
                 : isInspected
                 ? 3
                 : isActionable
                 ? 2.8
                 : owner
-                ? 2.2
-                : 1.8;
+                ? 2.1
+                : 1.7;
               const isPath = t.svgPath.startsWith('M');
 
               return (
                 <g
                   key={t.id}
+                  data-testid={`territory-${t.id}`}
+                  data-owner={t.ownerId || 'neutral'}
                   className={`transition-all duration-150 ${
                     isActionable ? 'cursor-pointer hover:brightness-110' : 'cursor-pointer'
                   }`}
@@ -498,6 +542,18 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       strokeLinecap="round"
                       strokeDasharray={isSelected ? '6 4' : undefined}
                       filter="url(#border-relief)"
+                    />
+                  )}
+
+                  {/* Subtle decorative internal county lines (non-interactive, low opacity) */}
+                  {t.internalLinesSvg && (
+                    <path
+                      d={t.internalLinesSvg}
+                      fill="none"
+                      stroke="rgba(28, 17, 9, 0.18)"
+                      strokeWidth="0.9"
+                      strokeDasharray="3 3"
+                      className="pointer-events-none"
                     />
                   )}
 
@@ -541,7 +597,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
 
           {/* ============================================================
               LAYER 2: REGULAR TERRITORY SCORES (200 / 300 / 400) & FORBIDDEN MARKERS
-              Rendered above all territory polygons so numbers are never clipped.
           ============================================================ */}
           <g id="layer-regular-scores" className="pointer-events-none">
             {territoryList.map((t) => {
@@ -603,7 +658,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                             fontWeight="bold"
                             fill="#ffffff"
                           >
-                            +100
+                            +{t.defensiveBonus}
                           </text>
                         </g>
                       )}
@@ -630,8 +685,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
 
           {/* ============================================================
               LAYER 3: CASTLE MEDALLIONS, TOWERS, 1000 SCORES,
-                       COLLISION-FREE NAMEPLATES & 3D ARROWS
-              Rendered on top so no adjacent territory polygon ever covers a castle!
+                       COLLISION-FREE NAMEPLATES & SIMULTANEOUS ATTACK ARROWS
           ============================================================ */}
           <g id="layer-castles" className="pointer-events-none">
             {territoryList.map((t) => {
@@ -642,7 +696,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
 
               return (
                 <g key={`castle_${t.id}`}>
-                  {/* Leader line if nameplate was offset to avoid collision */}
                   {placement && placement.hasLeader && (
                     <line
                       x1={t.labelX}
@@ -656,9 +709,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     />
                   )}
 
-                  {/* Medallion + 3 Towers + 1000 Score at exact geographic (t.labelX, t.labelY) */}
                   <g transform={`translate(${t.labelX}, ${t.labelY})`}>
-                    {/* Golden Circular Medallion */}
                     <circle
                       cx="0"
                       cy="2"
@@ -676,7 +727,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       stroke="#b45309"
                       strokeWidth="1.5"
                     />
-                    {/* Crest / Knight Icon inside Medallion */}
                     <text
                       x="0"
                       y="7.5"
@@ -688,7 +738,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       ♞
                     </text>
 
-                    {/* 3 Castle Towers Indicators */}
                     <g transform="translate(0, 23)">
                       {[0, 1, 2].map((idx) => {
                         const intact = idx < (t.castleTowers ?? 3);
@@ -724,7 +773,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       })}
                     </g>
 
-                    {/* Base Score 1000 Pill Badge */}
                     <g transform="translate(0, 36)">
                       <rect
                         x="-18"
@@ -751,7 +799,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     </g>
                   </g>
 
-                  {/* Collision-Free Castle Nameplate */}
                   {placement && (
                     <g transform={`translate(${placement.cx}, ${placement.cy})`}>
                       <rect
@@ -783,9 +830,13 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               );
             })}
 
-            {/* 3D Blue Downward Pointer Arrow over Selected Territory */}
+            {/* Downward Pointer Arrows over All Simultaneous War Targets or Selected Territory */}
             {territoryList.map((t) => {
-              if (targetedId !== t.id) return null;
+              const warEntry = warTargetedByTerritoryId.get(t.id);
+              const isTargeted = targetedId === t.id || Boolean(warEntry);
+              if (!isTargeted) return null;
+              const arrowFill = warEntry?.attacker?.color || '#0284c7';
+
               return (
                 <g
                   key={`arrow_${t.id}`}
@@ -798,22 +849,22 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     y="-36"
                     width="12"
                     height="22"
-                    fill="#0284c7"
-                    stroke="#38bdf8"
+                    fill={arrowFill}
+                    stroke="#fef08a"
                     strokeWidth="1.5"
                     rx="2"
                   />
                   <polygon
                     points="0,0 -16,-16 -6,-16 -6,-36 6,-36 6,-16 16,-16"
-                    fill="#0284c7"
-                    stroke="#e0f2fe"
+                    fill={arrowFill}
+                    stroke="#fef08a"
                     strokeWidth="2"
                     strokeLinejoin="round"
                   />
                   <polygon
                     points="0,-2 -12,-15 -4,-15 -4,-34 0,-34"
-                    fill="#38bdf8"
-                    opacity="0.6"
+                    fill="#ffffff"
+                    opacity="0.35"
                   />
                 </g>
               );
@@ -822,10 +873,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         </svg>
       </div>
 
-      {/* ============================================================
-          BOTTOM INTERACTIVE REGION DETAILS BAR (Works on Tap AND Hover!)
-          Solves mobile touch inspection and displays full region + player info.
-      ============================================================ */}
+      {/* BOTTOM INTERACTIVE REGION DETAILS BAR */}
       <div className="w-full shrink-0 border-t border-stone-800/90 bg-stone-950/90 px-3 py-1.5 backdrop-blur-md">
         {activeTerritory ? (
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -838,6 +886,11 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               <span className="text-[10px] font-mono text-amber-400/80 hidden sm:inline shrink-0">
                 ({activeTerritory.region})
               </span>
+              {activeTerritory.counties && activeTerritory.counties.length > 1 && (
+                <span className="text-[10px] text-stone-400 hidden md:inline truncate max-w-[260px]">
+                  [{activeTerritory.counties.join(', ')}]
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
@@ -852,7 +905,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   </span>
                   <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300 tabular-nums">
                     <Award className="h-3 w-3" />
-                    {activeTerritory.points} pct
+                    {(activeTerritory.points || 0) + (activeTerritory.defensiveBonus || 0)} pct
                   </span>
                 </div>
               ) : (
@@ -865,7 +918,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     activeTerritory.id,
                     currentUserPlayer,
                     territories,
-                    gamePhase as any
+                    gamePhase as any,
+                    assignedDefenderId
                   ).allowed ? (
                     <span className="text-emerald-400 font-bold">
                       &bull; Apasă pentru acțiune
@@ -877,7 +931,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                         activeTerritory.id,
                         currentUserPlayer,
                         territories,
-                        gamePhase as any
+                        gamePhase as any,
+                        assignedDefenderId
                       ).reason || 'Neeligibil'}
                     </span>
                   )
@@ -888,12 +943,10 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         ) : (
           <div className="flex items-center justify-between text-[11px] text-stone-400">
             <span>
-              Atinge sau plasează cursorul pe orice regiune pentru detalii complete.
+              Atinge sau plasează cursorul pe orice teritoriu pentru detalii complete.
             </span>
             {zoom > 1 && (
-              <span className="font-mono text-amber-300">
-                Zoom: {Math.round(zoom * 100)}%
-              </span>
+              <span className="font-mono text-amber-300">Zoom: {Math.round(zoom * 100)}%</span>
             )}
           </div>
         )}

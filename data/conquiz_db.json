@@ -99,6 +99,231 @@
         "highestScore": 0,
         "createdAt": "2026-11-08T20:32:24.837Z"
       }
+    },
+    "guest_1794214629653_w35j": {
+      "id": "guest_1794214629653_w35j",
+      "username": "Cavalerul_Carpatin_709",
+      "email": "cavalerul_carpatin_709@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T08:57:09.653Z",
+      "profile": {
+        "id": "guest_1794214629653_w35j",
+        "username": "Cavalerul_Carpatin_709",
+        "email": "cavalerul_carpatin_709@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T08:57:09.653Z"
+      }
+    },
+    "guest_1794214730597_kag9": {
+      "id": "guest_1794214730597_kag9",
+      "username": "Pribeagul_Transilvan_188",
+      "email": "pribeagul_transilvan_188@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T08:58:50.597Z",
+      "profile": {
+        "id": "guest_1794214730597_kag9",
+        "username": "Pribeagul_Transilvan_188",
+        "email": "pribeagul_transilvan_188@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T08:58:50.597Z"
+      }
+    },
+    "guest_1794214879915_9usc": {
+      "id": "guest_1794214879915_9usc",
+      "username": "Voinicul_Radu_504",
+      "email": "voinicul_radu_504@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:01:19.915Z",
+      "profile": {
+        "id": "guest_1794214879915_9usc",
+        "username": "Voinicul_Radu_504",
+        "email": "voinicul_radu_504@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:01:19.915Z"
+      }
+    },
+    "guest_1794216690578_ia1x": {
+      "id": "guest_1794216690578_ia1x",
+      "username": "Voinicul_Radu_244",
+      "email": "voinicul_radu_244@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:31:30.578Z",
+      "profile": {
+        "id": "guest_1794216690578_ia1x",
+        "username": "Voinicul_Radu_244",
+        "email": "voinicul_radu_244@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 1,
+        "wins": 0,
+        "losses": 1,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:31:30.578Z"
+      }
+    },
+    "guest_1794217009048_a0m2": {
+      "id": "guest_1794217009048_a0m2",
+      "username": "Haiducul_Codrilor_646",
+      "email": "haiducul_codrilor_646@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:36:49.048Z",
+      "profile": {
+        "id": "guest_1794217009048_a0m2",
+        "username": "Haiducul_Codrilor_646",
+        "email": "haiducul_codrilor_646@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 1,
+        "wins": 0,
+        "losses": 1,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:36:49.048Z"
+      }
+    },
+    "guest_1794217406259_3wob": {
+      "id": "guest_1794217406259_3wob",
+      "username": "Voinicul_Radu_841",
+      "email": "voinicul_radu_841@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:43:26.259Z",
+      "profile": {
+        "id": "guest_1794217406259_3wob",
+        "username": "Voinicul_Radu_841",
+        "email": "voinicul_radu_841@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 1,
+        "wins": 0,
+        "losses": 1,
+        "territoriesConquered": 1,
+        "correctAnswersTotal": 0,
+        "highestScore": 1000,
+        "createdAt": "2026-11-09T09:43:26.259Z"
+      }
+    },
+    "guest_1794217808111_xfdh": {
+      "id": "guest_1794217808111_xfdh",
+      "username": "Haiducul_Codrilor_421",
+      "email": "haiducul_codrilor_421@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:50:08.111Z",
+      "profile": {
+        "id": "guest_1794217808111_xfdh",
+        "username": "Haiducul_Codrilor_421",
+        "email": "haiducul_codrilor_421@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:50:08.111Z"
+      }
+    },
+    "guest_1794217859459_irxf": {
+      "id": "guest_1794217859459_irxf",
+      "username": "Pribeagul_Transilvan_704",
+      "email": "pribeagul_transilvan_704@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:50:59.459Z",
+      "profile": {
+        "id": "guest_1794217859459_irxf",
+        "username": "Pribeagul_Transilvan_704",
+        "email": "pribeagul_transilvan_704@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:50:59.459Z"
+      }
+    },
+    "guest_1794217907877_tlpi": {
+      "id": "guest_1794217907877_tlpi",
+      "username": "Arcasul_Stefan_514",
+      "email": "arcasul_stefan_514@guest.conquiz.ro",
+      "passwordHash": "",
+      "role": "user",
+      "createdAt": "2026-11-09T09:51:47.877Z",
+      "profile": {
+        "id": "guest_1794217907877_tlpi",
+        "username": "Arcasul_Stefan_514",
+        "email": "arcasul_stefan_514@guest.conquiz.ro",
+        "role": "user",
+        "avatar": "av_razes",
+        "frame": "fr_gold",
+        "title": "Oaspete",
+        "rating": 1200,
+        "matchesPlayed": 0,
+        "wins": 0,
+        "losses": 0,
+        "territoriesConquered": 0,
+        "correctAnswersTotal": 0,
+        "highestScore": 0,
+        "createdAt": "2026-11-09T09:51:47.877Z"
+      }
     }
   },
   "questions": [
@@ -1415,6 +1640,346 @@
       "targetNumber": 1906,
       "unit": "metri",
       "explanation": "Aparatul Vuia I s-a desprins de la sol prin mijloace proprii de propulsie pe o distanță de 12 metri."
+    },
+    {
+      "id": "v3_chim_c1",
+      "type": "choice",
+      "category": "chimie",
+      "difficulty": "mediu",
+      "question": "Ce savant român a descoperit elementul chimic telurul în minereurile aurifere din Munții Apuseni (Zlatna)?",
+      "options": [
+        "Franz-Joseph Müller von Reichenstein",
+        "Costin Nenițescu",
+        "Nicolae Teclu",
+        "Lazăr Edeleanu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Telurul a fost descoperit în anul 1782 la Sibiu/Zlatna din minereuri extrase din Munții Apuseni."
+    },
+    {
+      "id": "v3_chim_c2",
+      "type": "choice",
+      "category": "chimie",
+      "difficulty": "mediu",
+      "question": "Ce chimist român a inventat procedeul de rafinare selectivă a petrolului cu dioxid de sulf lichid?",
+      "options": [
+        "Lazăr Edeleanu",
+        "Petru Poni",
+        "Constantin Istrati",
+        "Gheorghe Spacu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Procedeul Edeleanu (1908) este utilizat și astăzi în rafinăriile din întreaga lume."
+    },
+    {
+      "id": "v3_chim_e1",
+      "type": "estimation",
+      "category": "chimie",
+      "difficulty": "mediu",
+      "question": "Care este numărul atomic al Aurului (Au) în Tabelul Periodic al Elementelor?",
+      "targetNumber": 79,
+      "unit": "număr atomic",
+      "explanation": "Aurul (Au) are numărul atomic 79 în tabelul periodic al lui Mendeleev."
+    },
+    {
+      "id": "v3_chim_e2",
+      "type": "estimation",
+      "category": "chimie",
+      "difficulty": "usor",
+      "question": "Câte elemente chimice confirmate oficial conține în prezent Tabelul Periodic (de la Hidrogen la Oganesson)?",
+      "targetNumber": 118,
+      "unit": "elemente",
+      "explanation": "Tabelul periodic conține 118 elemente chimice confirmate de IUPAC."
+    },
+    {
+      "id": "v3_mat_c1",
+      "type": "choice",
+      "category": "matematica",
+      "difficulty": "mediu",
+      "question": "Ce matematician român a introdus „spațiile cu conexiune afină” și a fost președinte al Academiei Române?",
+      "options": [
+        "Gheorghe Țițeica",
+        "Gheorghe Vrănceanu",
+        "Dan Barbilian",
+        "Grigore Moisil"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Gheorghe Vrănceanu și Gheorghe Țițeica sunt fondatori ai școlii românești de geometrie diferențială."
+    },
+    {
+      "id": "v3_mat_c2",
+      "type": "choice",
+      "category": "matematica",
+      "difficulty": "usor",
+      "question": "Sub ce pseudonim literar a scris marele matematician român Dan Barbilian?",
+      "options": [
+        "Ion Barbu",
+        "Tudor Arghezi",
+        "George Topîrceanu",
+        "Vasile Voiculescu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Matematicianul Dan Barbilian a publicat volumul de poezii „Joc secund” sub pseudonimul Ion Barbu."
+    },
+    {
+      "id": "v3_mat_e1",
+      "type": "estimation",
+      "category": "matematica",
+      "difficulty": "usor",
+      "question": "Câte grade are suma unghiurilor interioare ale unui hexagon convex?",
+      "targetNumber": 720,
+      "unit": "grade",
+      "explanation": "Suma unghiurilor unui poligon cu n=6 laturi este (6 - 2) × 180° = 720°."
+    },
+    {
+      "id": "v3_mat_e2",
+      "type": "estimation",
+      "category": "matematica",
+      "difficulty": "mediu",
+      "question": "Care este valoarea lui 12 la pătrat plus 5 la pătrat (12² + 5²)?",
+      "targetNumber": 169,
+      "unit": "",
+      "explanation": "144 + 25 = 169 (care este pătratul lui 13)."
+    },
+    {
+      "id": "v3_bio_e1",
+      "type": "estimation",
+      "category": "biologie",
+      "difficulty": "usor",
+      "question": "Câte oase are în mod normal scheletul unui om adult?",
+      "targetNumber": 206,
+      "unit": "oase",
+      "explanation": "Scheletul uman adult este alcătuit din 206 oase."
+    },
+    {
+      "id": "v3_bio_e2",
+      "type": "estimation",
+      "category": "biologie",
+      "difficulty": "mediu",
+      "question": "În ce an a primit savantul român George Emil Palade Premiul Nobel pentru Fiziologie sau Medicină?",
+      "targetNumber": 1974,
+      "unit": "anul",
+      "explanation": "George Emil Palade a fost distins cu Premiul Nobel în anul 1974."
+    },
+    {
+      "id": "v3_fiz_c1",
+      "type": "choice",
+      "category": "fizica",
+      "difficulty": "mediu",
+      "question": "Ce fizician român a pus bazele mecanicii invariative și a fost rector al Universității din București?",
+      "options": [
+        "Octav Onicescu",
+        "Șerban Țițeica",
+        "Horia Hulubei",
+        "Dragomir Hurmuzescu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Academicianul Octav Onicescu a creat mecanica invariativă și teoria lanțurilor cu legături complete."
+    },
+    {
+      "id": "v3_fiz_e1",
+      "type": "estimation",
+      "category": "fizica",
+      "difficulty": "usor",
+      "question": "Care este viteza aproximativă a sunetului în aer la temperatura de 20°C (în metri pe secundă)?",
+      "targetNumber": 343,
+      "unit": "m/s",
+      "explanation": "La 20°C în aer uscat, viteza sunetului este de aproximativ 343 m/s."
+    },
+    {
+      "id": "v3_art_e1",
+      "type": "estimation",
+      "category": "arta",
+      "difficulty": "mediu",
+      "question": "În ce an a fost inaugurat Ansamblul Monumental de la Târgu Jiu realizat de Constantin Brâncuși?",
+      "targetNumber": 1938,
+      "unit": "anul",
+      "explanation": "Ansamblul monumental „Calea Eroilor” de la Târgu Jiu a fost inaugurat în octombrie 1938."
+    },
+    {
+      "id": "v3_muz_c1",
+      "type": "choice",
+      "category": "muzica",
+      "difficulty": "mediu",
+      "question": "Care este titlul singurei opere lirice compuse de George Enescu?",
+      "options": [
+        "Oedipe",
+        "Rapsodia Română",
+        "Poema Română",
+        "Vox Maris"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Opera monumentală „Oedipe” de George Enescu a avut premiera mondială la Opera din Paris în 1936."
+    },
+    {
+      "id": "v3_muz_c2",
+      "type": "choice",
+      "category": "muzica",
+      "difficulty": "usor",
+      "question": "Cine a compus celebra baladă pentru vioară și orchestră și opereta „Crai Nou”?",
+      "options": [
+        "Ciprian Porumbescu",
+        "George Enescu",
+        "Paul Constantinescu",
+        "Dinu Lipatti"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Ciprian Porumbescu a compus Balada pentru vioară și prima operetă românească, Crai Nou (1882)."
+    },
+    {
+      "id": "v3_muz_e1",
+      "type": "estimation",
+      "category": "muzica",
+      "difficulty": "mediu",
+      "question": "În ce an a avut loc la Opera din Paris premiera mondială a operei „Oedipe” de George Enescu?",
+      "targetNumber": 1936,
+      "unit": "anul",
+      "explanation": "Premiera mondială a capodoperei Oedipe a avut loc la 13 martie 1936 la Paris."
+    },
+    {
+      "id": "v3_cin_c2",
+      "type": "choice",
+      "category": "cinematografie",
+      "difficulty": "mediu",
+      "question": "Cine a regizat și interpretat rolul principal în filmul istoric „Mihai Viteazul” (1971)?",
+      "options": [
+        "Sergiu Nicolaescu (regie) și Amza Pellea (rol principal)",
+        "Liviu Ciulei și Victor Rebengiuc",
+        "Mircea Drăgan și Toma Caragiu",
+        "Lucian Pintilie și Gheorghe Dinică"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Filmul „Mihai Viteazul” (1971) a fost regizat de Sergiu Nicolaescu, cu Amza Pellea în rolul marelui voievod."
+    },
+    {
+      "id": "v3_cin_e1",
+      "type": "estimation",
+      "category": "cinematografie",
+      "difficulty": "mediu",
+      "question": "În ce an a fost fondat oficial Hollywood ca localitate de către Harvey Henderson Wilcox?",
+      "targetNumber": 1887,
+      "unit": "anul",
+      "explanation": "Harvey Henderson Wilcox a înregistrat oficial numele și planul localității Hollywood la 1 februarie 1887."
+    },
+    {
+      "id": "v3_cin_e2",
+      "type": "estimation",
+      "category": "cinematografie",
+      "difficulty": "mediu",
+      "question": "În ce an a câștigat filmul „Pădurea spânzuraților” (regia Liviu Ciulei) premiul pentru regie la Cannes?",
+      "targetNumber": 1965,
+      "unit": "anul",
+      "explanation": "Liviu Ciulei a câștigat Premiul pentru cel mai bun regizor la Festivalul de la Cannes în 1965."
+    },
+    {
+      "id": "v3_teh_c1",
+      "type": "choice",
+      "category": "tehnologie",
+      "difficulty": "mediu",
+      "question": "Ce inginer român a inventat stiloul cu rezervor (brevetat la Paris în 1827)?",
+      "options": [
+        "Petrache Poenaru",
+        "Anghel Saligny",
+        "Elie Radu",
+        "Aurel Persu"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Petrache Poenaru a obținut la 25 mai 1827 brevetul francez pentru „condeiul portăreț fără sfârșit”."
+    },
+    {
+      "id": "v3_teh_c2",
+      "type": "choice",
+      "category": "tehnologie",
+      "difficulty": "mediu",
+      "question": "Cine a construit primul automobil aerodinamic din lume cu roțile integrate în caroserie (1922–1924)?",
+      "options": [
+        "Aurel Persu",
+        "Henri Coandă",
+        "Dumitru Brumărescu",
+        "Justin Capră"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Inginerul român Aurel Persu a brevetat în 1924 primul automobil cu profil aerodinamic de picătură de apă."
+    },
+    {
+      "id": "v3_teh_e1",
+      "type": "estimation",
+      "category": "tehnologie",
+      "difficulty": "mediu",
+      "question": "În ce an a brevetat Petrache Poenaru la Paris „condeiul portăreț fără sfârșit” (stiloul)?",
+      "targetNumber": 1827,
+      "unit": "anul",
+      "explanation": "Brevetul lui Petrache Poenaru datează din anul 1827."
+    },
+    {
+      "id": "v3_inf_c1",
+      "type": "choice",
+      "category": "informatica",
+      "difficulty": "mediu",
+      "question": "Cum s-a numit primul calculator electronic construit în România, la Institutul de Fizică Atomică în 1957?",
+      "options": [
+        "CIFA-1",
+        "MECIPT-1",
+        "DACICC-1",
+        "FELIX C-256"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "CIFA-1, proiectat de echipa condusă de Victor Toma în 1957, a fost primul calculator românesc."
+    },
+    {
+      "id": "v3_inf_c2",
+      "type": "choice",
+      "category": "informatica",
+      "difficulty": "usor",
+      "question": "Ce academician român a primit (post-mortem, în 1996) premiul Computer Pioneer Award de la IEEE?",
+      "options": [
+        "Grigore Moisil",
+        "Ștefan Odobleja",
+        "Mihai Drăgănescu",
+        "Solomon Marcus"
+      ],
+      "correctAnswerIndex": 0,
+      "explanation": "Grigore C. Moisil, părintele informaticii românești, a fost distins cu Computer Pioneer Award în 1996."
+    },
+    {
+      "id": "v3_inf_e1",
+      "type": "estimation",
+      "category": "informatica",
+      "difficulty": "usor",
+      "question": "Câți octeți (bytes) are exact 1 Kilobyte binar (1 KiB = 2¹⁰ bytes)?",
+      "targetNumber": 1024,
+      "unit": "bytes",
+      "explanation": "În informatică, 2 la puterea 10 este egal cu 1024."
+    },
+    {
+      "id": "v3_cg_c1",
+      "type": "choice",
+      "category": "cultura_generala",
+      "difficulty": "usor",
+      "question": "Cine a construit primul automobil din lume propulsat de un motor cu ardere internă (brevetat în 1886)?",
+      "options": [
+        "Nicolaus Otto",
+        "Henry Ford",
+        "Karl Benz",
+        "Felix Wankel"
+      ],
+      "correctAnswerIndex": 2,
+      "explanation": "Karl Benz a brevetat Benz Patent-Motorwagen la 29 ianuarie 1886."
+    },
+    {
+      "id": "v3_cg_c2",
+      "type": "choice",
+      "category": "cultura_generala",
+      "difficulty": "mediu",
+      "question": "Pe ce bancnotă românească aflată în circulație se află portretul poetului și filosofului Lucian Blaga?",
+      "options": [
+        "100 de lei",
+        "200 de lei",
+        "50 de lei",
+        "500 de lei"
+      ],
+      "correctAnswerIndex": 1,
+      "explanation": "Portretul lui Lucian Blaga se află pe bancnota de 200 de lei emisă de BNR."
     }
   ],
   "games": [],

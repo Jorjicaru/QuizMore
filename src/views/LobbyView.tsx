@@ -177,7 +177,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             )}
                           </div>
                           <div className="text-[11px] text-slate-400">
-                            {player.isAi ? `Adversar AI (${player.aiDifficulty})` : isMe ? 'Tu' : player.title || 'Războinic'}
+                            {player.isAi ? `Adversar AI (${player.aiDifficulty})` : isMe ? 'Tu' : 'Războinic'}
                           </div>
                         </div>
                       </div>

@@ -180,16 +180,22 @@ export default function App() {
     }
   };
 
-  const handleSelectTerritory = (territoryId: string) => {
+  const handleSelectTerritory = (
+    territoryId: string,
+    cb?: (res: { success: boolean; message?: string; territoryId?: string; pointsAwarded?: number }) => void
+  ) => {
     socketService.getSocket().emit('select_territory', { territoryId }, (res: any) => {
-      if (!res.success && res.message) {
-        // Shown in HUD/alert
-      }
+      if (cb) cb(res);
     });
   };
 
-  const handleSubmitAnswer = (answer: number | string) => {
-    socketService.getSocket().emit('submit_answer', { answer });
+  const handleSubmitAnswer = (
+    answer: number | string,
+    cb?: (res: { success: boolean; message?: string; acceptedAnswer?: number }) => void
+  ) => {
+    socketService.getSocket().emit('submit_answer', { answer }, (res: any) => {
+      if (cb) cb(res);
+    });
   };
 
   const handleLeaveGame = () => {

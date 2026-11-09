@@ -1,6 +1,10 @@
-export type GamePhase = 'waiting' | 'base_selection' | 'conquest' | 'allocation' | 'war' | 'finished';
-
-export type QuestionType = 'choice' | 'estimation';
+export type GamePhase =
+  | 'waiting'
+  | 'base_selection'
+  | 'conquest'
+  | 'allocation'
+  | 'war'
+  | 'finished';
 
 export type QuestionCategory =
   | 'istorie'
@@ -16,13 +20,14 @@ export type QuestionCategory =
   | 'cinematografie'
   | 'cultura_generala'
   | 'tehnologie'
-  | 'informatica';
+  | 'informatica'
+  | string;
 
 export interface Question {
   id: string;
-  type: QuestionType;
   category: QuestionCategory;
-  difficulty: 'usor' | 'mediu' | 'greu';
+  difficulty: 'usor' | 'mediu' | 'greu' | string;
+  type: 'choice' | 'estimation';
   question: string;
   options?: string[];
   correctAnswerIndex?: number;
@@ -30,6 +35,7 @@ export interface Question {
   unit?: string;
   explanation?: string;
   sourceUrl?: string;
+  verified?: boolean;
 }
 
 export interface Territory {
@@ -38,14 +44,16 @@ export interface Territory {
   shortName: string;
   region: string;
   svgPath: string;
+  internalLinesSvg?: string;
+  counties?: string[];
   labelX: number;
   labelY: number;
   points: number;
   ownerId: string | null;
   isBase: boolean;
   basePlayerName?: string;
-  castleTowers?: number; // 3 intact towers initially
-  defensiveBonus?: number; // +100 bonus active
+  castleTowers?: number; // 0 to 3 for bases
+  defensiveBonus?: number;
   neighbors: string[];
 }
 
@@ -53,44 +61,86 @@ export interface Player {
   id: string;
   username: string;
   avatar: string;
-  frame?: string;
-  title?: string;
   color: string;
   score: number;
   isHost: boolean;
   isReady: boolean;
   isAi: boolean;
-  isConnected?: boolean;
   aiDifficulty?: 'incepator' | 'intermediar' | 'avansat' | 'expert';
-  baseTerritoryId?: string;
-  castleTowers: number; // starts at 3; eliminated when reaches 0
-  defensiveBonus: number; // bonus accumulated through successful defenses
+  isConnected?: boolean;
   isEliminated?: boolean;
+  baseTerritoryId?: string | null;
+  castleTowers: number;
+  defensiveBonus: number;
   territoriesCount: number;
   correctAnswers: number;
   wrongAnswers: number;
-  baseAttackAttemptsUsed: Record<string, number>; // targetPlayerId -> count
+  baseAttackAttemptsUsed: Record<string, number>;
+}
+
+export interface PlayerAnswerSubmission {
+  answer: number | string | null;
+  submitTime: number;
+  isCorrect?: boolean;
+  diff?: number;
+  rank?: number;
+  answerStatus?: 'CORRECT' | 'WRONG' | 'NO_RESPONSE';
 }
 
 export interface ActiveQuestionState {
+  questionInstanceId?: string;
   question: Question;
   startTime: number;
   durationSeconds: number;
-  attackerId?: string;
-  defenderId?: string;
   targetTerritoryId?: string;
+  attackerId: string;
+  defenderId?: string;
   phaseContext: 'conquest' | 'allocation' | 'war';
   isTiebreak?: boolean;
-  playerAnswers: Record<string, { answer: number | string; submitTime: number; isCorrect?: boolean; diff?: number }>;
+  participantIds?: string[];
+  warRoundId?: string;
+  winnerIds?: string[];
+  playerAnswers: Record<string, PlayerAnswerSubmission>;
   resolved: boolean;
 }
 
-export interface RoundTrackerState {
-  phaseTitle: string; // "Cucerire", "Departajare", "Război"
-  currentRound: number;
-  totalRounds: number;
-  playerOrder: string[]; // player IDs
-  activePlayerId: string;
+export interface WarBattleAssignment {
+  battleId: string;
+  attackerId: string;
+  defenderId: string;
+  targetTerritoryId: string | null;
+  status: 'selecting_target' | 'ready' | 'choice_question' | 'numeric_tiebreak' | 'resolved' | 'auto_selected';
+  attackerChoiceCorrect?: boolean;
+  defenderChoiceCorrect?: boolean;
+  attackerChoiceAnswer?: number | null;
+  defenderChoiceAnswer?: number | null;
+  attackerNumericAnswer?: number | null;
+  defenderNumericAnswer?: number | null;
+  attackerNumericDiff?: number | null;
+  defenderNumericDiff?: number | null;
+  attackerSubmitTime?: number | null;
+  defenderSubmitTime?: number | null;
+  winnerId?: string | null;
+  outcome?: 'attacker_won' | 'defender_won' | 'draw_no_bonus' | 'needs_tiebreak';
+}
+
+export interface WarRoundState {
+  roundId: string;
+  roundNumber: number;
+  status: 'selecting_targets' | 'choice_question' | 'numeric_tiebreak' | 'resolving' | 'completed';
+  attackerIds: string[];
+  defenderIds: string[];
+  byePlayerIds: string[];
+  battles: WarBattleAssignment[];
+  selectionDeadline: number | null;
+  questionDeadline: number | null;
+}
+
+export interface GameLogEntry {
+  id: string;
+  text: string;
+  timestamp: number;
+  type: 'info' | 'conquest' | 'battle' | 'elimination';
 }
 
 export interface GameState {
@@ -98,6 +148,10 @@ export interface GameState {
   roomName: string;
   isPrivate: boolean;
   maxPlayers: number;
+  mapId?: string;
+  mapPresetPlayerCount?: number;
+  mapTerritoryCount?: number;
+  mapVersion?: string;
   selectedCategories?: QuestionCategory[];
   round: number;
   maxRounds: number;
@@ -105,28 +159,29 @@ export interface GameState {
   players: Player[];
   activePlayerIndex: number;
   territories: Record<string, Territory>;
-  currentQuestion?: ActiveQuestionState | null;
-  turnTimeLimit: number; // in seconds
-  turnTimerExpiresAt: number; // timestamp
+  turnTimeLimit: number;
+  turnTimerExpiresAt: number;
+  gameLog: GameLogEntry[];
+  currentQuestion: ActiveQuestionState | null;
+  usedQuestionIds?: string[];
   pendingTerritoryId?: string | null;
-  allocationWinnerId?: string | null; // Set when an estimation winner has 15s to pick any neutral territory
-  allocationPickReady?: boolean;
   conquestPickQueue?: string[];
   conquestPickerId?: string | null;
-  usedQuestionIds: string[];
   unallocatedTerritoriesQueue?: string[];
-  gameLog: Array<{ id: string; text: string; timestamp: number; type: 'info' | 'conquest' | 'battle' | 'elimination' }>;
-  winner?: Player | null;
+  allocationWinnerId?: string | null;
+  allocationPickReady?: boolean;
+  warRound?: WarRoundState | null;
+  warRoleHistory?: Record<string, Array<'attacker' | 'defender' | 'bye'>>;
+  winner?: Player;
 }
 
 export interface UserProfile {
   id: string;
   username: string;
   email: string;
-  role?: 'user' | 'admin';
+  role: 'user' | 'admin';
   avatar: string;
-  frame?: string;
-  title?: string;
+  title: string;
   rating: number;
   matchesPlayed: number;
   wins: number;
@@ -136,4 +191,3 @@ export interface UserProfile {
   highestScore: number;
   createdAt: string;
 }
-
