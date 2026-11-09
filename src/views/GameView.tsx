@@ -15,7 +15,14 @@ interface GameViewProps {
   ) => void;
   onSubmitAnswer: (
     answer: number | string,
-    cb?: (res: { success: boolean; message?: string; acceptedAnswer?: number }) => void
+    cb?: (res: {
+      success: boolean;
+      message?: string;
+      acceptedAnswer?: number;
+      code?: string;
+      timedOut?: boolean;
+    }) => void,
+    questionInstanceId?: string
   ) => void;
   onLeaveGame: () => void;
   onRematch: () => void;

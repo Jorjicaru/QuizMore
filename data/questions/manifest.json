@@ -1,0 +1,30 @@
+{
+  "version": "8.0.0",
+  "generatedAt": "2026-11-09T22:32:07.829Z",
+  "totalQuestions": 6428,
+  "choiceCount": 3318,
+  "estimationCount": 3110,
+  "duplicateIds": 0,
+  "duplicateTexts": 0,
+  "categoryBreakdown": {
+    "istorie": 1292,
+    "geografie": 3065,
+    "biologie": 118,
+    "fizica": 152,
+    "chimie": 249,
+    "matematica": 232,
+    "informatica": 236,
+    "tehnologie": 126,
+    "literatura": 193,
+    "arta": 115,
+    "sport": 182,
+    "muzica": 122,
+    "cinematografie": 125,
+    "cultura_generala": 221
+  },
+  "difficultyBreakdown": {
+    "usor": 761,
+    "mediu": 3273,
+    "greu": 2394
+  }
+}

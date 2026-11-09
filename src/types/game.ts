@@ -36,6 +36,8 @@ export interface Question {
   explanation?: string;
   sourceUrl?: string;
   verified?: boolean;
+  isDisabled?: boolean;
+  reportedCount?: number;
 }
 
 export interface Territory {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ActiveQuestionState, Player, WarRoundState } from '../types/game';
 import { sound } from '../services/audio';
+import { socketService } from '../services/socket';
 import {
   Clock,
   HelpCircle,
@@ -20,7 +21,14 @@ interface QuestionModalProps {
   warRound?: WarRoundState | null;
   onSubmitAnswer: (
     answer: number | string,
-    cb?: (res: { success: boolean; message?: string; acceptedAnswer?: number }) => void
+    cb?: (res: {
+      success: boolean;
+      message?: string;
+      acceptedAnswer?: number;
+      code?: string;
+      timedOut?: boolean;
+    }) => void,
+    questionInstanceId?: string
   ) => void;
 }
 
@@ -65,6 +73,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   const progressBarRef = useRef<HTMLDivElement>(null);
   const rafIdRef = useRef<number | null>(null);
   const prevTickSecRef = useRef<number>(-1);
+  const lastColorBucketRef = useRef<string>('');
 
   // Immediate synchronous lock to prevent double-click / double-Enter before state re-renders
   const submittingLockRef = useRef<boolean>(false);
@@ -128,6 +137,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   useEffect(() => {
     const totalMs = durationSeconds * 1000;
     const deadline = startTime + totalMs;
+    lastColorBucketRef.current = '';
 
     if (resolved) {
       if (progressBarRef.current) {
@@ -141,19 +151,17 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     }
 
     const update = () => {
-      const now = Date.now();
+      const now = socketService.getEstimatedServerNow();
       const remainingMs = Math.max(0, deadline - now);
       const ratio = Math.max(0, Math.min(1, remainingMs / totalMs));
 
       if (progressBarRef.current) {
         progressBarRef.current.style.transform = `scaleX(${ratio})`;
         const remSec = Math.ceil(remainingMs / 1000);
-        if (remSec <= 3) {
-          progressBarRef.current.style.backgroundColor = '#ef4444'; // red-500
-        } else if (remSec <= 7) {
-          progressBarRef.current.style.backgroundColor = '#f59e0b'; // amber-500
-        } else {
-          progressBarRef.current.style.backgroundColor = '#10b981'; // emerald-500
+        const nextBucket = remSec <= 3 ? '#ef4444' : remSec <= 7 ? '#f59e0b' : '#10b981';
+        if (nextBucket !== lastColorBucketRef.current) {
+          lastColorBucketRef.current = nextBucket;
+          progressBarRef.current.style.backgroundColor = nextBucket;
         }
       }
 
@@ -180,7 +188,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     update();
 
     const handleVisibilityChange = () => {
-      if (!document.hidden && deadline > Date.now() && !resolved) {
+      if (!document.hidden && deadline > socketService.getEstimatedServerNow() && !resolved) {
         if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
         update();
       }
@@ -228,26 +236,35 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     setSubmitStatus('submitting');
     setSubmitError(null);
 
-    onSubmitAnswer(index, (res) => {
-      if (activeInstanceKeyRef.current !== currentKey) return;
-      if (!res || res.success) {
-        setSubmitStatus('accepted');
-        setSubmitError(null);
-      } else {
-        if (res.message?.includes('deja')) {
+    onSubmitAnswer(
+      index,
+      (res) => {
+        if (activeInstanceKeyRef.current !== currentKey) return;
+        // Strict ACK contract: never assume success if res is missing or timedOut.
+        // Keep lock in 'submitting' state and reconcile via game_state_update (hasServerRecord).
+        if (!res || res.timedOut || res.code === 'ACK_TIMEOUT') {
+          setSubmitStatus('submitting');
+          return;
+        }
+        if (res.success || res.code === 'DUPLICATE' || res.message?.includes('deja')) {
           setSubmitStatus('accepted');
           setSubmitError(null);
-        } else if (res.message?.includes('expirat')) {
+        } else if (
+          res.code === 'EXPIRED' ||
+          res.code === 'STALE_INSTANCE' ||
+          res.message?.includes('expirat')
+        ) {
           setSubmitStatus('expired');
-          setSubmitError(res.message);
+          setSubmitError(res.message || 'Timpul a expirat.');
         } else {
           submittingLockRef.current = false;
           setSubmitStatus('rejected');
           setSelectedOption(null);
           setSubmitError(res.message || 'Răspuns respins de server.');
         }
-      }
-    });
+      },
+      currentKey
+    );
   };
 
   const handleEstimationSubmit = (e?: React.FormEvent) => {
@@ -267,25 +284,32 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     setSubmitStatus('submitting');
     setSubmitError(null);
 
-    onSubmitAnswer(num, (res) => {
-      if (activeInstanceKeyRef.current !== currentKey) return;
-      if (!res || res.success) {
-        setSubmitStatus('accepted');
-        setSubmitError(null);
-      } else {
-        if (res.message?.includes('deja')) {
+    onSubmitAnswer(
+      num,
+      (res) => {
+        if (activeInstanceKeyRef.current !== currentKey) return;
+        if (!res || res.timedOut || res.code === 'ACK_TIMEOUT') {
+          setSubmitStatus('submitting');
+          return;
+        }
+        if (res.success || res.code === 'DUPLICATE' || res.message?.includes('deja')) {
           setSubmitStatus('accepted');
           setSubmitError(null);
-        } else if (res.message?.includes('expirat')) {
+        } else if (
+          res.code === 'EXPIRED' ||
+          res.code === 'STALE_INSTANCE' ||
+          res.message?.includes('expirat')
+        ) {
           setSubmitStatus('expired');
-          setSubmitError(res.message);
+          setSubmitError(res.message || 'Timpul a expirat.');
         } else {
           submittingLockRef.current = false;
           setSubmitStatus('rejected');
           setSubmitError(res.message || 'Valoare invalidă.');
         }
-      }
-    });
+      },
+      currentKey
+    );
   };
 
   const handleKeypadPress = (digit: string) => {

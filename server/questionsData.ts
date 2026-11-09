@@ -1,6 +1,18 @@
+import fs from 'fs';
+import path from 'path';
 import { Question } from '../src/types/game';
 
-export const INITIAL_QUESTIONS: Question[] = [
+export function normalizeQuestionText(text: string): string {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export const FALLBACK_SEED_QUESTIONS: Question[] = [
   // ==========================================
   // ISTORIE (Variante Multiple)
   // ==========================================
@@ -733,6 +745,48 @@ export const INITIAL_QUESTIONS: Question[] = [
   },
 ];
 
+function loadCanonicalQuestionBank(): Question[] {
+  const merged: Question[] = [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  const pushUnique = (q: Question) => {
+    if (!q || !q.id || !q.question) return;
+    const fp = normalizeQuestionText(q.question);
+    if (!fp || seenIds.has(q.id) || seenFingerprints.has(fp)) return;
+    seenIds.add(q.id);
+    seenFingerprints.add(fp);
+    merged.push(q);
+  };
+
+  try {
+    const choicePath = path.join(process.cwd(), 'data', 'questions', 'choice.json');
+    const estimationPath = path.join(process.cwd(), 'data', 'questions', 'estimation.json');
+    if (fs.existsSync(choicePath)) {
+      const choiceRaw = JSON.parse(fs.readFileSync(choicePath, 'utf-8'));
+      if (Array.isArray(choiceRaw)) {
+        for (const q of choiceRaw) pushUnique(q);
+      }
+    }
+    if (fs.existsSync(estimationPath)) {
+      const estimationRaw = JSON.parse(fs.readFileSync(estimationPath, 'utf-8'));
+      if (Array.isArray(estimationRaw)) {
+        for (const q of estimationRaw) pushUnique(q);
+      }
+    }
+  } catch (err) {
+    console.warn('Nu s-au putut încărca fișierele canonice din data/questions/, se folosesc întrebările implicite:', err);
+  }
+
+  for (const fallbackQ of FALLBACK_SEED_QUESTIONS) {
+    pushUnique(fallbackQ);
+  }
+
+  return merged;
+}
+
+export const INITIAL_QUESTIONS: Question[] = loadCanonicalQuestionBank();
+
 export function shuffleArray<T>(array: T[]): T[] {
   const result = [...array];
   for (let i = result.length - 1; i > 0; i--) {
@@ -741,3 +795,4 @@ export function shuffleArray<T>(array: T[]): T[] {
   }
   return result;
 }
+

@@ -74,6 +74,16 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
     socket.on('remove_bot', (data = {}) => {
       if (currentRoomId && data.botId) gameManager.removeBot(currentRoomId, currentUserId, data.botId);
     });
+    socket.on('time_sync_request', (data = {}, callback) => {
+      const payload = {
+        requestId: data.requestId,
+        clientSentAt: data.clientSentAt,
+        serverNowMs: Date.now(),
+      };
+      if (typeof callback === 'function') callback(payload);
+      socket.emit('time_sync_response', payload);
+    });
+
     socket.on('start_game', (_data, callback) => {
       if (currentRoomId) callback?.(gameManager.startGame(currentRoomId, currentUserId));
     });
@@ -81,7 +91,22 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       if (currentRoomId && data.territoryId) callback?.(gameManager.selectTerritory(currentRoomId, currentUserId, data.territoryId));
     });
     socket.on('submit_answer', (data = {}, callback) => {
-      if (currentRoomId && data.answer !== undefined) callback?.(gameManager.submitAnswer(currentRoomId, currentUserId, data.answer));
+      if (currentRoomId && data.answer !== undefined) {
+        callback?.(
+          gameManager.submitAnswer(
+            currentRoomId,
+            currentUserId,
+            data.answer,
+            data.questionInstanceId
+          )
+        );
+      } else {
+        callback?.({
+          success: false,
+          code: 'INVALID_ANSWER',
+          message: 'Nu ești într-o cameră activă sau răspunsul lipsește.',
+        });
+      }
     });
     socket.on('send_chat', (data = {}) => {
       if (!currentRoomId || typeof data.text !== 'string') return;

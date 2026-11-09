@@ -191,11 +191,25 @@ export default function App() {
 
   const handleSubmitAnswer = (
     answer: number | string,
-    cb?: (res: { success: boolean; message?: string; acceptedAnswer?: number }) => void
+    cb?: (res: {
+      success: boolean;
+      message?: string;
+      acceptedAnswer?: number;
+      code?: string;
+      timedOut?: boolean;
+    }) => void,
+    questionInstanceId?: string
   ) => {
-    socketService.getSocket().emit('submit_answer', { answer }, (res: any) => {
-      if (cb) cb(res);
-    });
+    socketService
+      .getSocket()
+      .timeout(3500)
+      .emit('submit_answer', { answer, questionInstanceId }, (err: any, res: any) => {
+        if (err) {
+          if (cb) cb({ success: false, timedOut: true, code: 'ACK_TIMEOUT' });
+          return;
+        }
+        if (cb) cb(res);
+      });
   };
 
   const handleLeaveGame = () => {

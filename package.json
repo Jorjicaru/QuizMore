@@ -11,6 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "generate:map-presets": "node scripts/generate_all_maps.cjs",
+    "build:questions": "node scripts/build_and_validate_questions.cjs",
+    "validate:questions": "node scripts/validate_question_bank.cjs",
     "test": "tsx --test src/game/rules.test.ts"
   },
   "dependencies": {

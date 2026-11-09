@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GameState, Player } from '../types/game';
 import { buildRoundDisplayItems } from '../game/rules';
 import { sound } from '../services/audio';
+import { socketService } from '../services/socket';
 import {
   Flag,
   Swords,
@@ -397,6 +398,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
   const timerBarRef = React.useRef<HTMLDivElement>(null);
   const rafIdRef = React.useRef<number | null>(null);
   const lastSecondsRef = React.useRef<number>(-1);
+  const lastColorBucketRef = React.useRef<string>('');
 
   const toggleMute = () => {
     const next = sound.toggleMute();
@@ -406,6 +408,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
   useEffect(() => {
     const deadline = game.turnTimerExpiresAt;
     const totalDurationMs = (game.turnTimeLimit || 15) * 1000;
+    lastColorBucketRef.current = '';
 
     if (
       game.phase === 'finished' ||
@@ -422,19 +425,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
     }
 
     const update = () => {
-      const now = Date.now();
+      const now = socketService.getEstimatedServerNow();
       const remainingMs = Math.max(0, deadline - now);
       const ratio = Math.max(0, Math.min(1, remainingMs / totalDurationMs));
 
       if (timerBarRef.current) {
         timerBarRef.current.style.transform = `scaleX(${ratio})`;
         const remSec = Math.ceil(remainingMs / 1000);
-        if (remSec <= 4) {
-          timerBarRef.current.style.backgroundColor = '#ef4444';
-        } else if (remSec <= 8) {
-          timerBarRef.current.style.backgroundColor = '#f59e0b';
-        } else {
-          timerBarRef.current.style.backgroundColor = '#10b981';
+        const nextBucket = remSec <= 4 ? '#ef4444' : remSec <= 8 ? '#f59e0b' : '#10b981';
+        if (nextBucket !== lastColorBucketRef.current) {
+          lastColorBucketRef.current = nextBucket;
+          timerBarRef.current.style.backgroundColor = nextBucket;
         }
       }
 
@@ -454,7 +455,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
     update();
 
     const handleVisibilityChange = () => {
-      if (!document.hidden && deadline > Date.now()) {
+      if (!document.hidden && deadline > socketService.getEstimatedServerNow()) {
         if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
         update();
       }

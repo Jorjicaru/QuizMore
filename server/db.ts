@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import { Question, UserProfile } from '../src/types/game';
-import { INITIAL_QUESTIONS } from './questionsData';
+import { INITIAL_QUESTIONS, normalizeQuestionText } from './questionsData';
 
 export interface UserRecord {
   id: string;
@@ -62,6 +62,12 @@ export interface DatabaseSchema {
 const DB_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'conquiz_db.json');
 
+function atomicWriteJson(filePath: string, data: unknown): void {
+  const tmpFile = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tmpFile, filePath);
+}
+
 class Database {
   private data: DatabaseSchema;
 
@@ -107,13 +113,32 @@ class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         const originalSnapshot = JSON.stringify(parsed);
-        // Add newly shipped seed questions without overwriting user-created questions.
+        // Add newly shipped canonical questions without overwriting or duplicating user-created questions.
         if (!Array.isArray(parsed.questions)) parsed.questions = [];
-        const existingIds = new Set(parsed.questions.map((q: Question) => q.id));
+        const deduplicatedExisting: Question[] = [];
+        const existingIds = new Set<string>();
+        const existingFingerprints = new Set<string>();
+
+        for (const q of parsed.questions as Question[]) {
+          if (!q || !q.id || !q.question) continue;
+          const fp = normalizeQuestionText(q.question);
+          if (!fp || existingIds.has(q.id) || existingFingerprints.has(fp)) continue;
+          existingIds.add(q.id);
+          existingFingerprints.add(fp);
+          deduplicatedExisting.push(q);
+        }
+
         const originalQuestionCount = parsed.questions.length;
         for (const seed of INITIAL_QUESTIONS) {
-          if (!existingIds.has(seed.id)) parsed.questions.push(seed);
+          const fp = normalizeQuestionText(seed.question);
+          if (!existingIds.has(seed.id) && !existingFingerprints.has(fp)) {
+            existingIds.add(seed.id);
+            existingFingerprints.add(fp);
+            deduplicatedExisting.push(seed);
+          }
         }
+        parsed.questions = deduplicatedExisting;
+
         parsed.users ||= {};
         parsed.games ||= [];
         parsed.friends ||= [];
@@ -135,7 +160,7 @@ class Database {
         }
         const adminAdded = this.addConfiguredAdmin(parsed as DatabaseSchema);
         if (adminAdded || parsed.questions.length !== originalQuestionCount || JSON.stringify(parsed) !== originalSnapshot) {
-          fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+          atomicWriteJson(DB_FILE, parsed);
         }
         return parsed as DatabaseSchema;
       } catch (e) {
@@ -146,20 +171,20 @@ class Database {
     // Empty default database. Never ship pre-created public admin/demo credentials.
     const defaultData: DatabaseSchema = {
       users: {},
-      questions: INITIAL_QUESTIONS,
+      questions: [...INITIAL_QUESTIONS],
       games: [],
       friends: [],
       notifications: [],
     };
 
     this.addConfiguredAdmin(defaultData);
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2), 'utf-8');
+    atomicWriteJson(DB_FILE, defaultData);
     return defaultData;
   }
 
   public save(): void {
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+      atomicWriteJson(DB_FILE, this.data);
     } catch (e) {
       console.error('Error saving database file:', e);
     }
@@ -209,6 +234,13 @@ class Database {
     user.isBanned = !user.isBanned;
     this.save();
     return !!user.isBanned;
+  }
+
+  public deleteUser(userId: string): boolean {
+    if (!this.data.users[userId]) return false;
+    delete this.data.users[userId];
+    this.save();
+    return true;
   }
 
   public setUserRole(userId: string, role: 'user' | 'admin'): boolean {

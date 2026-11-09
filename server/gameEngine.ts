@@ -113,30 +113,53 @@ export class GameManager {
     }
   }
 
-  private getRandomQuestion(game: GameState, type?: 'choice' | 'estimation'): Question | null {
+  /**
+   * Computes the required question budget for a match given playerCount and territoryCount.
+   * Ensures a match can never run out of unique choice or estimation questions.
+   */
+  public static calculateMatchQuestionBudget(
+    playerCount: number,
+    territoryCount: number,
+    warRounds = 6
+  ): { requiredChoice: number; requiredEstimation: number } {
+    const conquestRounds = calculateConquestRounds(territoryCount, playerCount);
+    const maxUnallocatedTerritories = Math.max(1, territoryCount - playerCount);
+    return {
+      requiredChoice: conquestRounds + warRounds,
+      requiredEstimation: maxUnallocatedTerritories + warRounds,
+    };
+  }
+
+  public getRandomQuestion(game: GameState, type?: 'choice' | 'estimation'): Question | null {
     const selectedCategories = game.selectedCategories || [];
     const usedIds = new Set(game.usedQuestionIds || []);
-    let pool = db
+    const allAvailable = db
       .getAllQuestions()
       .filter(
         (question) =>
-          (!selectedCategories.length || selectedCategories.includes(question.category)) &&
+          !question.isDisabled &&
           (!type || question.type === type) &&
           !usedIds.has(question.id)
       );
-    // If all questions in selected categories were used in a very long match, reset usedIds for this type
-    if (!pool.length) {
-      pool = db
-        .getAllQuestions()
-        .filter(
-          (question) =>
-            (!selectedCategories.length || selectedCategories.includes(question.category)) &&
-            (!type || question.type === type)
-        );
+
+    // 1. Primary pool: unused questions in the room's selected categories
+    let pool = allAvailable.filter(
+      (question) =>
+        !selectedCategories.length || selectedCategories.includes(question.category)
+    );
+
+    // 2. If selected categories are exhausted mid-match, fallback ONLY to unused questions from other categories.
+    // NEVER reset or ignore usedQuestionIds — a question must never repeat in the same match.
+    if (!pool.length && selectedCategories.length > 0) {
+      pool = allAvailable;
     }
+
     if (!pool.length) return null;
+
     const source = pool[Math.floor(Math.random() * pool.length)];
-    game.usedQuestionIds = [...(game.usedQuestionIds || []), source.id];
+    usedIds.add(source.id);
+    game.usedQuestionIds = Array.from(usedIds);
+
     const selected: Question = { ...source };
     if (source.type === 'choice' && Array.isArray(source.options)) {
       const indexed = source.options.map((value, index) => ({ value, index }));
@@ -497,27 +520,45 @@ export class GameManager {
         message: 'Toți jucătorii trebuie să fie gata înainte de începerea meciului.',
       };
     }
+    // Freeze map according to actual participant count (game.players.length, never maxPlayers)
+    this.applyMapPreset(game, game.players.length);
+
+    const territoryCount = Object.keys(game.territories).length;
+    const budget = GameManager.calculateMatchQuestionBudget(
+      game.players.length,
+      territoryCount,
+      game.maxRounds || 6
+    );
+
     const roomQuestions = db
       .getAllQuestions()
       .filter(
-        (q) => !game.selectedCategories?.length || game.selectedCategories.includes(q.category)
+        (q) =>
+          !q.isDisabled &&
+          (!game.selectedCategories?.length || game.selectedCategories.includes(q.category))
       );
-    if (!roomQuestions.some((q) => q.type === 'estimation')) {
+    const availableChoice = roomQuestions.filter((q) => q.type === 'choice').length;
+    const availableEstimation = roomQuestions.filter((q) => q.type === 'estimation').length;
+
+    if (availableEstimation === 0) {
       return {
         success: false,
         message:
           'Categoriile selectate nu conțin întrebări numerice pentru faza de împărțire și departajări.',
       };
     }
-    if (!roomQuestions.some((q) => q.type === 'choice')) {
+    if (availableChoice === 0) {
       return {
         success: false,
         message: 'Categoriile selectate nu conțin întrebări grilă pentru cucerire și război.',
       };
     }
-
-    // Freeze map according to actual participant count (game.players.length, never maxPlayers)
-    this.applyMapPreset(game, game.players.length);
+    if (availableChoice < budget.requiredChoice || availableEstimation < budget.requiredEstimation) {
+      return {
+        success: false,
+        message: `Categoriile selectate au prea puține întrebări unice pentru o partidă de ${game.players.length} jucători (necesar: minim ${budget.requiredChoice} grilă și ${budget.requiredEstimation} numerice; disponibil: ${availableChoice} grilă și ${availableEstimation} numerice). Selectează mai multe categorii!`,
+      };
+    }
 
     const possibleFirstBases = Object.values(game.territories).filter((t) =>
       canCompleteBaseSelection(t.id, game.territories, game.players.length - 1)
@@ -1375,27 +1416,61 @@ export class GameManager {
   public submitAnswer(
     roomId: string,
     userId: string,
-    answer: string | number
+    answer: string | number,
+    questionInstanceId?: string
   ): {
     success: boolean;
     message: string;
+    code?:
+      | 'ACCEPTED'
+      | 'DUPLICATE'
+      | 'EXPIRED'
+      | 'STALE_INSTANCE'
+      | 'INVALID_ANSWER'
+      | 'NOT_PARTICIPANT'
+      | 'NO_ACTIVE_QUESTION';
     acceptedAnswer?: number;
     questionId?: string;
+    questionInstanceId?: string;
     startTime?: number;
   } {
     const game = this.games.get(roomId);
     if (!game || !game.currentQuestion || game.currentQuestion.resolved) {
-      return { success: false, message: 'Nicio întrebare activă.' };
+      return {
+        success: false,
+        code: 'NO_ACTIVE_QUESTION',
+        message: 'Nicio întrebare activă.',
+      };
     }
 
     const cq = game.currentQuestion;
+    if (
+      questionInstanceId &&
+      cq.questionInstanceId &&
+      questionInstanceId !== cq.questionInstanceId
+    ) {
+      return {
+        success: false,
+        code: 'STALE_INSTANCE',
+        message: 'Această întrebare s-a încheiat deja.',
+      };
+    }
+
     if (Date.now() >= cq.startTime + cq.durationSeconds * 1000 + 350) {
       this.resolveCurrentQuestion(roomId);
-      return { success: false, message: 'Timpul pentru răspuns a expirat.' };
+      return {
+        success: false,
+        code: 'EXPIRED',
+        message: 'Timpul pentru răspuns a expirat.',
+      };
     }
     const player = game.players.find((p) => p.id === userId);
     if (!player || player.isEliminated) {
-      return { success: false, message: 'Nu poți răspunde în această partidă.' };
+      return {
+        success: false,
+        code: 'NOT_PARTICIPANT',
+        message: 'Nu poți răspunde în această partidă.',
+      };
     }
 
     const requiredPlayers =
@@ -1408,13 +1483,18 @@ export class GameManager {
     if (!requiredPlayers.includes(userId)) {
       return {
         success: false,
+        code: 'NOT_PARTICIPANT',
         message: 'Nu participi la această întrebare.',
       };
     }
 
     // Strict duplicate check using hasOwnProperty so answer = 0 is properly guarded
     if (Object.prototype.hasOwnProperty.call(cq.playerAnswers, userId)) {
-      return { success: false, message: 'Ai trimis deja răspunsul!' };
+      return {
+        success: false,
+        code: 'DUPLICATE',
+        message: 'Ai trimis deja răspunsul!',
+      };
     }
 
     let numericValue: number;
@@ -1422,13 +1502,21 @@ export class GameManager {
       const choice = Number(answer);
       const maxIndex = (cq.question.options?.length || 4) - 1;
       if (!Number.isInteger(choice) || choice < 0 || choice > maxIndex) {
-        return { success: false, message: 'Varianta de răspuns este invalidă.' };
+        return {
+          success: false,
+          code: 'INVALID_ANSWER',
+          message: 'Varianta de răspuns este invalidă.',
+        };
       }
       numericValue = choice;
     } else {
       const raw = String(answer).trim().replace(',', '.');
       if (!/^-?\d+(\.\d+)?$/.test(raw) || !Number.isFinite(Number(raw))) {
-        return { success: false, message: 'Introdu un număr valid.' };
+        return {
+          success: false,
+          code: 'INVALID_ANSWER',
+          message: 'Introdu un număr valid.',
+        };
       }
       numericValue = Number(raw);
     }
@@ -1452,9 +1540,11 @@ export class GameManager {
 
     return {
       success: true,
+      code: 'ACCEPTED',
       message: 'Răspuns înregistrat!',
       acceptedAnswer: numericValue,
       questionId: cq.question.id,
+      questionInstanceId: cq.questionInstanceId,
       startTime: cq.startTime,
     };
   }

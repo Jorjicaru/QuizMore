@@ -1130,3 +1130,43 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
   };
 }
 
+export interface ClockOffsetSample {
+  rttMs: number;
+  offsetMs: number;
+}
+
+/**
+ * Calculează o probă de offset între ceasul clientului și ceasul serverului (Cristian's algorithm).
+ */
+export function computeClockOffsetSample(params: {
+  clientSentAtPerfMs: number;
+  clientReceivedAtPerfMs: number;
+  clientReceivedWallClockMs: number;
+  serverNowMs: number;
+}): ClockOffsetSample {
+  const rttMs = Math.max(0, params.clientReceivedAtPerfMs - params.clientSentAtPerfMs);
+  const estimatedServerNowAtReceipt = params.serverNowMs + rttMs / 2;
+  const offsetMs = Math.round(estimatedServerNowAtReceipt - params.clientReceivedWallClockMs);
+  return { rttMs, offsetMs };
+}
+
+/**
+ * Alege proba cu cel mai mic RTT (cea mai puțin afectată de jitter-ul rețelei).
+ */
+export function selectBestClockOffset(samples: ClockOffsetSample[]): ClockOffsetSample {
+  if (!samples.length) return { rttMs: 0, offsetMs: 0 };
+  const valid = samples.filter(
+    (s) => Number.isFinite(s.rttMs) && s.rttMs >= 0 && Number.isFinite(s.offsetMs)
+  );
+  if (!valid.length) return { rttMs: 0, offsetMs: 0 };
+  return [...valid].sort((a, b) => a.rttMs - b.rttMs)[0];
+}
+
+/**
+ * Estimează timpul curent al serverului pe baza ceasului clientului și a offsetului sincronizat.
+ */
+export function estimateServerNow(clientWallClockMs: number, offsetMs: number): number {
+  return clientWallClockMs + (Number.isFinite(offsetMs) ? offsetMs : 0);
+}
+
+

@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
+import { Server as SocketIOServer } from 'socket.io';
+import { io as createClientSocket, Socket as ClientSocket } from 'socket.io-client';
 import {
   areTerritoriesAdjacent,
   isAdjacentToPlayer,
@@ -18,6 +21,9 @@ import {
   getLegalWarTargetsForPair,
   sanitizeNumericInput,
   buildRoundDisplayItems,
+  computeClockOffsetSample,
+  selectBestClockOffset,
+  estimateServerNow,
   SCORING,
 } from './rules';
 import { Territory, Player, GameState } from '../types/game';
@@ -28,6 +34,10 @@ import {
   validatePresetNeighborGraph,
 } from '../../server/romaniaMapData';
 import { GameManager } from '../../server/gameEngine';
+import { INITIAL_QUESTIONS, normalizeQuestionText } from '../../server/questionsData';
+import { db } from '../../server/db';
+import { generateToken } from '../../server/auth';
+import { setupSocketHandlers } from '../../server/socketHandler';
 
 const mockTerritories: Record<string, Territory> = {
   maramures: {
@@ -825,5 +835,384 @@ test('V7: Smooth Timer - calcul continuu al raportului scaleX și gestionarea de
   // Past deadline -> ratio stays 0 (no negative values or NaN)
   assert.equal(calculateRatio(deadline + 5000), 0);
 });
+
+// ============================================================================
+// SECȚIUNEA V8.0: BANCA CANONICĂ DE ÎNTREBĂRI, NON-REPETIȚIE, CEAS SERVER & SOCKET.IO
+// ============================================================================
+
+test('V8 Test 17: Banca canonică de întrebări are peste 5.000 de întrebări verificate, 0 duplicate și acoperă toate cele 14 categorii pentru 10 jucători', () => {
+  assert.ok(
+    INITIAL_QUESTIONS.length >= 5000,
+    `Banca canonică trebuie să aibă >= 5000 întrebări (actual: ${INITIAL_QUESTIONS.length})`
+  );
+
+  const choiceList = INITIAL_QUESTIONS.filter((q) => q.type === 'choice');
+  const estimationList = INITIAL_QUESTIONS.filter((q) => q.type === 'estimation');
+
+  assert.ok(choiceList.length >= 2500, `Minim 2500 întrebări choice (actual: ${choiceList.length})`);
+  assert.ok(
+    estimationList.length >= 2500,
+    `Minim 2500 întrebări estimation (actual: ${estimationList.length})`
+  );
+
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  for (const q of INITIAL_QUESTIONS) {
+    assert.ok(q.id && !seenIds.has(q.id), `ID duplicat sau lipsă: ${q.id}`);
+    seenIds.add(q.id);
+
+    const fp = normalizeQuestionText(q.question);
+    assert.ok(fp.length >= 8 && !seenFingerprints.has(fp), `Text duplicat: ${q.question}`);
+    seenFingerprints.add(fp);
+
+    if (q.type === 'choice') {
+      assert.equal(q.options?.length, 4, `Întrebarea ${q.id} trebuie să aibă 4 opțiuni`);
+      assert.ok(
+        Number.isInteger(q.correctAnswerIndex) &&
+          q.correctAnswerIndex! >= 0 &&
+          q.correctAnswerIndex! <= 3
+      );
+    } else {
+      assert.ok(Number.isFinite(q.targetNumber), `Întrebarea ${q.id} trebuie să aibă targetNumber finit`);
+      assert.ok(q.unit && q.unit.length > 0, `Întrebarea ${q.id} trebuie să aibă unitate de măsură`);
+    }
+  }
+
+  // Verify every single selectable category has enough choice and estimation questions for a 10-player match
+  const maxBudget10 = GameManager.calculateMatchQuestionBudget(10, 38, 6);
+  const categories = [
+    'istorie',
+    'geografie',
+    'biologie',
+    'fizica',
+    'chimie',
+    'matematica',
+    'literatura',
+    'arta',
+    'sport',
+    'muzica',
+    'cinematografie',
+    'cultura_generala',
+    'tehnologie',
+    'informatica',
+  ];
+
+  for (const cat of categories) {
+    const catChoice = choiceList.filter((q) => q.category === cat).length;
+    const catEst = estimationList.filter((q) => q.category === cat).length;
+    assert.ok(
+      catChoice >= maxBudget10.requiredChoice,
+      `Categoria ${cat} are ${catChoice} întrebări choice, sub bugetul pentru 10p (${maxBudget10.requiredChoice})`
+    );
+    assert.ok(
+      catEst >= maxBudget10.requiredEstimation,
+      `Categoria ${cat} are ${catEst} întrebări estimation, sub bugetul pentru 10p (${maxBudget10.requiredEstimation})`
+    );
+  }
+});
+
+test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția strictă în aceeași partidă și nu resetează niciodată usedQuestionIds la epuizare', () => {
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_nonrep', username: 'NonRepHost', avatar: 'av_vlad' },
+    maxPlayers: 4,
+    initialBotsCount: 3,
+    selectedCategories: ['arta'],
+    isPrivate: true,
+  });
+
+  const drawnIds = new Set<string>();
+  for (let i = 0; i < 120; i++) {
+    const qType = i % 2 === 0 ? 'choice' : 'estimation';
+    const q = gm.getRandomQuestion(room, qType);
+    assert.ok(q, `Extragerea #${i + 1} (${qType}) trebuie să returneze o întrebare validă`);
+    assert.equal(
+      drawnIds.has(q.id),
+      false,
+      `Întrebarea ${q.id} a fost repetată în aceeași partidă la extragerea #${i + 1}!`
+    );
+    drawnIds.add(q.id);
+  }
+  assert.equal(room.usedQuestionIds?.length, 120);
+
+  // Now simulate total pool exhaustion by marking all DB questions as used in this room
+  room.usedQuestionIds = db.getAllQuestions().map((q) => q.id);
+  const exhaustedChoice = gm.getRandomQuestion(room, 'choice');
+  const exhaustedEst = gm.getRandomQuestion(room, 'estimation');
+  assert.equal(
+    exhaustedChoice,
+    null,
+    'La epuizarea completă a băncii, getRandomQuestion trebuie să returneze null (fără resetarea usedQuestionIds)'
+  );
+  assert.equal(
+    exhaustedEst,
+    null,
+    'La epuizarea completă a băncii numerice, getRandomQuestion trebuie să returneze null'
+  );
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V8 Test 19: Preflight Question Budget în startGame blochează pornirea meciului dacă toate întrebările disponibile sunt dezactivate și permite pornirea cu banca canonică', () => {
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_budget', username: 'BudgetHost', avatar: 'av_vlad' },
+    maxPlayers: 10,
+    initialBotsCount: 9,
+    selectedCategories: ['muzica'],
+    isPrivate: true,
+  });
+
+  // Temporarily mark muzica questions as isDisabled to test preflight rejection
+  const muzicaQuestions = db.getAllQuestions().filter((q) => q.category === 'muzica');
+  for (const q of muzicaQuestions) q.isDisabled = true;
+
+  try {
+    const blockedStart = gm.startGame(room.roomId, 'u_budget');
+    assert.equal(blockedStart.success, false, 'startGame trebuie să respingă pornirea când bugetul de întrebări nu este îndeplinit');
+  } finally {
+    for (const q of muzicaQuestions) q.isDisabled = false;
+  }
+
+  // With muzica questions re-enabled, 10-player match starts cleanly
+  const validStart = gm.startGame(room.roomId, 'u_budget');
+  assert.equal(validStart.success, true, 'startGame pornește cu succes când bugetul de întrebări este disponibil');
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V8 Test 20: Sincronizarea ceasului cu serverul (computeClockOffsetSample, selectBestClockOffset, estimateServerNow) compensează exact decalaje de -120s, -5s, +3s și +90s', () => {
+  const serverTrueNow = 1_762_000_000_000;
+  const skewsMs = [-120_000, -5_000, 3_000, 90_000];
+
+  for (const skewMs of skewsMs) {
+    // Client wall clock is shifted by skewMs relative to serverTrueNow
+    const clientWallClockAtReceipt = serverTrueNow - skewMs;
+
+    // Simulate 3 ping samples with different RTTs (20ms, 80ms, 140ms)
+    const sampleFast = computeClockOffsetSample({
+      clientSentAtPerfMs: 1000,
+      clientReceivedAtPerfMs: 1020, // RTT = 20ms
+      clientReceivedWallClockMs: clientWallClockAtReceipt,
+      serverNowMs: serverTrueNow - 10, // Server processed halfway through the 20ms RTT
+    });
+    const sampleNoisy = computeClockOffsetSample({
+      clientSentAtPerfMs: 2000,
+      clientReceivedAtPerfMs: 2140, // RTT = 140ms
+      clientReceivedWallClockMs: clientWallClockAtReceipt,
+      serverNowMs: serverTrueNow - 40, // Asymmetric jitter
+    });
+
+    const best = selectBestClockOffset([sampleNoisy, sampleFast]);
+    assert.equal(best.rttMs, 20, 'Se alege proba cu cel mai mic RTT (20ms)');
+    assert.equal(best.offsetMs, skewMs, `Offsetul calculat trebuie să compenseze exact decalajul de ${skewMs}ms`);
+
+    const correctedNow = estimateServerNow(clientWallClockAtReceipt, best.offsetMs);
+    assert.equal(
+      correctedNow,
+      serverTrueNow,
+      `Timpul estimat al serverului trebuie să fie egal cu timpul real al serverului pentru skew=${skewMs}ms`
+    );
+  }
+});
+
+test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, create/join room, base_selection, submit_answer cu questionInstanceId, blocare duplicat și opțiunea 0)', async () => {
+  const gm = new GameManager();
+  const httpServer = http.createServer();
+  const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
+  setupSocketHandlers(io, gm);
+
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+  const addr = httpServer.address() as { port: number };
+  const baseUrl = `http://127.0.0.1:${addr.port}`;
+
+  // Register two ephemeral users in memory in db
+  const u1Id = `usr_test_s1_${Date.now()}`;
+  const u2Id = `usr_test_s2_${Date.now()}`;
+  const nowIso = new Date().toISOString();
+
+  db.createUser({
+    id: u1Id,
+    username: 'Voievod_Test1',
+    email: `${u1Id}@test.local`,
+    passwordHash: 'hash',
+    role: 'user',
+    createdAt: nowIso,
+    profile: {
+      id: u1Id,
+      username: 'Voievod_Test1',
+      email: `${u1Id}@test.local`,
+      role: 'user',
+      avatar: 'av_stefan',
+      title: 'Voievod',
+      rating: 1200,
+      matchesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      territoriesConquered: 0,
+      correctAnswersTotal: 0,
+      highestScore: 0,
+      createdAt: nowIso,
+    },
+  });
+
+  db.createUser({
+    id: u2Id,
+    username: 'Voievod_Test2',
+    email: `${u2Id}@test.local`,
+    passwordHash: 'hash',
+    role: 'user',
+    createdAt: nowIso,
+    profile: {
+      id: u2Id,
+      username: 'Voievod_Test2',
+      email: `${u2Id}@test.local`,
+      role: 'user',
+      avatar: 'av_vlad',
+      title: 'Voievod',
+      rating: 1200,
+      matchesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      territoriesConquered: 0,
+      correctAnswersTotal: 0,
+      highestScore: 0,
+      createdAt: nowIso,
+    },
+  });
+
+  const token1 = generateToken(u1Id, 'user');
+  const token2 = generateToken(u2Id, 'user');
+
+  const client1: ClientSocket = createClientSocket(baseUrl, {
+    auth: { token: token1 },
+    transports: ['websocket'],
+  });
+  const client2: ClientSocket = createClientSocket(baseUrl, {
+    auth: { token: token2 },
+    transports: ['websocket'],
+  });
+
+  let roomId = '';
+
+  try {
+    await Promise.all([
+      new Promise<void>((res, rej) => {
+        client1.once('connect', () => res());
+        client1.once('connect_error', rej);
+      }),
+      new Promise<void>((res, rej) => {
+        client2.once('connect', () => res());
+        client2.once('connect_error', rej);
+      }),
+    ]);
+
+    // 1. Test time_sync_request ACK
+    const syncRes: any = await new Promise((resolve) =>
+      client1.emit('time_sync_request', { requestId: 'req_1', clientSentAt: 1234 }, resolve)
+    );
+    assert.equal(syncRes.requestId, 'req_1');
+    assert.equal(typeof syncRes.serverNowMs, 'number');
+
+    // 2. Client 1 creates room
+    const createRes: any = await new Promise((resolve) =>
+      client1.emit('create_room', { roomName: 'TestRoomV8', maxPlayers: 2, isPrivate: true }, resolve)
+    );
+    assert.equal(createRes.success, true);
+    roomId = createRes.game.roomId;
+
+    // 3. Client 2 joins room & sets ready
+    const joinRes: any = await new Promise((resolve) =>
+      client2.emit('join_room', { roomId }, resolve)
+    );
+    assert.equal(joinRes.success, true);
+    client2.emit('set_ready', { isReady: true });
+    await new Promise((r) => setTimeout(r, 40));
+
+    // 4. Client 1 starts game
+    const startRes: any = await new Promise((resolve) =>
+      client1.emit('start_game', {}, resolve)
+    );
+    assert.equal(startRes.success, true);
+
+    const serverGame = gm.getRoom(roomId)!;
+    assert.equal(serverGame.phase, 'base_selection');
+
+    // 5. Pick valid bases for Player 1 and Player 2
+    const tList = Object.values(serverGame.territories);
+    const base1 = tList.find((t) => canCompleteBaseSelection(t.id, serverGame.territories, 1))!;
+    const pick1Res: any = await new Promise((resolve) =>
+      client1.emit('select_territory', { territoryId: base1.id }, resolve)
+    );
+    assert.equal(pick1Res.success, true);
+
+    const base2 = Object.values(serverGame.territories).find((t) =>
+      canCompleteBaseSelection(t.id, serverGame.territories, 0)
+    )!;
+    const pick2Res: any = await new Promise((resolve) =>
+      client2.emit('select_territory', { territoryId: base2.id }, resolve)
+    );
+    assert.equal(pick2Res.success, true);
+    assert.equal(serverGame.phase, 'conquest');
+
+    // Trigger conquest question immediately for deterministic testing
+    gm.triggerNextConquestQuestion(serverGame);
+    const cq = serverGame.currentQuestion!;
+    assert.ok(cq, 'Întrebarea de cucerire trebuie să fie activă');
+
+    // 6. Test stale questionInstanceId rejection
+    const staleRes: any = await new Promise((resolve) =>
+      client1.emit(
+        'submit_answer',
+        { answer: 0, questionInstanceId: 'stale_instance_id_999' },
+        resolve
+      )
+    );
+    assert.equal(staleRes.success, false);
+    assert.equal(staleRes.code, 'STALE_INSTANCE');
+
+    // 7. Test valid submission of option 0 with matching questionInstanceId
+    const ans1Res: any = await new Promise((resolve) =>
+      client1.emit(
+        'submit_answer',
+        { answer: 0, questionInstanceId: cq.questionInstanceId },
+        resolve
+      )
+    );
+    assert.equal(ans1Res.success, true);
+    assert.equal(ans1Res.code, 'ACCEPTED');
+    assert.equal(ans1Res.acceptedAnswer, 0);
+
+    // 8. Test duplicate submission rejection for Client 1
+    const dupRes: any = await new Promise((resolve) =>
+      client1.emit(
+        'submit_answer',
+        { answer: 1, questionInstanceId: cq.questionInstanceId },
+        resolve
+      )
+    );
+    assert.equal(dupRes.success, false);
+    assert.equal(dupRes.code, 'DUPLICATE');
+
+    // 9. Client 2 submits answer -> question resolves immediately
+    const ans2Res: any = await new Promise((resolve) =>
+      client2.emit(
+        'submit_answer',
+        { answer: cq.question.correctAnswerIndex, questionInstanceId: cq.questionInstanceId },
+        resolve
+      )
+    );
+    assert.equal(ans2Res.success, true);
+    assert.equal(cq.resolved, true);
+  } finally {
+    if (roomId) (gm as any).clearRoomTimers(roomId);
+    client1.disconnect();
+    client2.disconnect();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    db.deleteUser(u1Id);
+    db.deleteUser(u2Id);
+  }
+});
+
 
 
