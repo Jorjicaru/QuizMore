@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, UserProfile } from '../types/game';
-import { GameHUD } from '../components/GameHUD';
+import { GameHUD, PlayerSidebar } from '../components/GameHUD';
 import { RomaniaMap } from '../components/RomaniaMap';
 import { QuestionModal } from '../components/QuestionModal';
 import { GameOverModal } from '../components/GameOverModal';
@@ -82,8 +82,8 @@ export const GameView: React.FC<GameViewProps> = ({
   };
 
   return (
-    <div className="relative w-full flex-1 min-h-0 flex flex-col gap-1.5 sm:gap-2 lg:h-full lg:overflow-hidden animate-fadeIn">
-      {/* Top HUD with scores, turn status & round */}
+    <div className="relative w-full flex-1 min-h-0 flex flex-col gap-1.5 lg:h-full lg:overflow-hidden animate-fadeIn">
+      {/* Compact Top Command Bar (+ Mobile Player Strip on <1024px) */}
       <GameHUD
         game={game}
         currentUserId={currentUser.id}
@@ -112,19 +112,27 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
-      {/* Main Romania Map (flex-1 fills available vertical space without scroll on desktop/laptop) */}
-      <RomaniaMap
-        territories={game.territories}
-        players={game.players}
-        activePlayerId={activePlayer?.id}
-        currentUserId={currentUser.id}
-        gamePhase={game.phase}
-        selectedTerritoryId={game.currentQuestion?.targetTerritoryId || game.pendingTerritoryId}
-        warRound={game.warRound}
-        mapPresetPlayerCount={game.mapPresetPlayerCount}
-        onSelectTerritory={handleTerritoryAction}
-        disabled={game.currentQuestion !== null}
-      />
+      {/* Map-First Workspace: Map takes full remaining height + width on left, PlayerSidebar on right on >=1024px */}
+      <div className="flex-1 min-h-0 w-full flex flex-col lg:flex-row gap-2 overflow-hidden">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <RomaniaMap
+            game={game}
+            territories={game.territories}
+            players={game.players}
+            activePlayerId={activePlayer?.id}
+            currentUserId={currentUser.id}
+            gamePhase={game.phase}
+            selectedTerritoryId={game.currentQuestion?.targetTerritoryId || game.pendingTerritoryId}
+            warRound={game.warRound}
+            mapPresetPlayerCount={game.mapPresetPlayerCount}
+            onSelectTerritory={handleTerritoryAction}
+            disabled={game.currentQuestion !== null}
+          />
+        </div>
+
+        {/* Vertical Right-Hand Player Roster on Desktop (>= 1024px) */}
+        <PlayerSidebar game={game} currentUserId={currentUser.id} />
+      </div>
 
       {/* Active Question Modal */}
       {game.currentQuestion && (

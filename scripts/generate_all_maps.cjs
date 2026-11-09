@@ -294,19 +294,19 @@ for (const p of presets) {
 
   compiledPresets[p.playerCount] = processed;
   metadata[p.playerCount] = {
-    mapId: `romania-${p.playerCount}p-v3`,
+    mapId: `romania-${p.playerCount}p-v5`,
     playerCount: p.playerCount,
     territoryCount: processed.length,
-    version: '3.0.0',
+    version: '5.0.0',
   };
 
-  // Write individual JSON file as specified in Section 37.2
+  // Write individual JSON file as specified in Section 37.2 & 44.3
   const jsonPath = path.join(mapsDir, `players-${p.playerCount}.json`);
   fs.writeFileSync(jsonPath, JSON.stringify({
-    mapId: `romania-${p.playerCount}p-v3`,
+    mapId: `romania-${p.playerCount}p-v5`,
     playerCount: p.playerCount,
     territoryCount: processed.length,
-    version: '3.0.0',
+    version: '5.0.0',
     territories: processed,
   }, null, 2), 'utf8');
 }
@@ -315,6 +315,7 @@ for (const p of presets) {
 const tsContent = `/**
  * Date Geografice Reale ale României – Proiectate SVG conform ANCPI / OpenStreetMap
  * Generat automat din data/geo/romania-counties.geojson cu geometrie dizolvată (dissolve/union)
+ * și vecinătăți topologice reale (graniță liniară comună >= 1.5 km, zero atingeri într-un singur punct).
  *
  * Configurație dedicată pentru FIECARE număr de jucători de la 2 la 10:
  * - 2 jucători: 10 teritorii
@@ -363,6 +364,46 @@ export const ROMANIA_35_TERRITORIES: TerritoryDef[] = ROMANIA_MAP_PRESETS[9];
 export const ROMANIA_38_TERRITORIES: TerritoryDef[] = ROMANIA_MAP_PRESETS[10];
 
 /**
+ * Validează strict graful de vecinătăți al unui preset:
+ * - niciun teritoriu nu se are pe sine ca vecin
+ * - toate ID-urile vecinilor există în preset
+ * - simetrie bidirecțională 100% (dacă A îl conține pe B, atunci B îl conține obligatoriu pe A)
+ * - niciun teritoriu nu este izolat (neighbors.length === 0)
+ */
+export function validatePresetNeighborGraph(playerCount: number, defs: TerritoryDef[]): void {
+  const validIds = new Set(defs.map(t => t.id));
+  const byId = new Map<string, Set<string>>();
+
+  for (const t of defs) {
+    if (!t.neighbors || t.neighbors.length === 0) {
+      throw new Error(\`[Preset \${playerCount}p] Teritoriul \${t.id} este izolat (nu are niciun vecin valid).\`);
+    }
+    const set = new Set<string>();
+    for (const nId of t.neighbors) {
+      if (nId === t.id) {
+        throw new Error(\`[Preset \${playerCount}p] Teritoriul \${t.id} se are pe sine ca vecin.\`);
+      }
+      if (!validIds.has(nId)) {
+        throw new Error(\`[Preset \${playerCount}p] Teritoriul \${t.id} referențiază un vecin inexistent: \${nId}.\`);
+      }
+      set.add(nId);
+    }
+    byId.set(t.id, set);
+  }
+
+  for (const [id, neighbors] of byId.entries()) {
+    for (const neighborId of neighbors) {
+      const reverseNeighbors = byId.get(neighborId);
+      if (!reverseNeighbors || !reverseNeighbors.has(id)) {
+        throw new Error(
+          \`[Preset \${playerCount}p] Asimetrie în graful de vecinătăți: \${id} -> \${neighborId}, dar \${neighborId} nu îl are ca vecin pe \${id}.\`
+        );
+      }
+    }
+  }
+}
+
+/**
  * Generează starea teritoriilor inițializată pentru un meci.
  * Folosește numărul REAL de participanți (jucători umani + roboți AI activi).
  */
@@ -370,19 +411,7 @@ export function createMapForPlayerCount(playerCount: number): Record<string, any
   const count = Math.max(2, Math.min(10, Math.round(playerCount || 4)));
   const defs = ROMANIA_MAP_PRESETS[count] || ROMANIA_MAP_PRESETS[4];
 
-  const validIds = new Set(defs.map(t => t.id));
-  const neighborsById = new Map<string, Set<string>>();
-
-  for (const t of defs) {
-    neighborsById.set(t.id, new Set(t.neighbors.filter(id => validIds.has(id) && id !== t.id)));
-  }
-
-  // Normalize graph edges (garantează simetrie bidirecțională completă: dacă A este vecin cu B, atunci și B este vecin cu A)
-  for (const [id, neighbors] of neighborsById.entries()) {
-    for (const neighborId of neighbors) {
-      neighborsById.get(neighborId)?.add(id);
-    }
-  }
+  validatePresetNeighborGraph(count, defs);
 
   const map: Record<string, any> = {};
   for (const t of defs) {
@@ -402,7 +431,7 @@ export function createMapForPlayerCount(playerCount: number): Record<string, any
       basePlayerName: undefined,
       castleTowers: 3,
       defensiveBonus: 0,
-      neighbors: Array.from(neighborsById.get(t.id) || []),
+      neighbors: [...t.neighbors],
     };
   }
 

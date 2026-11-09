@@ -1,8 +1,8 @@
 {
-  "mapId": "romania-6p-v3",
+  "mapId": "romania-6p-v5",
   "playerCount": 6,
   "territoryCount": 26,
-  "version": "3.0.0",
+  "version": "5.0.0",
   "territories": [
     {
       "id": "satu_mare_maramures",

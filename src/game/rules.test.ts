@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  areTerritoriesAdjacent,
   isAdjacentToPlayer,
   canSelectBase,
   canCompleteBaseSelection,
@@ -16,13 +17,15 @@ import {
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
   sanitizeNumericInput,
+  buildRoundDisplayItems,
   SCORING,
 } from './rules';
-import { Territory, Player } from '../types/game';
+import { Territory, Player, GameState } from '../types/game';
 import {
   createMapForPlayerCount,
   getMapMetadata,
   ROMANIA_MAP_PRESETS,
+  validatePresetNeighborGraph,
 } from '../../server/romaniaMapData';
 import { GameManager } from '../../server/gameEngine';
 
@@ -592,3 +595,170 @@ test('Test 8: determineEstimationWinner și sanitizeNumericInput gestionează nu
   assert.equal(sanitizeNumericInput('-1989.5abc'), '-1989.5');
   assert.equal(sanitizeNumericInput('18,87'), '18.87');
 });
+
+// ============================================================================
+// SECȚIUNEA V4.0 & V5.0: ADIACENȚĂ TOPOLOGICĂ STRICTĂ (TESTELE A - M) & TRACKER
+// ============================================================================
+
+test('Test A, B, C, D (V4.0/V5.0): Adiacență strictă în Război — interzice orice atac la distanță, inclusiv asupra Cetăților (Bazelor) neadiacente', () => {
+  const remoteNormalAttack = canTargetTerritory('timis', player1, mockTerritories, 'war', 'player2');
+  assert.equal(remoteNormalAttack.allowed, false, 'Test B: atac la distanță pe teritoriu normal respins');
+
+  const remoteBaseAttack = canTargetTerritory('arad', player1, mockTerritories, 'war', 'player2');
+  assert.equal(
+    remoteBaseAttack.allowed,
+    false,
+    'Test C: atac la distanță pe Cetate/Bază inamică respins chiar și la prima încercare!'
+  );
+
+  const territoriesWithAdjacentBase: Record<string, Territory> = {
+    ...mockTerritories,
+    alba: {
+      ...mockTerritories.alba,
+      ownerId: 'player1',
+    },
+  };
+
+  const adjacentBaseAttack = canTargetTerritory(
+    'arad',
+    player1,
+    territoriesWithAdjacentBase,
+    'war',
+    'player2'
+  );
+  assert.equal(adjacentBaseAttack.allowed, true, 'Test D: atac pe Cetate/Bază direct învecinată este permis');
+
+  const nonAdjacentTimis = canTargetTerritory(
+    'timis',
+    player1,
+    territoriesWithAdjacentBase,
+    'war',
+    'player2'
+  );
+  assert.equal(nonAdjacentTimis.allowed, false, 'Test A/F: doar teritoriile direct învecinate ale apărătorului pot fi atacate');
+});
+
+test('Test B & E pe harta reală a României: Vestul României (Timiș/Arad) NU poate ataca niciodată Sud-Estul (Dobrogea/Constanța)', () => {
+  for (let p = 2; p <= 10; p++) {
+    const map = createMapForPlayerCount(p);
+    validatePresetNeighborGraph(p, ROMANIA_MAP_PRESETS[p]);
+
+    const allTerritories = Object.values(map) as Territory[];
+    const westTerritory = allTerritories.find((t) =>
+      t.counties?.some((c) => c === 'Timis' || c === 'Arad' || c === 'Bihor')
+    )!;
+    const eastTerritory = allTerritories.find((t) =>
+      t.counties?.some((c) => c === 'Constanta' || c === 'Tulcea')
+    )!;
+
+    assert.ok(westTerritory && eastTerritory);
+    assert.equal(
+      areTerritoriesAdjacent(westTerritory.id, eastTerritory.id, map),
+      false,
+      `Preset ${p}p: ${westTerritory.id} și ${eastTerritory.id} nu au voie să fie vecine!`
+    );
+
+    westTerritory.ownerId = 'player1';
+    westTerritory.isBase = true;
+    eastTerritory.ownerId = 'player2';
+    eastTerritory.isBase = true;
+
+    const check = canTargetTerritory(eastTerritory.id, player1, map, 'war', 'player2');
+    assert.equal(
+      check.allowed,
+      false,
+      `Preset ${p}p: Jucătorul din vest (${westTerritory.id}) nu are voie să atace Dobrogea (${eastTerritory.id})`
+    );
+    assert.deepEqual(
+      getLegalWarTargetsForPair('player1', 'player2', map),
+      [],
+      `Preset ${p}p: getLegalWarTargetsForPair returnează [] când nu există graniță comună`
+    );
+  }
+});
+
+test('Test F & G (V4.0/V5.0): buildSimultaneousWarPairings formează DOAR dueluri cu graniță comună (sharesBorder === true) și trece jucătorii izolați în byePlayerIds', () => {
+  const isolatedPairings = buildSimultaneousWarPairings(
+    ['player1', 'player2'],
+    mockTerritories,
+    1,
+    {}
+  );
+  assert.equal(
+    isolatedPairings.pairs.length,
+    0,
+    'Nu se creează niciun duel ilegal dacă jucătorii nu au graniță comună'
+  );
+  assert.deepEqual(isolatedPairings.byePlayerIds.sort(), ['player1', 'player2']);
+});
+
+test('Teste V5.0 RoundTracker (buildRoundDisplayItems): fără multiplicare N x N (4p -> 4 markeri, 10p -> 10 markeri) și ordine autoritativă din server', () => {
+  const gm = new GameManager();
+
+  const room4 = gm.createRoom({
+    hostUser: { id: 'p1', username: 'P1', avatar: 'av_1' },
+    maxPlayers: 4,
+    initialBotsCount: 3,
+    isPrivate: true,
+  });
+  gm.startGame(room4.roomId, 'p1');
+  const game4 = gm.getRoom(room4.roomId)!;
+
+  const model4Base = buildRoundDisplayItems(game4);
+  assert.equal(model4Base.items.length, 4, 'La 4 jucători în base_selection există exact 4 markeri (nu 16)');
+  assert.equal(model4Base.items[0].state, 'active');
+
+  const pIds4 = game4.players.map((p) => p.id);
+  game4.phase = 'conquest';
+  game4.currentQuestion = null;
+  game4.conquestPickerId = pIds4[2];
+  game4.conquestPickQueue = [pIds4[2], pIds4[0], pIds4[3]];
+
+  const model4ConquestPick = buildRoundDisplayItems(game4);
+  assert.equal(model4ConquestPick.items.length, 4, 'La 4 jucători în conquest picking există exact 4 markeri');
+  assert.equal(model4ConquestPick.items[0].playerId, pIds4[2], 'Primul marker este conquestPickerId (p3)');
+  assert.equal(model4ConquestPick.items[0].state, 'active');
+  assert.equal(model4ConquestPick.items[1].playerId, pIds4[0], 'Al doilea marker este al doilea din conquestPickQueue (p1)');
+  assert.equal(model4ConquestPick.items[2].playerId, pIds4[3], 'Al treilea marker este al treilea din conquestPickQueue (p4)');
+  assert.equal(model4ConquestPick.items[3].playerId, pIds4[1], 'Jucătorul fără alegere apare la final ca done');
+  assert.equal(model4ConquestPick.items[3].state, 'done');
+  (gm as any).clearRoomTimers(room4.roomId);
+
+  const room10 = gm.createRoom({
+    hostUser: { id: 'h1', username: 'Host10', avatar: 'av_1' },
+    maxPlayers: 10,
+    initialBotsCount: 9,
+    isPrivate: true,
+  });
+  gm.startGame(room10.roomId, 'h1');
+  const game10 = gm.getRoom(room10.roomId)!;
+
+  const model10Base = buildRoundDisplayItems(game10);
+  assert.equal(
+    model10Base.items.length,
+    10,
+    'La 10 jucători există exact 10 markeri în RoundTracker (niciodată 100!)'
+  );
+
+  const tIds10 = Object.keys(game10.territories);
+  const pIds10 = game10.players.map((p) => p.id);
+  tIds10.forEach((tid, idx) => {
+    game10.territories[tid].ownerId = pIds10[idx % 10];
+  });
+  (gm as any).enterWarPhase(game10);
+
+  const model10War = buildRoundDisplayItems(game10);
+  assert.equal(model10War.items.length, 10, 'În Război 10p totalul markerilor este exact 10');
+  assert.equal(
+    model10War.battlePairs.length,
+    game10.warRound!.battles.length,
+    'Numărul de perechi din tracker corespunde exact cu warRound.battles'
+  );
+  model10War.battlePairs.forEach((pair, idx) => {
+    assert.equal(pair.attacker.playerId, game10.warRound!.battles[idx].attackerId);
+    assert.equal(pair.defender.playerId, game10.warRound!.battles[idx].defenderId);
+  });
+
+  (gm as any).clearRoomTimers(room10.roomId);
+});
+

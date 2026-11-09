@@ -1,0 +1,4016 @@
+CONQUIZ – MASTER TODO EXTINS V5.0
+SPECIFICAȚIE CONSOLIDATĂ: MECANICI, RĂZBOI SIMULTAN, HARTĂ, ADIACENȚĂ, TRACKER ȘI LAYOUT MAP-FIRST
+Document de lucru pentru AI-ul care modifică proiectul Google AI Studio / GitHub
+Repository: https://github.com/Jorjicaru/QuizMore
+Branch: main
+Versiune verificată actual: commit 27eb0f863e21259ff39a760fe0ee39f70e455706 (HEAD main)
+Data verificării codului GitHub: 09.11.2026
+Istoric: V4.0 a adăugat remedierea atacurilor neadiacente și validarea strictă a vecinătăților.
+Actualizare document V5.0: 09.11.2026 – reverificat HEAD-ul main după implementarea V3.0; adăugate problemele tracker-ului, ordinea culorilor și layout-ul map-first pentru 2–10 jucători.
+
+======================================================================
+NOTĂ DE PRECEDENȚĂ V5.0 – CITEȘTE ÎNAINTE DE ORICE IMPLEMENTARE
+======================================================================
+
+Acest document este actualizarea consolidată V5.0 a TODO-ului V4.0. Include
+integral regulile anterioare pentru cucerire, răspunsuri, punctaj, război
+simultan, rezultate vizuale, întrebări, hartă și adiacență strictă, apoi adaugă
+cerințele noi de tracker și layout.
+
+Am verificat repository-ul actual la commit 27eb0f863e21259ff39a760fe0ee39f70e455706.
+Acest commit include deja implementarea V3.0 a celor nouă preseturi de hartă
+pentru 2–10 jucători și mecanica de război simultan. Nu reconstrui acele părți
+fără motiv. Totuși, regulile V4.0 privind eliminarea atacurilor la distanță
+NU sunt încă aplicate complet în codul verificat: src/game/rules.ts păstrează
+excepții pentru bazele neadiacente și fallback-uri. Secțiunile 43–44 rămân
+obligatorii.
+
+Secțiunea 1 de mai jos este auditul istoric al commitului 8839408 și este
+păstrată pentru context; nu o considera descrierea exactă a HEAD-ului actual.
+Pentru starea actuală, folosește în primul rând secțiunea 45 și link-urile
+către fișierele din HEAD 27eb0f8. Dacă o descriere istorică intră în conflict
+cu secțiunea 45, secțiunea 45 are prioritate pentru starea codului, iar regulile
+mecanice din secțiunile 2–44 rămân cerințe de produs dacă nu sunt înlocuite
+explicit.
+
+Capturile noi ale utilizatorului din 09.11.2026 trebuie atașate separat AI-ului
+împreună cu acest TXT. Ele arată: tracker-ul actual mare și centrat, banda de
+culori repetată, harta redusă de cardurile jucătorilor și tracker-ul compact
+în dreapta-jos ca referință de poziționare din jocul original.
+
+======================================================================
+0. INSTRUCȚIUNE IMPORTANTĂ
+======================================================================
+
+Lucrezi la proiectul CONQUIZ existent. Nu crea o aplicație nouă și nu reconstrui proiectul de la zero.
+
+Înainte de orice modificare:
+1. Citește integral fișierele menționate în acest document.
+2. Verifică branch-ul main și codul cel mai recent, nu te baza pe versiuni mai vechi din conversație sau din arhive.
+3. Urmărește o întrebare completă prin toate straturile: GameEngine -> Socket.IO -> App.tsx -> GameView -> QuestionModal -> GameHUD -> actualizarea hărții și a scorului.
+4. Identifică diferența dintre ceea ce face efectiv serverul și ceea ce afișează interfața.
+5. Aplică remedierile direct în proiectul existent.
+6. Rulează testele unitare, testele de integrare și build-ul.
+7. Nu declara problema rezolvată doar pentru că butoanele par dezactivate sau pentru că ai modificat CSS-ul.
+8. Pentru hartă, verifică separat geometria-sursă, gruparea județelor în teritorii jucabile, contururile desenate în SVG, vecinătățile și hit-testing-ul. Nu confunda „o singură regiune interactivă” cu „o regiune desenată vizual ca o singură zonă”.
+9. Harta trebuie aleasă pe server în funcție de numărul REAL de participanți din partida pornită (jucători umani + AI), nu doar după capacitatea maximă a camerei.
+10. Nu copia geometria brută în 9 fișiere diferite. Folosește o singură sursă GeoJSON canonică și câte un preset de grupare pentru fiecare număr de jucători.
+
+Nu modifica regulile generale ale jocului, punctajele stabilite, timer-ele serverului, fazele sau mecanica de război în afara modificărilor explicite de mai jos. EXCEPȚIE IMPORTANTĂ V3.0: harta este acum o problemă explicită care TREBUIE reparată. Păstrează geografia-sursă corectă a României, dar refă gruparea teritoriilor jucabile, geometria dizolvată a fiecărui teritoriu, fișierele/preseturile pentru fiecare număr exact de jucători și modul în care acestea sunt încărcate și desenate.
+
+======================================================================
+1. CONCLUZIILE AUDITULUI ISTORIC V4.0 (COMMIT 8839408 – NU ESTE SNAPSHOT-UL CURENT)
+======================================================================
+
+NOTĂ: detaliile concrete de implementare din această secțiune au fost citite
+într-un commit anterior. Unele probleme de răspuns/modal au fost între timp
+atinse de commitul V3.0; nu presupune că descrierile de mai jos sunt toate
+încă buguri curente. Păstrează însă criteriile de comportament și validează
+starea actuală în cod înainte să modifici ceva.
+
+Am verificat codul actual din repository. Următoarele observații sunt importante:
+
+A. FAZA DE CUCERIRE FOLOSEȘTE DEJA O ÎNTREBARE COMUNĂ
+
+În server/gameEngine.ts există:
+- triggerNextConquestQuestion(game)
+- startQuestion(game, q, { phaseContext: 'conquest', ... })
+- submitAnswer(roomId, userId, answer)
+- resolveCurrentQuestion(roomId)
+- processNextConquestPick(game)
+- finishConquestRound(game)
+
+Implementarea actuală creează o singură întrebare pentru fiecare rundă de cucerire. Întrebarea este salvată în game.currentQuestion și distribuită prin notifyUpdate(roomId), care emite game_state_update către întreaga cameră Socket.IO.
+
+În src/components/QuestionModal.tsx, isParticipant este true pentru toți jucătorii când phaseContext este 'conquest' sau 'allocation'.
+
+În server/gameEngine.ts, submitAnswer construiește lista de requiredPlayers cu toți jucătorii neeliminați pentru cucerire și alocare. Întrebarea se rezolvă când toți acești jucători au trimis răspuns sau când expiră timpul.
+
+Prin urmare, codul din branch-ul main implementează deja principiul:
+- o singură întrebare pentru toată camera;
+- aceeași întrebare și aceleași variante pentru toți;
+- toți jucătorii activi răspund în același interval;
+- nu există o întrebare nouă separată pentru fiecare participant.
+
+NU rescrie mecanica aceasta inutil. Verifică de ce experiența din aplicație poate părea diferită și repară fluxul UI/server astfel încât comportamentul să fie evident și consistent pentru toți clienții.
+
+B. CUM FUNCȚIONEAZĂ ÎN PREZENT PUNCTAJUL DE CUCERIRE
+
+În resolveCurrentQuestion(), pentru phaseContext === 'conquest':
+- se identifică jucătorii care au răspuns corect;
+- se sortează după timpul de trimitere;
+- fiecare jucător corect este pus în conquestPickQueue;
+- jucătorii corecți primesc pe rând dreptul de a alege un teritoriu neutru.
+
+Punctele de 200 NU se acordă în momentul în care serverul validează răspunsul corect. Punctele se acordă în selectTerritory(), după ce jucătorul selectează efectiv un teritoriu și serverul îl alocă:
+- territory.ownerId = activePlayer.id;
+- territory.points = SCORING.CONQUEST;
+- activePlayer.score += SCORING.CONQUEST;
+- activePlayer.territoriesCount++.
+
+Această logică este coerentă cu cerința ca utilizatorul să aleagă manual regiunea după ce răspunde corect. Totuși, interfața nu explică suficient de clar această succesiune și poate crea impresia că răspunsul corect nu a fost punctat.
+
+Păstrează regula: răspuns corect -> drept de alegere -> selectarea unei regiuni -> alocarea regiunii și acordarea celor 200 puncte.
+Nu dubla punctajul și nu acorda 200 puncte doar pentru răspuns dacă teritoriul nu a fost încă atribuit.
+
+C. BUG CONFIRMAT: RĂSPUNSUL NU SE BLOCHEAZĂ IMEDIAT ÎN INTERFAȚĂ
+
+În src/components/QuestionModal.tsx:
+- selectedOption se setează local la click;
+- handleSelectChoice verifică hasSubmitted/resolved/isParticipant;
+- butonul are disabled={hasSubmitted || resolved || !isParticipant}.
+
+Problema: selectedOption NU este folosit în condiția disabled și nici în verificarea din handleSelectChoice.
+Așadar, între primul click și actualizarea stării venite de la server, utilizatorul poate apăsa altă variantă. selectedOption poate fi suprascris local.
+
+Serverul are un guard pentru răspunsuri duplicate în submitAnswer(), dar clientul nu așteaptă confirmarea și nu afișează respingerea. În consecință, ceea ce vede utilizatorul ca răspuns selectat local poate fi diferit de răspunsul pe care serverul l-a acceptat primul.
+
+Aceasta trebuie reparată atât în frontend, cât și în backend.
+
+D. BUG CONFIRMAT: CLIENTUL NU FOLOSEȘTE CONFIRMAREA DE LA SERVER PENTRU RĂSPUNS
+
+În src/App.tsx, handleSubmitAnswer() face:
+  socketService.getSocket().emit('submit_answer', { answer });
+
+Nu transmite callback de confirmare.
+
+În server/socketHandler.ts există deja suport pentru callback:
+  socket.on('submit_answer', (data = {}, callback) => {
+    if (currentRoomId && data.answer !== undefined)
+      callback?.(gameManager.submitAnswer(currentRoomId, currentUserId, data.answer));
+  });
+
+Deci frontend-ul nu folosește funcționalitatea de confirmare deja disponibilă pe server.
+
+La fel, în handleSelectTerritory() callback-ul este prezent, dar corpul pentru eroare este gol:
+  if (!res.success && res.message) {
+    // Shown in HUD/alert
+  }
+
+Astfel, utilizatorul poate să nu primească o explicație atunci când serverul refuză selecția unui teritoriu.
+
+E. BUG CONFIRMAT: „FĂRĂ RĂSPUNS” ESTE NUMĂRAT CA RĂSPUNS GREȘIT
+
+În server/gameEngine.ts, în rezolvarea fazei conquest, bucla face:
+  if (sub && Number(sub.answer) === q.correctAnswerIndex) {
+    ...
+  } else {
+    p.wrongAnswers++;
+  }
+
+Aici orice participant fără intrare în playerAnswers este numărat ca răspuns greșit.
+
+În rezolvarea duelului din faza war, lipsa răspunsului conduce de asemenea, în unele situații, la incrementarea wrongAnswers.
+
+Cerința jocului este ca un jucător care nu răspunde până la expirarea timpului să fie marcat NO_RESPONSE și să nu fie considerat nici corect, nici greșit în statistică.
+
+F. HUD-UL POATE SUGERA GREȘIT CĂ DOAR UN JUCĂTOR RĂSPUNDE
+
+În src/components/GameHUD.tsx, statusul „RÂNDUL TĂU!” / „Rândul lui: ...” și evidențierea unui singur activePlayerIndex sunt folosite și atunci când există o întrebare globală conquest/allocation.
+
+Într-o întrebare comună, activePlayerIndex nu reprezintă un singur jucător care trebuie să răspundă. Toți participanții activi trebuie să răspundă simultan.
+
+În timpul unei întrebări comune, HUD-ul trebuie să afișeze clar „TOȚI RĂSPUND” și progresul răspunsurilor (de exemplu 2/3 răspunsuri primite). Evidențierea unui singur jucător drept „jucător activ” trebuie suspendată în acest context.
+
+======================================================================
+2. COMPORTAMENTUL OBLIGATORIU AL FAZEI DE CUCERIRE
+======================================================================
+
+Această secțiune este foarte importantă. Implementează comportamentul de mai jos fără interpretări diferite între frontend și backend.
+
+2.1 O singură întrebare comună
+
+Pentru fiecare rundă de cucerire:
+1. Serverul selectează o singură întrebare grilă.
+2. Serverul creează un singur game.currentQuestion pentru camera respectivă.
+3. Aceeași întrebare, același text și aceeași ordine a celor patru variante sunt trimise tuturor jucătorilor activi.
+4. Toți jucătorii activi văd modalul în același timp.
+5. Toți au același startTime și același deadline autoritativ stabilit de server.
+6. Fiecare jucător poate trimite un singur răspuns.
+7. Jucătorii pot răspunde în orice moment în intervalul de 12 secunde.
+8. Dacă toți jucătorii activi au răspuns, întrebarea se poate închide imediat.
+9. Dacă unul sau mai mulți nu răspund, serverul așteaptă până la expirarea celor 12 secunde.
+10. La rezolvare, rezultatul este transmis tuturor clienților în același timp.
+
+Nu crea întrebări separate pentru fiecare jucător.
+Nu porni un timer separat pentru fiecare client.
+Nu folosi activePlayerIndex pentru a limita răspunsurile în conquest sau allocation.
+Nu închide întrebarea după primul răspuns.
+
+2.2 Cine are dreptul să răspundă
+
+- Toți jucătorii neeliminați din meci.
+- Jucătorii AI participă după aceleași reguli.
+- Un jucător eliminat nu participă.
+- Un utilizator care nu face parte din camera curentă nu poate răspunde.
+- În război, numai atacatorul și apărătorul răspund.
+
+Serverul trebuie să valideze eligibilitatea independent de client.
+
+2.3 Rezultatul întrebării comune
+
+După terminarea întrebării:
+- Serverul identifică răspunsurile corecte.
+- Răspunsurile greșite rămân greșite.
+- Lipsa răspunsului devine NO_RESPONSE și nu se numără ca răspuns greșit.
+- Jucătorii corecți sunt sortați după timpul serverului de trimitere.
+- Fiecare jucător corect primește câte o oportunitate de selecție a unui teritoriu neutru.
+- Ordinea de selecție este ordinea răspunsurilor corecte, de la cel mai rapid la cel mai lent.
+- Fiecare poate selecta cel mult un teritoriu în runda respectivă.
+- Jucătorul greșit sau fără răspuns nu primește selecție în acea rundă.
+
+2.4 Selectarea teritoriului de către jucătorul corect
+
+După afișarea rezultatului:
+- Întrebarea se închide pentru toți.
+- Primul jucător corect din coadă devine picker.
+- Numai acel jucător poate selecta o regiune.
+- Poate selecta un teritoriu neutru valid, adiacent domeniului său.
+- Are 15 secunde.
+- Dacă nu selectează, serverul alege automat un teritoriu valid.
+- Dacă nu există niciun teritoriu neutru valid pentru acel jucător, nu inventa o alocare neadiacentă: înregistrează selecția ca imposibilă și treci corect la următorul jucător/faza următoare.
+- După alocare, regiunea devine proprietatea lui.
+- Regiunea primește 200 puncte.
+- Scorul jucătorului crește cu exact 200.
+- Numărul de teritorii crește cu exact 1.
+- Harta și HUD-ul sunt actualizate la toți jucătorii.
+- Abia apoi treci la următorul jucător din coadă.
+
+Nu atribui automat o regiune înainte ca întrebarea să fie rezolvată.
+Nu acorda aceeași regiune la doi jucători.
+Nu acorda 200 de puncte de două ori pentru aceeași regiune.
+
+2.5 Feedback vizual pentru punctaj
+
+După un răspuns corect, cât timp jucătorul așteaptă selecția, afișează:
+„RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu. Regiunea aleasă îți va aduce 200 puncte.”
+
+Nu lăsa jucătorul să creadă că punctele s-au pierdut.
+
+După selectarea efectivă a teritoriului afișează:
+„TERITORIU CUCERIT! +200 PCT”
+și actualizează imediat scorul.
+
+Dacă selecția este respinsă, afișează mesajul real primit de la server. Nu lăsa un click respins fără explicație.
+
+======================================================================
+3. BLOCHEAZĂ RĂSPUNSUL DUPĂ PRIMA ALEGERE
+======================================================================
+
+Această regulă este obligatorie pentru întrebările grilă și numerice.
+
+3.1 Blocare imediată în frontend
+
+În src/components/QuestionModal.tsx introdu o stare de trimitere locală, asociată identificatorului întrebării și startTime-ului acesteia.
+
+Poți folosi un model de forma:
+- idle
+- submitting
+- accepted
+- rejected
+- expired
+
+La primul click pe o variantă grilă:
+1. Verifică dacă întrebarea este încă activă.
+2. Verifică dacă utilizatorul este participant.
+3. Verifică dacă nu a trimis deja răspunsul.
+4. Setează imediat starea locală la submitting, înainte de emiterea Socket.IO.
+5. Păstrează varianta aleasă vizibilă.
+6. Dezactivează imediat toate cele patru variante.
+7. Trimite răspunsul către server.
+8. Așteaptă confirmarea serverului.
+
+Nu aștepta game_state_update pentru a bloca butoanele. Blocarea trebuie să fie instantanee, la primul click.
+
+Folosește și un useRef pentru a preveni două clickuri foarte rapide înainte ca React să aplice re-render-ul. Un state simplu poate să nu fie suficient pentru două evenimente care apar aproape simultan.
+
+3.2 Blocare după trimiterea răspunsului numeric
+
+După apăsarea butonului Trimite sau Enter:
+- Marchează răspunsul ca pending imediat.
+- Dezactivează câmpul numeric.
+- Dezactivează toate tastele virtuale.
+- Dezactivează butoanele ±, punct, ștergere și resetare.
+- Dezactivează butonul Trimite.
+- Nu permite modificarea valorii trimise.
+- Afișează mesajul „Răspuns trimis. Așteaptă ceilalți jucători.”
+
+Un simplu click pe buton nu trebuie să lase utilizatorul să editeze numărul și să trimită altul înainte de confirmarea serverului.
+
+3.3 Resetarea blocării
+
+Blocarea se resetează numai când începe o întrebare nouă, identificată prin question.id și startTime.
+
+Nu reseta blocarea la un simplu re-render sau la un game_state_update care conține aceeași întrebare.
+
+Dacă serverul confirmă că răspunsul a fost acceptat, păstrează starea accepted până la următoarea întrebare.
+
+Dacă serverul respinge răspunsul dintr-un motiv recuperabil (de exemplu input invalid), afișează mesajul și permite corectarea doar dacă serverul confirmă că nu a înregistrat răspunsul.
+
+Dacă serverul răspunde „Ai trimis deja răspunsul”, NU debloca formularul: răspunsul anterior rămâne cel valid.
+
+Dacă timpul a expirat, dezactivează formularul definitiv pentru acea întrebare.
+
+3.4 Evidențierea răspunsului selectat
+
+Nu utiliza numai selectedOption ca dovadă că serverul a acceptat răspunsul.
+
+Separă clar:
+- selecția locală/pending;
+- răspunsul acceptat de server;
+- răspunsul confirmat după rezolvare.
+
+Nu permite ca o a doua apăsare locală să suprascrie vizual răspunsul deja acceptat de server.
+
+======================================================================
+4. CONFIRMARE SOCKET.IO ȘI FEEDBACK PENTRU ERORI
+======================================================================
+
+4.1 App.tsx
+
+Modifică handleSubmitAnswer astfel încât să transmită callback de confirmare la socket.emit('submit_answer', ...).
+
+În prezent funcția trimite evenimentul fără callback. Socket handler-ul din server/socketHandler.ts acceptă deja callback și întoarce rezultatul gameManager.submitAnswer(). Folosește această confirmare.
+
+Schimbă tipul prop-ului onSubmitAnswer din QuestionModal astfel încât să poată comunica succesul sau eșecul (callback sau Promise<boolean/result>). Păstrează tiparea TypeScript strictă; evită any dacă se poate.
+
+Confirmarea trebuie să conțină cel puțin:
+- success;
+- message;
+- eventual answerId/questionId dacă este necesar pentru corelare.
+
+4.2 socketHandler.ts
+
+Păstrează validarea server-side.
+
+Asigură-te că răspunsurile duplicate returnează success:false și un mesaj clar.
+
+Asigură-te că răspunsurile după deadline returnează success:false.
+
+Asigură-te că răspunsurile utilizatorilor care nu fac parte din întrebare sunt respinse.
+
+Nu trimite răspunsul corect către client înainte de rezolvare.
+
+4.3 App.tsx – selectarea teritoriului
+
+handleSelectTerritory are deja callback, dar nu afișează nicio eroare.
+
+Adaugă o zonă de notificări în GameView/HUD sau un toast care afișează:
+- succes la selectarea teritoriului;
+- motivul respingerii;
+- expirarea timerului;
+- faptul că nu este rândul utilizatorului;
+- faptul că regiunea nu mai este liberă;
+- faptul că regiunea nu este adiacentă.
+
+Nu folosi alert() pentru fiecare interacțiune de joc dacă poți afișa un toast discret.
+
+4.4 Confirmarea și sincronizarea punctajului
+
+După o selecție acceptată de server:
+- serverul modifică proprietarul teritoriului;
+- serverul atribuie punctajul;
+- serverul actualizează numărul de teritorii;
+- serverul emite game_state_update către întreaga cameră;
+- callback-ul confirmă succesul clientului care a acționat.
+
+Nu actualiza scorul numai local și nu avea un scor diferit pe client și server.
+
+======================================================================
+5. CORECTAREA STATISTICII „FĂRĂ RĂSPUNS”
+======================================================================
+
+Cerința utilizatorului: dacă timpul expiră fără răspuns, nu se ia niciun răspuns în considerare.
+
+În cod, lipsa răspunsului trebuie tratată separat de răspunsul greșit.
+
+Folosește o stare explicită sau absența intrării în playerAnswers ca NO_RESPONSE, dar nu o transforma în răspuns greșit la statistici.
+
+5.1 Conquest
+
+În rezolvarea conquest:
+- dacă există sub și răspunsul este corect: correctAnswers++;
+- dacă există sub și răspunsul este incorect: wrongAnswers++;
+- dacă sub lipsește: nici correctAnswers++, nici wrongAnswers++.
+
+5.2 War
+
+În rezolvarea duelului:
+- răspuns corect: correctAnswers++;
+- răspuns explicit greșit: wrongAnswers++;
+- NO_RESPONSE: nu modifica niciuna dintre cele două statistici.
+
+Nu schimba rezultatul defensiv deja stabilit fără teste. Apărătorul poate păstra teritoriul conform regulilor dacă atacatorul nu răspunde, dar lipsa răspunsului nu trebuie înregistrată ca răspuns greșit în statistica utilizatorului.
+
+5.3 Allocation
+
+Întrebarea numerică trebuie să compare doar răspunsurile efectiv trimise înainte de deadline.
+
+Nu adăuga răspunsul 0 pentru un jucător care nu a răspuns.
+
+Nu permite ca lipsa răspunsului să câștige sau să influențeze diferența numerică.
+
+======================================================================
+6. HUD-UL TREBUIE SĂ ARATE CORECT CINE RĂSPUNDE
+======================================================================
+
+În prezent GameHUD folosește activePlayerIndex pentru mesajul „Rândul tău!” și pentru evidențierea unui singur card.
+
+În timpul unei întrebări comune conquest/allocation, acest lucru este înșelător.
+
+Modifică HUD astfel:
+
+Pentru întrebări comune (phaseContext conquest sau allocation):
+- afișează „TOȚI JUCĂTORII RĂSPUND”;
+- afișează întrebarea ca acțiune comună;
+- afișează progresul răspunsurilor, de exemplu „2 / 3 răspunsuri primite”;
+- nu afișa „Rândul lui X” ca și cum numai X ar putea răspunde;
+- nu evidenția exclusiv activePlayerIndex în timp ce întrebarea este comună;
+- cardul fiecărui jucător poate afișa starea lui: „A răspuns”, „Așteaptă”, „Eliminat”.
+
+Pentru întrebări de război:
+- afișează atacatorul și apărătorul;
+- marchează separat cine a trimis răspunsul;
+- ceilalți jucători sunt spectatori.
+
+Pentru fazele de selecție (bază, alegere teritoriu, țintă atac, alegere după departajare):
+- afișează jucătorul care are dreptul să selecteze;
+- ceilalți sunt informați că așteaptă.
+
+Nu confunda întrebarea comună cu faza ulterioară de alegere a teritoriului.
+
+======================================================================
+7. AFIȘAREA REZULTATULUI UNEI ÎNTREBĂRI
+======================================================================
+
+După rezolvarea întrebării comune, toți jucătorii trebuie să vadă același rezultat.
+
+Afișează:
+- întrebarea;
+- răspunsul corect;
+- propria stare: corect / greșit / fără răspuns;
+- răspunsurile celorlalți (după rezolvare, nu înainte);
+- ordinea de selecție a jucătorilor care au răspuns corect;
+- mesajul că fiecare jucător corect va putea alege un teritoriu.
+
+Pentru jucătorul corect:
+„RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu neutru. Selectează o regiune adiacentă în 15 secunde. După alocare vei primi 200 puncte.”
+
+Pentru jucătorul greșit:
+„RĂSPUNS GREȘIT. Nu primești drept de selecție în această rundă.”
+
+Pentru jucătorul fără răspuns:
+„TIMP EXPIRAT. Răspunsul nu a fost înregistrat și nu este numărat ca răspuns greșit.”
+
+După selectarea regiunii:
+„TERITORIU CUCERIT: [nume] – +200 PCT.”
+
+Nu afișa răspunsurile participanților înainte ca întrebarea să fie rezolvată.
+
+======================================================================
+8. BUGURI ȘI CAZURI-LIMITĂ CARE TREBUIE VERIFICATE
+======================================================================
+
+8.1 Primul jucător răspunde corect, ceilalți încă nu au răspuns
+
+Așteptare:
+- jucătorul respectiv vede „Răspuns înregistrat”;
+- răspunsurile lui sunt blocate;
+- întrebarea rămâne activă pentru ceilalți;
+- nu se acordă încă teritoriu;
+- nu se acordă încă 200 puncte;
+- timerul continuă pentru toți.
+
+8.2 Toți jucătorii au răspuns înainte de deadline
+
+Așteptare:
+- întrebarea se închide imediat;
+- se calculează toate răspunsurile o singură dată;
+- nu se așteaptă inutil până la expirarea timerului;
+- nu se execută de două ori resolveCurrentQuestion;
+- se pornește coada de selecție pentru jucătorii corecți.
+
+8.3 Un jucător nu răspunde
+
+Așteptare:
+- timerul expiră la server;
+- jucătorul primește NO_RESPONSE;
+- nu e înregistrat ca răspuns greșit;
+- nu primește drept de selecție;
+- jocul continuă.
+
+8.4 Utilizatorul apasă de două ori foarte repede
+
+Așteptare:
+- frontend-ul blochează imediat după primul click;
+- serverul acceptă o singură trimitere;
+- a doua trimitere nu modifică prima;
+- scorul și statisticile nu sunt dublate;
+- răspunsul vizual este cel acceptat de server.
+
+8.5 Utilizatorul încearcă să schimbe răspunsul după 1 secundă
+
+Așteptare:
+- toate variantele rămân dezactivate;
+- inputul numeric rămâne dezactivat;
+- serverul respinge orice a doua trimitere;
+- utilizatorul vede clar că răspunsul a fost deja trimis.
+
+8.6 Utilizatorul apasă după expirarea timerului
+
+Așteptare:
+- serverul respinge trimiterea;
+- întrebarea este rezolvată o singură dată;
+- UI-ul nu afișează răspunsul ca acceptat;
+- jucătorul primește starea „Timp expirat”.
+
+8.7 Jucătorul răspunde corect și apoi alege un teritoriu
+
+Așteptare:
+- jucătorul apare în coada de selecție;
+- devine singurul care poate selecta;
+- selectează un teritoriu neutru adiacent;
+- serverul atribuie proprietatea;
+- score crește exact cu 200;
+- territoriesCount crește cu 1;
+- harta arată culoarea jucătorului și punctajul 200;
+- toți clienții văd aceeași stare.
+
+8.8 Jucătorul răspunde corect, dar nu selectează nimic
+
+Așteptare:
+- după 15 secunde serverul selectează automat o regiune VALIDĂ, adiacentă;
+- dacă nu există nicio regiune validă, nu acordă o regiune neadiacentă;
+- nu dublează punctele;
+- următorul jucător corect din coadă primește selecția.
+
+8.9 Două răspunsuri corecte în aceeași rundă
+
+Așteptare:
+- ambii jucători au dreptul la câte o selecție;
+- cel mai rapid alege primul;
+- al doilea alege după confirmarea primei alocări;
+- fiecare poate primi un singur teritoriu;
+- niciun teritoriu nu poate avea doi proprietari.
+
+8.10 Niciun răspuns corect
+
+Așteptare:
+- nicio regiune nu se alocă;
+- nimeni nu primește 200 puncte;
+- runda se termină corect;
+- începe întrebarea următoare sau faza următoare conform regulilor existente.
+
+======================================================================
+9. TESTE AUTOMATE OBLIGATORII
+======================================================================
+
+Adaugă sau actualizează testele pentru următoarele situații.
+
+TEST A – Întrebare comună în conquest
+- Creează un meci cu 3 jucători.
+- Pornește conquest.
+- Verifică faptul că există exact un currentQuestion per room.
+- Verifică faptul că același question.id și același startTime sunt transmise tuturor.
+- Verifică faptul că toți cei 3 jucători sunt participanți eligibili.
+
+TEST B – Răspunsuri simultane
+- Jucătorul 1 răspunde corect.
+- Jucătorul 2 răspunde greșit.
+- Jucătorul 3 răspunde corect.
+- Întrebarea rămâne activă până când jucătorul 3 trimite răspunsul.
+- La rezolvare, jucătorii 1 și 3 sunt în coada de alegere.
+- Jucătorul 2 nu este în coadă.
+
+TEST C – O singură trimitere
+- Jucătorul 1 trimite varianta 2.
+- Serverul acceptă.
+- Jucătorul 1 trimite imediat varianta 3.
+- Serverul respinge a doua trimitere.
+- Prima variantă rămâne răspunsul oficial.
+- Contoarele de răspuns corect/greșit nu se dublează.
+
+TEST D – Lock frontend
+- La primul click, toate variantele grilă se dezactivează în aceeași randare.
+- Al doilea click nu apelează onSubmitAnswer.
+- La întrebarea numerică, după Trimite, inputul și toate tastele se dezactivează imediat.
+- Enter repetat nu trimite alt răspuns.
+
+TEST E – Confirmare Socket.IO
+- Clientul trimite submit_answer cu callback.
+- Serverul returnează success:true pentru prima trimitere.
+- Serverul returnează success:false pentru a doua trimitere.
+- Clientul afișează mesajul corespunzător.
+
+TEST F – Lipsă răspuns
+- Jucătorul 1 răspunde corect.
+- Jucătorul 2 nu răspunde.
+- Jucătorul 3 răspunde greșit.
+- După timeout, jucătorul 2 are NO_RESPONSE.
+- Jucătorul 2 nu primește correctAnswers și nici wrongAnswers.
+- Jucătorul 3 primește wrongAnswers +1.
+
+TEST G – Punctaj după selecție
+- Un jucător răspunde corect la întrebarea globală.
+- Înainte să selecteze regiunea, scorul nu crește cu 200.
+- Serverul îi acordă drept de selecție.
+- Selectează un teritoriu valid.
+- Scorul crește cu exact 200.
+- Teritoriul primește ownerId corect și points=200.
+- A doua selecție este imposibilă pentru același drept de alegere.
+
+TEST H – Două selecții corecte
+- Doi jucători răspund corect.
+- Primul selectează o regiune.
+- Al doilea primește dreptul după primul.
+- Ambii primesc câte un teritoriu de 200 puncte dacă există regiuni valide.
+- Nu există dublă alocare.
+
+TEST I – Jucător eliminat / spectator
+- Jucător eliminat nu poate răspunde în conquest.
+- Un socket care nu aparține camerei nu poate trimite answer.
+- Un spectator nu poate răspunde la duelul war.
+
+TEST J – Sincronizare cu 3 clienți reali
+- Deschide același roomId în trei browsere/sesiuni distincte.
+- Confirmă că întrebarea apare simultan.
+- Confirmă același text și aceleași variante în toate cele trei ferestre.
+- Trimite răspunsuri diferite.
+- Confirmă starea „a răspuns” pe fiecare client.
+- Confirmă închiderea după ultimul răspuns.
+- Confirmă același rezultat și aceeași hartă în toate ferestrele.
+
+======================================================================
+10. MODIFICĂRILE AȘTEPTATE ÎN FIȘIERE
+======================================================================
+
+Analizează și modifică, după necesitate:
+
+1. server/gameEngine.ts
+   - startQuestion
+   - submitAnswer
+   - resolveCurrentQuestion
+   - triggerNextConquestQuestion
+   - processNextConquestPick
+   - selectTerritory
+   - handleSelectionTimeout
+   - orice helper de validare și punctaj
+
+2. server/socketHandler.ts
+   - submit_answer cu acknowledgement;
+   - select_territory cu acknowledgement;
+   - nu accepta payload-uri cu userId furnizat de client; folosește identitatea autentificată din socket.data.
+
+3. src/App.tsx
+   - handleSubmitAnswer să folosească acknowledgement;
+   - handleSelectTerritory să afișeze erorile și confirmările;
+   - propagă răspunsul serverului către GameView/QuestionModal.
+
+4. src/views/GameView.tsx
+   - transmite handler-ul de trimitere cu rezultat/Promise;
+   - afișează feedback de acțiune;
+   - păstrează state-ul camerei din server drept sursă de adevăr.
+
+5. src/components/QuestionModal.tsx
+   - lock local imediat la prima trimitere;
+   - starea pending/accepted/rejected/expired;
+   - blocare pentru grilă și numeric;
+   - mesaj clar că întrebarea este comună în conquest/allocation;
+   - diferențiază NO_RESPONSE.
+
+6. src/components/GameHUD.tsx
+   - afișează „TOȚI RĂSPUND” în conquest/allocation;
+   - contor răspunsuri primite / necesare;
+   - nu sugerează că numai activePlayerIndex poate răspunde.
+
+7. src/types/game.ts
+   - adaugă tipuri explicite pentru statusul răspunsului dacă sunt necesare;
+   - păstrează tipurile strict definite și compatibile cu serverul.
+
+8. src/game/rules.test.ts și teste server
+   - acoperă toate cazurile din secțiunea 9.
+
+======================================================================
+11. CERINȚE DE CALITATE ȘI SECURITATE
+======================================================================
+
+- Serverul este singura autoritate pentru răspunsul acceptat, deadline și scor.
+- Nu trimite answer corect în snapshot înainte ca întrebarea să fie rezolvată.
+- Nu accepta două răspunsuri de la același player pentru același question instance.
+- Folosește question.id + startTime sau un questionInstanceId pentru a corela acțiunile.
+- Previne procesarea dublă a timeout-ului și a allSubmitted în același moment.
+- Rezolvarea întrebării trebuie să fie idempotentă: o singură rezolvare, un singur set de modificări de scor.
+- Nu accepta răspunsurile după deadline chiar dacă requestul ajunge la server imediat după timeout.
+- Nu considera un răspuns absent ca 0 la întrebările numerice.
+- Nu trimite rezultatele altor jucători înainte de închiderea întrebării.
+- Nu permite ca un răspuns local să fie afișat ca acceptat înainte de confirmarea serverului.
+
+======================================================================
+12. CE NU TREBUIE SĂ FACI
+======================================================================
+
+Nu:
+- transforma întrebarea comună din conquest în întrebări separate pe jucător;
+- bloca întrebarea după primul răspuns primit de la orice jucător;
+- acorda 200 puncte de două ori;
+- acorda puncte pentru un teritoriu care nu a fost alocat;
+- permite schimbarea răspunsului după prima trimitere;
+- trata NO_RESPONSE ca wrong answer;
+- ascunde erorile de server;
+- crea un timer local independent pentru fiecare client;
+- folosi activePlayerIndex pentru a restricționa răspunsul la o întrebare comună;
+- modifica mecanica fazei de război în timp ce repari conquest;
+- modifica arbitrar geografia-sursă sau punctajele când repari răspunsurile și scorul; repararea explicită a geometriei teritoriale și a preset-urilor hărții este obligatorie conform secțiunilor 37–41;
+- modifica alte funcționalități fără legătură cu această problemă.
+
+======================================================================
+13. CRITERII DE ACCEPTARE – CÂND CONSIDERĂM REPARAȚIA FINALIZATĂ
+======================================================================
+
+Reparația este finalizată numai când toate condițiile următoare sunt adevărate:
+
+[ ] În conquest există o singură întrebare comună pe rundă.
+[ ] Toți jucătorii activi văd exact aceeași întrebare în același timp.
+[ ] Toți pot răspunde independent în timpul comun.
+[ ] Întrebarea se rezolvă după ce toți au răspuns sau la timeout.
+[ ] Fiecare jucător poate trimite un singur răspuns.
+[ ] Prima alegere este blocată imediat în UI.
+[ ] Serverul respinge orice răspuns duplicat.
+[ ] Răspunsul acceptat de server este cel afișat ca răspuns final.
+[ ] Un răspuns corect acordă dreptul de alegere a unui teritoriu.
+[ ] Jucătorul corect poate alege manual un teritoriu valid.
+[ ] După alocare, teritoriul valorează 200 puncte și scorul se actualizează pentru toți.
+[ ] Un răspuns greșit nu acordă drept de alegere.
+[ ] NO_RESPONSE nu este numărat ca wrong answer.
+[ ] Erorile la selecția teritoriului sunt afișate clar.
+[ ] HUD-ul arată „TOȚI RĂSPUND” în întrebările comune.
+[ ] Toate testele unitare și de integrare trec.
+[ ] Build-ul și TypeScript typecheck trec.
+[ ] Un test cu trei clienți/browser-e confirmă sincronizarea reală.
+
+======================================================================
+14. RAPORTUL PE CARE TREBUIE SĂ ÎL PREZINȚI LA FINAL
+======================================================================
+
+După implementare prezintă:
+1. Care era cauza exactă a fiecărei probleme.
+2. Fișierele modificate.
+3. Cum funcționează acum întrebarea comună în conquest.
+4. Cum este blocat primul răspuns în frontend.
+5. Cum este respins un răspuns duplicat de server.
+6. Când și de ce se acordă cele 200 puncte.
+7. Cum sunt tratate răspunsurile fără răspuns.
+8. Ce teste ai rulat și rezultatul fiecăruia.
+9. Rezultatul build-ului și typecheck-ului.
+10. Ce nu ai putut testa efectiv.
+
+Nu afirma că ai testat trei clienți reali dacă ai rulat doar teste unitare.
+Nu afirma că punctajul este reparat dacă nu ai testat fluxul complet: răspuns corect -> drept de alegere -> teritoriu selectat -> +200 puncte -> sincronizare la toți.
+
+Începe prin a reproduce problema, apoi repar-o. Păstrează întrebarea comună și îmbunătățește corect blocarea, confirmarea, punctajul și feedback-ul.
+
+
+########################################################################
+# ADDENDUM V2.0 – RĂZBOI SIMULTAN, DUELURI MULTIPLE, REZULTATE VIZUALE
+# ȘI EXTINDEREA MASIVĂ A BĂNCII DE ÎNTREBĂRI
+########################################################################
+
+Versiune: 2.0
+Data adăugării: 09.11.2026
+Repository: https://github.com/Jorjicaru/QuizMore
+Branch verificat anterior: main
+Commit verificat anterior: 8839408cc633a8d95e5ffe97f5f6b17f4c066ebb
+
+IMPORTANT: Acest addendum EXTINDE documentul anterior și are prioritate în
+cazul în care există contradicții cu descrierea veche a fazei WAR. În special,
+logica veche cu un singur atacator pe tură trebuie înlocuită pentru meciurile
+cu număr par de jucători (4, 6, 8 și 10), conform secțiunii 5 de mai jos.
+Nu elimina regulile deja stabilite pentru alegerea bazelor, cucerirea
+teritoriilor, împărțirea teritoriilor, scoruri, cetăți sau timere decât acolo
+unde acest addendum cere explicit modificări.
+
+Utilizatorul a atașat două capturi de referință:
+- Captura numerică: întrebare cu un răspuns numeric corect, răspunsurile
+  individuale ale jucătorilor, timpii fiecăruia și valoarea corectă afișată.
+- Captura grilă: patru variante, iar varianta selectată de fiecare jucător
+  trebuie identificată vizual prin culoarea lui; răspunsul corect trebuie
+  evidențiat separat.
+
+Folosește imaginile atașate conversației drept referință vizuală. Nu copia
+pixel cu pixel designul vechi; reproduce claritatea informației în stilul
+vizual actual CONQUIZ.
+
+======================================================================
+23. NOUA MECANICĂ DE RĂZBOI: MAI MULTE ATACURI SIMULTANE
+======================================================================
+
+23.1. Cerința principală
+
+În partidele cu 4, 6, 8 sau 10 jucători, faza WAR nu trebuie să funcționeze
+cu un singur atacator care joacă pe rând în timp ce ceilalți așteaptă.
+Vreau mai multe dueluri desfășurate simultan în cadrul aceleiași runde.
+
+Exemplu obligatoriu pentru 4 jucători:
+- Jucătorii 1 și 2 sunt desemnați atacatori în runda curentă.
+- Jucătorii 3 și 4 sunt desemnați apărători.
+- Jucătorul 1 atacă un teritoriu deținut de jucătorul 3.
+- Jucătorul 2 atacă un teritoriu deținut de jucătorul 4.
+- Jucătorii 1 și 2 NU se pot ataca între ei în aceeași rundă, deoarece amândoi
+  sunt atacatori.
+- Jucătorii 3 și 4 NU se pot ataca între ei în aceeași rundă, deoarece amândoi
+  sunt apărători.
+- Niciun jucător nu poate fi simultan atacator într-un duel și apărător în
+  altul în aceeași rundă.
+- Ambele dueluri folosesc aceeași întrebare grilă, cu aceleași patru variante
+  și aceeași ordine a variantelor.
+- Toți participanții la duelurile acelei runde primesc întrebarea simultan.
+
+Perechile pot fi și inversate, de exemplu 1 atacă 4 și 2 atacă 3. Perechile se
+stabilesc de server, nu de clienți.
+
+23.2. Numărul de dueluri simultane
+
+Pentru numărul inițial de jucători:
+
+| Jucători inițiali | Atacatori simultani | Apărători simultani | Dueluri simultane |
+|-------------------:|--------------------:|--------------------:|-------------------:|
+| 2                  | 1                   | 1                   | 1                  |
+| 4                  | 2                   | 2                   | 2                  |
+| 6                  | 3                   | 3                   | 3                  |
+| 8                  | 4                   | 4                   | 4                  |
+| 10                 | 5                   | 5                   | 5                  |
+
+Pentru 4, 6, 8 și 10 jucători, numărul maxim normal de dueluri într-o rundă
+este jumătate din numărul jucătorilor activi, cu condiția să existe suficiente
+atacuri legale și teritorii valide.
+
+Numără jucătorii umani și AI în același mod. Un bot este un participant real
+al motorului jocului și trebuie să respecte regulile de rol, atac, răspuns,
+timer și punctaj.
+
+23.3. Stabilirea rolurilor pentru o rundă
+
+La începutul fiecărei runde WAR, serverul trebuie să creeze un plan nou de
+atacuri simultane.
+
+Planul trebuie să conțină:
+- Identificatorul rundei.
+- Numărul rundei.
+- Lista atacatorilor.
+- Lista apărătorilor.
+- Perechile atacator-apărător.
+- Teritoriul țintă pentru fiecare pereche, după selecție.
+- Lista jucătorilor care nu pot participa la o pereche validă, dacă există.
+- Starea fiecărui duel.
+- Starea generală a rundei.
+
+Pentru 4, 6, 8 și 10 jucători, împarte jucătorii activi în două grupuri cât
+mai egale: atacatori și apărători. Fiecare jucător activ poate apărea o singură
+dată în planul unei runde.
+
+Nu permite:
+- Același jucător în lista atacatorilor și în lista apărătorilor.
+- Același atacator în două dueluri simultane.
+- Același apărător în două dueluri simultane.
+- Două atacuri simultane asupra aceluiași apărător.
+- Două dueluri care folosesc același teritoriu țintă.
+- Un atac asupra unui jucător desemnat atacator în aceeași rundă.
+- Un atac asupra unui jucător eliminat sau fără teritorii.
+
+23.4. Alternarea rolurilor și corectitudinea pe parcursul jocului
+
+Nu desemna mereu aceiași jucători ca atacatori.
+
+La fiecare rundă completă de război, inversează rolurile cât mai echilibrat:
+- Jucătorii care au fost atacatori în runda anterioară ar trebui să devină
+  apărători în runda următoare.
+- Jucătorii care au fost apărători ar trebui să devină atacatori.
+- Dacă eliminările sau lipsa atacurilor legale împiedică alternarea exactă,
+  folosește un sistem de rotație care menține numărul de runde petrecute în
+  rolul de atacator/apărător cât mai echilibrat.
+- Nu permite ca randomizarea să dezavantajeze repetat același participant.
+
+Păstrează istoricul rolurilor pentru fiecare jucător în fiecare rundă.
+
+23.5. Perechile de atac și apărare
+
+După stabilirea celor două grupuri, asociază fiecărui atacator un apărător
+unic.
+
+Perechile pot fi amestecate la fiecare rundă, dar trebuie să respecte
+următoarele:
+- Atacatorul trebuie să aibă cel puțin un teritoriu legal adiacent unui
+  teritoriu deținut de apărător.
+- Atacatorul poate ataca numai un teritoriu al apărătorului care i-a fost
+  repartizat în runda respectivă.
+- Nu poate selecta un teritoriu aparținând altui apărător.
+- Apărătorul nu poate ataca în aceeași rundă.
+- O pereche nu trebuie să fie repetată inutil în runde consecutive dacă există
+  alte asocieri legale.
+
+Înainte de blocarea perechilor, serverul trebuie să verifice graful de
+vecinătate și existența țintelor legale. Folosește un algoritm de matching
+(maximum bipartite matching sau o soluție echivalentă) pentru a obține cel mai
+mare număr de perechi valide.
+
+Nu presupune că orice împărțire aleatorie în două grupuri produce automat
+atacuri legale. Dacă o pereche nu are niciun teritoriu atacabil, rearanjează
+perechile înainte de începerea selecției.
+
+Dacă nu se poate forma numărul maxim de perechi:
+- Creează doar duelurile valide.
+- Participanții fără pereche nu atacă în runda respectivă.
+- Nu inventa teritorii țintă.
+- Nu bloca runda așteptând un jucător care nu are acțiune legală.
+- Înregistrează în jurnal motivul pentru care un duel nu a putut fi creat.
+
+23.6. Ce se întâmplă după eliminări
+
+După eliminări, numărul jucătorilor activi poate deveni impar.
+
+În acest caz:
+- Creează maximum floor(număr_jucători_activi / 2) dueluri simultane.
+- Participantul/participanții fără pereche primesc BYE în runda respectivă.
+- BYE-ul trebuie rotit echitabil în rundele următoare.
+- Jucătorul cu BYE nu atacă și nu este atacat în acea rundă.
+- Jucătorii eliminați nu participă la plan, nu primesc întrebarea și nu pot
+  trimite răspunsuri.
+
+Pentru o partidă pornită cu 3, 5, 7 sau 9 jucători, păstrează o soluție
+compatibilă cu mecanica existentă dacă nu se poate construi o împărțire
+simultană echilibrată. Prioritatea explicită a acestei cerințe este pentru
+partidele cu 4, 6, 8 și 10 participanți.
+
+23.7. Selecția teritoriului atacat
+
+După ce rolurile și perechile au fost stabilite:
+- Toți atacatorii primesc simultan intervalul de selecție.
+- Fiecare atacator alege un teritoriu deținut de apărătorul perechii sale.
+- Teritoriul trebuie să fie adiacent domeniului atacatorului.
+- Fiecare atacator poate alege un singur teritoriu.
+- Fiecare apărător poate apăra un singur teritoriu în acea rundă.
+- Teritoriile care nu aparțin apărătorului repartizat nu sunt selectabile.
+- Nu permite ca doi atacatori să selecteze aceeași țintă.
+- Timerul de selecție rămâne cel stabilit pentru joc (15 secunde).
+
+Selecția este simultană: nu aștepta ca atacatorul 1 să termine selecția înainte
+ca atacatorul 2 să poată selecta.
+
+Dacă un atacator nu selectează în timp:
+- Serverul încearcă să aleagă automat un teritoriu legal al apărătorului
+  repartizat.
+- Dacă nu există țintă legală, duelul se marchează SKIPPED.
+- Nu acorda puncte și nu acorda bonus defensiv pentru o luptă care nu a avut
+  loc.
+
+După ce toate selecțiile s-au terminat sau expiră timerul, țintele sunt
+înghețate pentru runda curentă. Niciun client nu le mai poate schimba.
+
+23.8. O singură întrebare grilă comună pentru toate duelurile rundei
+
+După validarea tuturor țintelor:
+- Serverul selectează EXACT o întrebare grilă pentru runda WAR.
+- Aceeași întrebare este afișată tuturor participanților la duelurile valide.
+- Textul întrebării trebuie să fie identic.
+- Cele patru variante trebuie să fie identice și în aceeași ordine pentru
+  toți participanții.
+- `question.id`, `startTime` și deadline-ul trebuie să fie comune.
+- Nu genera o întrebare pentru fiecare pereche.
+- Nu genera o întrebare pentru fiecare jucător.
+- Toți atacatorii și toți apărătorii din duelurile valide răspund în același
+  interval de 12 secunde.
+
+Exemplu cu patru jucători:
+- Perechea 1: Jucătorul 1 atacă Jucătorul 3.
+- Perechea 2: Jucătorul 2 atacă Jucătorul 4.
+- Toți cei patru văd întrebarea X.
+- Toți cei patru răspund la întrebarea X.
+- Serverul rezolvă perechea 1 comparând răspunsurile 1 și 3.
+- Serverul rezolvă perechea 2 comparând răspunsurile 2 și 4.
+
+Exemplu cu șase jucători:
+- 1 atacă 4.
+- 2 atacă 5.
+- 3 atacă 6.
+- Toți cei șase primesc aceeași întrebare și răspund simultan.
+- Fiecare duel este rezolvat separat, folosind răspunsurile perechii sale.
+
+Nu compara răspunsul atacatorului 1 cu răspunsul apărătorului 5 dacă aceștia
+nu sunt în aceeași pereche.
+
+23.9. Cine poate răspunde la întrebarea comună WAR
+
+Poate răspunde numai un jucător care face parte dintr-o pereche validă a
+rundei curente.
+
+În cazul rundei cu 4 jucători, toți cei patru participă.
+În cazul rundei cu 6 jucători, toți cei șase participă dacă există trei
+perechi valide.
+
+Un jucător cu BYE nu trimite un răspuns și nu este inclus în lista de
+participanți necesari.
+
+Un jucător eliminat nu poate răspunde.
+
+Serverul validează lista de participanți din planul rundei. Nu accepta
+răspunsuri doar pentru că userId există în lista generală de jucători.
+
+23.10. Rezolvarea fiecărui duel din întrebarea comună
+
+După ce toți participanții au răspuns sau expiră timerul, serverul rezolvă
+fiecare pereche independent:
+
+A. Atacator corect, apărător greșit sau fără răspuns:
+- Atacatorul câștigă duelul.
+- Teritoriul țintă este cucerit.
+- Valoarea teritoriului devine 400 puncte.
+- Proprietatea se schimbă atomic.
+
+B. Atacator greșit sau fără răspuns, apărător corect:
+- Apărătorul păstrează teritoriul.
+- Apărătorul primește +100 puncte bonus defensiv, conform regulii existente.
+- Bonusul este asociat teritoriului și se anulează dacă acesta este cucerit
+  ulterior.
+
+C. Ambii greșesc sau unul/ambii nu răspund fără ca apărătorul să fie corect:
+- Apărătorul păstrează teritoriul.
+- Nu se acordă bonus defensiv.
+
+D. Ambii răspund corect:
+- Perechea intră în departajare numerică.
+- Nu rezolva duelul prin primul răspuns grilă.
+- Nu acorda încă teritoriu și nici bonus defensiv.
+
+Important: fiecare duel se evaluează doar cu cele două răspunsuri ale perechii
+sale. Rezultatul unei perechi nu trebuie să afecteze rezultatul celorlalte.
+
+23.11. Întrebarea numerică de departajare în război
+
+Dacă una sau mai multe perechi au avut AMBII jucători corecți la întrebarea
+grilă comună, generează o întrebare numerică de departajare.
+
+Folosește o singură întrebare numerică comună pentru toate perechile care
+necesită departajare în runda curentă. Aceeași valoare corectă, unitate,
+întrebare și același timer trebuie folosite pentru toate aceste perechi.
+
+Participanții la numerică sunt doar membrii perechilor care au nevoie de
+departajare. Jucătorii din duelurile deja rezolvate nu răspund din nou.
+
+Timpul de răspuns pentru întrebare numerică este cel configurat pentru
+întrebările numerice (10 secunde).
+
+Regula de câștig pentru întrebarea numerică:
+1. Calculează distanța absolută față de valoarea corectă:
+   `difference = abs(playerAnswer - targetNumber)`.
+2. Câștigă jucătorul cu diferența cea mai mică.
+3. Dacă diferențele sunt egale, câștigă cel care a trimis răspunsul mai rapid,
+   pe baza timestamp-ului serverului.
+4. Dacă există egalitate perfectă inclusiv la timp, apărătorul păstrează
+   teritoriul, fără bonus defensiv.
+5. Dacă un jucător nu răspunde, răspunsul său nu trebuie tratat ca zero.
+6. Dacă atacatorul nu răspunde și apărătorul a introdus un număr valid,
+   apărătorul câștigă comparația.
+7. Dacă apărătorul nu răspunde și atacatorul a introdus un număr valid,
+   atacatorul câștigă comparația.
+8. Dacă niciunul nu răspunde, apărătorul păstrează teritoriul fără bonus.
+
+Motivul acestei ordini este referința numerică atașată: trebuie să fie clar
+care răspuns este mai aproape de anul/valoarea corectă, iar timpul este
+criteriul de departajare atunci când precizia este egală. Afișează atât
+valoarea/diferența, cât și timpul, nu doar un mesaj generic de câștigător.
+
+Dacă produsul dorește o regulă strict „primul care răspunde câștigă indiferent
+de valoare”, aceasta nu este regula implicită a acestei specificații.
+
+23.12. Aplicarea rezultatelor simultane
+
+După terminarea tuturor duelurilor și a tuturor departajărilor numerice:
+- Aplică rezultatele pe server.
+- Actualizează proprietarii teritoriilor.
+- Actualizează valorile de 400 puncte pentru atacurile câștigate.
+- Actualizează bonusurile defensive.
+- Actualizează scorurile și numărul de teritorii.
+- Aplică distrugerea turnurilor cetăților dacă ținta este o bază.
+- Aplică eliminările numai după distrugerea celor trei turnuri.
+- Transferă teritoriile jucătorului eliminat conform regulilor deja stabilite.
+- Actualizează toate statisticile.
+- Publică rezultatele tuturor duelurilor împreună, astfel încât clienții să
+  nu vadă o stare parțială sau contradictorie.
+
+Folosește o operație logică atomică pentru fiecare transfer de teritoriu.
+Dacă două rezultate ar modifica aceeași țintă, detectează conflictul înainte
+de aplicare. Matching-ul trebuie să prevină acest lucru, dar serverul trebuie
+să aibă și validări de siguranță.
+
+După afișarea rezultatelor, începe următoarea rundă WAR, respectând alternarea
+rolurilor și limita existentă de runde. Nu incrementa runda de două ori și nu
+porni două planuri de război în paralel.
+
+23.13. Sfârșitul războiului
+
+Păstrează condițiile generale de final deja stabilite:
+- Dacă rămâne un singur jucător neeliminat cu teritorii, partida se termină.
+- Dacă se termină rundele de război, câștigă jucătorul eligibil cu punctajul
+  total cel mai mare.
+- Dacă nu mai există dueluri legale, gestionează explicit situația și
+  finalizează sau avansează corect, fără bucle infinite.
+
+Nu modifica numărul implicit de runde doar pentru a acomoda noul sistem.
+
+======================================================================
+24. MODELUL DE DATE NECESAR PENTRU RĂZBOI SIMULTAN
+======================================================================
+
+Structura actuală `ActiveQuestionState` are un singur `attackerId`, un singur
+`defenderId` și un singur `targetTerritoryId`. Această structură nu este
+suficientă pentru 2–5 dueluri simultane.
+
+Nu încerca să forțezi mai multe dueluri prin suprascrierea câmpurilor actuale.
+Introdu o structură de stare explicită pentru runda WAR.
+
+24.1. Structură recomandată pentru un duel
+
+`WarBattleAssignment` trebuie să conțină cel puțin:
+- `battleId` unic.
+- `attackerId`.
+- `defenderId`.
+- `targetTerritoryId` după selecție.
+- `status`: `waiting_for_target`, `ready`, `skipped`, `question_active`,
+  `needs_tiebreak`, `resolved`.
+- `outcome`: `attacker_won`, `defender_won`, `draw_no_bonus`, `skipped` sau null.
+- `attackerAnswer` și `defenderAnswer` numai în starea internă de server sau
+  într-o structură de rezultat care nu dezvăluie răspunsurile în timpul
+  întrebării.
+- `attackerSubmitTime` și `defenderSubmitTime`.
+- `resultMessage`.
+
+24.2. Structură recomandată pentru runda simultană
+
+`WarRoundState` trebuie să conțină:
+- `roundId` unic.
+- `roundNumber`.
+- `status`: `assigning_roles`, `selecting_targets`, `choice_question`,
+  `numeric_tiebreak`, `resolving`, `showing_results`, `completed`.
+- `attackerIds`.
+- `defenderIds`.
+- `byePlayerIds`.
+- `battles: WarBattleAssignment[]`.
+- `questionId` pentru întrebarea grilă comună.
+- `tiebreakQuestionId` dacă este necesar.
+- `selectionDeadline`.
+- `questionDeadline`.
+- `createdAt` și `resolvedAt`.
+
+24.3. Extinderea ActiveQuestionState
+
+Pentru întrebările WAR comune, păstrează:
+- un singur obiect Question;
+- un singur startTime;
+- o singură durată;
+- un singur răspuns corect;
+- un singur set de variante;
+- `participantIds` pentru toți jucătorii care trebuie să răspundă;
+- `playerAnswers` cu câte un răspuns pentru fiecare participant;
+- referința la `warRoundId`;
+- un indicator clar dacă este întrebarea grilă principală sau întrebarea
+  numerică de departajare.
+
+Nu mai presupune în toate componentele că o întrebare WAR are numai doi
+participanți.
+
+24.4. Identificatori și idempotency
+
+Fiecare întrebare, rundă și duel trebuie să aibă un ID unic.
+Fiecare trimitere trebuie să fie asociată cu ID-ul întrebării active.
+Răspunsurile repetate trebuie respinse.
+Un eveniment primit de două ori nu trebuie să acorde puncte de două ori.
+Rezolvarea aceleiași runde nu trebuie executată de două ori.
+
+======================================================================
+25. ÎNTREBĂRI: REZULTATE VIZUALE CA ÎN CAPTURILE ATAȘATE
+======================================================================
+
+Vreau ca după închiderea unei întrebări să existe un ecran de rezultate clar,
+care arată ce a ales fiecare jucător. Nu este suficient să se marcheze doar
+răspunsul jucătorului curent.
+
+Această cerință se aplică:
+- Întrebărilor grilă comune din Cucerire.
+- Întrebărilor numerice din Împărțire.
+- Întrebărilor grilă comune din Războiul simultan.
+- Întrebărilor numerice de departajare din Război.
+
+25.1. Regula de confidențialitate în timpul răspunsului
+
+Cât timp întrebarea este activă:
+- Fiecare participant vede propria selecție.
+- Nu afișa celorlalți participanți răspunsurile introduse în timp real.
+- Nu trimite răspunsul corect browserului înainte de rezolvare.
+- Nu dezvălui răspunsurile altor jucători înainte ca întrebarea să fie
+  închisă pentru toți.
+
+După ce toți participanții au trimis răspunsul sau timerul a expirat:
+- Serverul marchează întrebarea ca rezolvată.
+- Serverul transmite rezultatele.
+- Toți clienții afișează același ecran de rezultate.
+
+25.2. Rezultatul unei întrebări grilă
+
+Folosește captura atașată cu întrebarea „Who built the first car?” drept
+referință de structură.
+
+După rezolvare trebuie să vezi:
+- Textul întrebării.
+- Cele patru variante.
+- Varianta corectă evidențiată clar.
+- Răspunsul ales de fiecare jucător.
+- Culoarea asociată fiecărui jucător.
+- Identitatea jucătorilor care au selectat fiecare variantă.
+- Marcaj corect/greșit pentru fiecare participant.
+
+Fiecare variantă trebuie să aibă o stare vizuală:
+A. Varianta corectă: evidențiere verde/aurie și simbol de confirmare.
+B. Varianta greșită selectată de unul sau mai mulți jucători: fundal sau
+   contur roșu discret, dar și marcajele cu culorile jucătorilor care au
+   selectat-o.
+C. Varianta nealeasă: aspect neutru.
+
+Nu marca toate variantele greșite cu roșu. Marchează în mod special
+variantele greșite pe care le-a ales cineva.
+
+25.3. Reprezentarea mai multor jucători pe aceeași variantă
+
+Dacă doi sau mai mulți jucători au ales aceeași variantă:
+- Nu suprapune badge-urile.
+- Nu ascunde numele sau culorile.
+- Nu aplica doar ultima culoare primită.
+- Împarte vizual zona de identificare în segmente egale pentru fiecare
+  jucător sau afișează un rând de badge-uri compacte, toate vizibile.
+- Fiecare segment/badge folosește culoarea jucătorului respectiv.
+- Include inițiala/avatarul și, când spațiul permite, numele scurt.
+- Păstrează varianta de răspuns lizibilă.
+- Pe mobil, dacă sunt mulți jucători pe aceeași variantă, permite wrap sau
+  afișează badge-uri într-un rând scrollabil intern. Nu micșora textul
+  variantei până devine ilizibil.
+
+Prefer o bandă colorată segmentată egal sub varianta selectată, împreună cu
+badge-uri compacte. Segmentele trebuie să fie calculate în funcție de numărul
+jucătorilor care au ales acea variantă. Dacă 3 jucători au ales aceeași
+variantă, banda are 3 segmente de lățime egală, fiecare cu culoarea unui
+jucător. Dacă un singur jucător a ales-o, banda are un singur segment.
+
+25.4. Identificarea câștigătorului întrebării
+
+După răspunsurile grilă:
+- Arată numărul de răspunsuri corecte.
+- Arată numărul de răspunsuri greșite.
+- Arată numărul de răspunsuri absente.
+- Evidențiază jucătorii care au răspuns corect.
+- Dacă faza este Cucerire, explică ordinea în care aceștia primesc dreptul
+  de a selecta un teritoriu.
+- Dacă faza este Război, arată rezultatul fiecărei perechi de atac separat.
+
+Nu confunda câștigarea întrebării comune cu acordarea automată a punctelor
+teritoriului. În faza Cucerire, 200 puncte se acordă după alegerea și
+alocarea teritoriului, conform regulii documentate în partea anterioară.
+
+25.5. Rezultatul întrebării numerice
+
+Folosește captura numerică atașată drept referință.
+
+După rezolvare, afișează:
+- Întrebarea.
+- Valoarea corectă, într-un element vizibil separat.
+- Unitatea de măsură, dacă există.
+- Răspunsul introdus de fiecare jucător.
+- Diferența absolută față de valoarea corectă.
+- Timpul de răspuns al fiecărui jucător.
+- Ordinea clasamentului.
+- Câștigătorul clar evidențiat.
+
+Exemplu numeric:
+Valoare corectă: 1887
+
+Jucător A: 1800, diferență 87, timp 14.20s
+Jucător B: 1912, diferență 25, timp 4.53s
+Jucător C: 1911, diferență 24, timp 4.54s
+
+Câștigă jucătorul C, pentru că răspunsul său este cel mai apropiat de 1887.
+Timpul este criteriul secundar, folosit când diferențele sunt egale.
+
+Nu desemna automat câștigătorul doar după viteza de răspuns dacă altcineva
+este mai aproape de numărul corect.
+
+25.6. Afișarea timpului
+
+Timpul trebuie măsurat de server, de la startTime comun până la momentul
+înregistrării răspunsului.
+
+Afișează timpul cu două zecimale sau cu precizia potrivită designului.
+Folosește aceeași bază de timp pentru toți participanții.
+Nu folosi timpul local de randare al fiecărui browser pentru a decide
+câștigătorul.
+
+Dacă utilizatorul nu a răspuns:
+- Afișează „Fără răspuns” sau „Timp expirat”.
+- Nu afișa 0 ca răspuns.
+- Nu afișa o diferență numerică artificială.
+- Nu include participantul în clasamentul răspunsurilor valide.
+
+25.7. Ecranul de rezultate pentru mai multe dueluri simultane
+
+În WAR cu 4, 6, 8 sau 10 jucători, rezultatul trebuie grupat pe perechi.
+
+Pentru fiecare pereche afișează:
+- Atacatorul, cu culoarea lui.
+- Apărătorul, cu culoarea lui.
+- Teritoriul atacat.
+- Răspunsul fiecăruia la întrebarea grilă.
+- Care răspuns este corect/greșit/absent.
+- Dacă a fost necesară întrebarea numerică.
+- Răspunsurile numerice și diferențele.
+- Rezultatul final al duelului.
+- Punctele acordate sau bonusul defensiv.
+
+Nu amesteca participanții de la perechi diferite într-o singură comparație.
+
+25.8. Durata ecranului de rezultate
+
+Ecranul de rezultate trebuie să rămână vizibil suficient timp pentru ca
+jucătorii să înțeleagă ce s-a întâmplat. Folosește un interval vizual
+configurabil, de exemplu 3–5 secunde, fără să schimbi timerul efectiv al
+întrebărilor.
+
+În timpul afișării rezultatelor:
+- Dezactivează orice input pentru întrebarea deja rezolvată.
+- Nu accepta răspunsuri noi.
+- Nu porni selecția următoarei ținte până când rezolvarea rundei nu este
+  completă.
+- Toți clienții trebuie să afișeze același rezultat.
+
+======================================================================
+26. REMEDIEREA BLOCĂRII RĂSPUNSULUI – CERINȚE SUPLIMENTARE
+======================================================================
+
+Păstrează cerințele din secțiunea 3 a documentului anterior. Pentru război
+simultan, aplică-le tuturor participanților.
+
+26.1. Blocare locală imediată
+
+În QuestionModal, după primul click pe o variantă grilă:
+- Blochează sincron toate cele patru variante.
+- Marchează varianta aleasă pentru utilizatorul curent.
+- Nu permite schimbarea variantei.
+- Nu aștepta actualizarea de la server pentru dezactivare.
+- Folosește un `useRef` sau o protecție echivalentă pentru a preveni două
+  click-uri în același tick React.
+- Menține starea de blocare pentru același questionId/startTime.
+- Resetează blocarea numai când începe o întrebare nouă.
+
+Pentru numeric:
+- După apăsarea butonului Trimite, blochează inputul, tastatura virtuală,
+  Backspace, Reset și Trimite.
+- Nu permite retrimiterea unui alt număr.
+- Nu permite ca Enter și click pe Trimite să trimită două valori diferite.
+
+26.2. Confirmarea serverului
+
+Folosește acknowledgement callback-ul Socket.IO pentru `submit_answer`.
+Frontend-ul trebuie să primească `{success, message}`.
+
+Dacă serverul confirmă succesul:
+- Păstrează răspunsul blocat.
+- Afișează „Răspuns înregistrat”.
+- Așteaptă ceilalți participanți sau timeout-ul.
+
+Dacă serverul respinge definitiv răspunsul:
+- Afișează mesajul real.
+- Verifică starea autoritativă primită de la server.
+- Deblochează numai dacă serverul confirmă că răspunsul nu a fost înregistrat
+  și întrebarea este încă activă.
+
+Dacă ack-ul se pierde sau conexiunea se întrerupe:
+- Nu retrimite automat un alt răspuns.
+- Afișează starea de confirmare în așteptare/reconectare.
+- Cere sincronizarea stării actuale din server.
+- Dacă serverul arată că utilizatorul a răspuns, păstrează blocarea.
+
+26.3. Protecție server
+
+Serverul trebuie să refuze orice a doua trimitere pentru același playerId și
+questionId, chiar dacă utilizatorul modifică manual frontend-ul.
+
+Verifică:
+- Player-ul este participant în întrebarea curentă.
+- Întrebarea este activă și nerezolvată.
+- Deadline-ul nu a expirat.
+- Player-ul nu are deja un răspuns înregistrat.
+- Răspunsul este de tipul corect și în limite valide.
+- Răspunsul aparține întrebării active, nu unei întrebări anterioare.
+
+Folosește `Object.prototype.hasOwnProperty.call(playerAnswers, userId)` sau
+o verificare echivalentă clară pentru răspunsul deja înregistrat. Nu depinde
+de adevărul/falsitatea valorii răspunsului.
+
+======================================================================
+27. PUNCTAJ, NUMĂRAREA RĂSPUNSURILOR ȘI REZULTATUL FINAL
+======================================================================
+
+27.1. Trei stări distincte
+
+Pentru fiecare jucător și fiecare întrebare, separă:
+- CORRECT.
+- WRONG.
+- NO_RESPONSE.
+
+NO_RESPONSE nu trebuie să fie transformat automat în WRONG.
+
+Nu incrementa `wrongAnswers` când jucătorul nu a trimis nimic.
+Nu introduce răspuns numeric zero pentru un jucător fără răspuns.
+Nu acorda bonus defensiv doar pentru că atacatorul nu a răspuns dacă apărătorul
+nu a răspuns corect.
+
+27.2. Cucerire
+
+Păstrează această regulă:
+- Răspuns corect -> jucătorul primește dreptul de a alege un teritoriu.
+- După alocarea reușită -> teritoriu +200 puncte.
+- Răspuns greșit -> nu primește drept de alegere.
+- Fără răspuns -> nu primește drept de alegere și nu este numărat ca greșit.
+
+Dacă mai mulți jucători sunt corecți, toți primesc câte un drept de alegere,
+în ordinea timpului de răspuns, cu validarea disponibilității teritoriilor.
+
+27.3. Război simultan
+
+Calculează fiecare duel în mod independent.
+Nu însuma punctele unei perechi în scorul altei perechi.
+Nu acorda puncte până când rezultatul duelului nu este stabilit.
+
+Atac câștigat pe teritoriu normal:
+- Teritoriul devine al atacatorului.
+- Valoarea teritoriului devine 400.
+- Atacatorul primește +400.
+- Apărătorul pierde valoarea veche și bonusul defensiv asociat, dacă există.
+
+Apărare reușită:
+- Teritoriul rămâne la apărător.
+- +100 bonus defensiv numai dacă apărătorul a răspuns corect, iar atacatorul
+  a greșit sau nu a răspuns.
+
+Amândoi greșesc / lipsesc:
+- Apărătorul păstrează teritoriul.
+- Fără bonus.
+
+Dacă ținta este cetatea:
+- Un atac câștigat distruge un singur turn.
+- Eliminarea se produce numai la distrugerea tuturor celor trei turnuri.
+- Nu transfera teritoriile înainte de eliminarea completă.
+- La eliminare, transferă teritoriile o singură dată și actualizează scorurile
+  și numărătorile fără dublări.
+
+27.4. Invariante de scor
+
+După fiecare rundă, verifică automat:
+- Scorul jucătorului este suma valorilor teritoriilor deținute plus bonusurile
+  defensive active.
+- Un teritoriu are exact un owner sau este neutru.
+- Un teritoriu cucerit are o singură atribuire de puncte.
+- Numărul teritoriilor unui jucător corespunde proprietăților din hartă.
+- Totalul bonusurilor defensive ale jucătorului corespunde bonusurilor
+  active de pe teritoriile sale.
+- Un transfer nu lasă punctele în scorul vechiului proprietar.
+- Eliminarea nu transferă aceeași regiune de două ori.
+
+Dacă sistemul folosește un câmp score incremental, adaugă teste care verifică
+că acesta rămâne egal cu scorul recalculat din hartă. Preferă recalcularea
+scorului din starea autoritativă a teritoriilor după operații batch, dacă
+aceasta simplifică eliminarea erorilor de acumulare.
+
+======================================================================
+28. EXTINDEREA BĂNCII DE ÎNTREBĂRI – FOARTE MULTE ÎNTREBĂRI
+======================================================================
+
+Vreau o bancă reală, mare, cu întrebări diverse și verificate, astfel încât
+întrebările să nu se repete frecvent între partide.
+
+28.1. Ținte minime
+
+Ținta de dezvoltare:
+- Minimum 5.000 întrebări valide inițial.
+- Obiectiv ulterior: 10.000–25.000 întrebări sau mai multe.
+- Include întrebări grilă și numerice.
+- Nu număra duplicatele ca întrebări distincte.
+- Nu raporta numărul dorit ca număr deja implementat.
+- Raportează numărul efectiv de înregistrări importate și validate.
+
+Dacă AI-ul sau mediul nu poate produce în siguranță tot setul într-o singură
+operație, construiește un pipeline de import în loturi. Nu bloca proiectul și
+nu crea întrebări neverificate doar pentru a atinge cifra.
+
+28.2. Categorii
+
+Distribuie întrebările echilibrat pe categorii:
+- Istorie universală.
+- Istoria României.
+- Geografie mondială.
+- Geografia României.
+- Biologie.
+- Fizică.
+- Chimie.
+- Matematică.
+- Astronomie.
+- Literatură română.
+- Literatură universală.
+- Limbă și gramatică.
+- Artă și pictură.
+- Muzică.
+- Cinematografie.
+- Sport.
+- Tehnologie.
+- Informatică.
+- Economie.
+- Instituții și civică.
+- Mitologie.
+- Arhitectură.
+- Natură și mediu.
+- Cultură generală.
+
+Nu lăsa una sau două categorii să domine întreaga bancă.
+
+28.3. Dificultate
+
+Distribuție recomandată:
+- 10% ușor.
+- 55% mediu.
+- 35% greu.
+
+Evită atât întrebările banale, cât și întrebările de specializare excesivă.
+Formularea trebuie să fie clară pentru publicul general.
+
+28.4. Calitatea unei întrebări grilă
+
+Fiecare întrebare grilă trebuie să aibă:
+- ID unic stabil.
+- Text clar.
+- Exact 4 variante.
+- O singură variantă corectă.
+- Varianta corectă identificată prin index.
+- Categoria.
+- Dificultatea.
+- Explicație.
+- Sursă verificabilă.
+- Data verificării, dacă informația poate deveni depășită.
+
+Distractorii trebuie să fie plauzibili, dar să nu creeze ambiguitate.
+Nu accepta două variante care pot fi apărate logic ca fiind corecte.
+Nu folosi formulări de tip „toate variantele” sau „niciuna” dacă pot crea
+conflicte cu regulile jocului.
+
+28.5. Calitatea unei întrebări numerice
+
+Fiecare întrebare numerică trebuie să aibă:
+- ID unic.
+- Text clar.
+- Valoare corectă numerică.
+- Unitate de măsură.
+- Precizie/toleranță documentată dacă are sens.
+- Explicație.
+- Sursă verificabilă.
+- Categoria și dificultatea.
+
+Nu genera valori aproximative fără să documentezi valoarea de referință.
+Nu utiliza informații statistice volatile fără să menționezi anul exact.
+Pentru ani istorici, valoarea corectă trebuie să fie un an întreg.
+
+28.6. Verificare și deduplicare
+
+Înainte să adaugi întrebări:
+- Normalizează textul (diacritice, litere mici, spații, punctuație).
+- Detectează duplicate exacte.
+- Detectează duplicate cu formulări ușor modificate.
+- Detectează întrebări care testează exact același fapt și au același răspuns.
+- Verifică variantele și corectAnswerIndex.
+- Verifică unitățile pentru întrebările numerice.
+- Verifică sursele.
+- Marchează întrebările incerte pentru revizuire, nu le activa automat.
+
+Nu considera că o întrebare este verificată doar pentru că AI-ul o poate
+formula. Fiecare întrebare trebuie să aibă un răspuns susținut de o sursă
+fiabilă.
+
+28.7. Repetarea întrebărilor
+
+În cadrul aceleiași partide:
+- Nu repeta un questionId.
+- Nu folosi aceeași întrebare numerică la două departajări diferite.
+- Nu reutiliza aceeași întrebare grilă în altă fază a aceleiași partide.
+- Pentru un război simultan, aceeași întrebare comună pentru toate duelurile
+  acelei runde este intenționată și se numără ca o singură utilizare.
+- Întrebarea numerică de departajare comună tuturor duelurilor care au nevoie
+  de tiebreak în aceeași rundă este tot o singură utilizare.
+
+Între partide:
+- Menține un istoric al ultimelor întrebări folosite global sau per categorie.
+- Evită repetarea recentă pentru aceeași cameră și pentru aceiași utilizatori.
+- Nu exclude definitiv întrebările doar pentru că au fost folosite o dată.
+- Dacă banca disponibilă pentru categoriile selectate devine prea mică,
+  informează gazda înainte de start sau propune extinderea categoriilor.
+
+28.8. Import și administrare
+
+Păstrează importul JSON/CSV și adaugă:
+- Import în loturi mari.
+- Validare înainte de import.
+- Preview cu numărul de întrebări valide/invalide/duplicate.
+- Raport al erorilor pe rând.
+- Import atomic sau cu posibilitate de rollback.
+- Export al întrebărilor existente.
+- Filtrare după categorie, dificultate și tip.
+- Dezactivarea temporară a unei întrebări raportate.
+
+Nu șterge întrebările deja existente la import.
+Nu suprascrie întrebările personalizate doar pentru că au ID-uri similare.
+
+28.9. Verificarea disponibilității înainte de joc
+
+Înainte să pornească o cameră, verifică dacă există suficiente întrebări
+nefolosite pentru:
+- Numărul estimat de runde de cucerire.
+- Numărul potențial de runde de împărțire.
+- Numărul de runde de război.
+- Departajările numerice posibile.
+
+Nu porni jocul dacă există risc evident să se termine banca după câteva
+întrebări. Afișează un mesaj clar gazdei și categoriile cu deficit.
+
+======================================================================
+29. MODIFICĂRI CONCRETE ÎN FIȘIERELE EXISTENTE
+======================================================================
+
+Analizează din nou conținutul actual din branch main. Următoarele fișiere
+sunt puncte de pornire, nu o listă închisă:
+
+A. `src/types/game.ts`
+- Adaugă tipurile pentru WarRoundState și WarBattleAssignment.
+- Extinde ActiveQuestionState cu participantIds și warRoundId.
+- Păstrează suportul întrebărilor conquest/allocation existente.
+- Folosește union types pentru stări, nu șiruri arbitrare.
+
+B. `server/gameEngine.ts`
+- Adaugă crearea planului simultan WAR.
+- Adaugă rotația rolurilor.
+- Adaugă matching între atacatori și apărători.
+- Adaugă selecția simultană a țintelor.
+- Creează o singură întrebare grilă comună.
+- Rezolvă separat fiecare pereche.
+- Creează o întrebare numerică comună pentru duelurile care au nevoie de
+  departajare.
+- Aplică toate rezultatele fără dublări.
+- Adaptează scheduleAiAnswers la participantIds și la mai multe perechi.
+- Nu mai utiliza doar attackerId/defenderId singular în WAR simultan.
+- Păstrează compatibilitatea cu fazele anterioare.
+
+C. `server/socketHandler.ts`
+- Adaugă evenimente pentru planul WAR, alegerea țintei și trimiterea
+  răspunsurilor.
+- Verifică apartenența socket-ului la cameră.
+- Derivă userId din token, nu din payload.
+- Trimite acknowledgements pentru selecții și răspunsuri.
+- Nu accepta evenimente pentru o rundă sau întrebare veche.
+
+D. `src/App.tsx`
+- Folosește callback-ul pentru submit_answer.
+- Gestionează confirmarea și respingerea răspunsului.
+- Afișează mesaje clare când serverul refuză o acțiune.
+- Adaptează selectarea țintei la rolurile și perechile WAR.
+
+E. `src/components/QuestionModal.tsx`
+- Permite participarea tuturor membrilor unei întrebări comune.
+- Blochează instantaneu răspunsul după primul click/submit.
+- Dezactivează toate cele patru variante după trimitere.
+- Dezactivează numeric input/keypad după trimitere.
+- Afișează feedback că răspunsul a fost înregistrat.
+- Afișează rezultatul grilă cu jucătorii colorați pe variante.
+- Afișează rezultatul numeric cu valoare, diferență și timp.
+- Gruparea rezultatelor WAR se face după perechi.
+
+F. Componente noi recomandate
+- `QuestionResults.tsx` – sumar după întrebarea grilă.
+- `NumericResults.tsx` – rezultate pentru estimări numerice.
+- `WarRoundPanel.tsx` – roluri, perechi, ținte și starea duelurilor.
+- `WarBattleResult.tsx` – rezultatul unei perechi.
+- `PlayerAnswerMarkers.tsx` – marcaje colorate pentru variante.
+
+Poți păstra alte denumiri dacă arhitectura actuală cere asta.
+
+G. `src/components/GameHUD.tsx`
+- Afișează „TOȚI RĂSPUND” când întrebarea este comună.
+- Afișează câte răspunsuri au fost primite, de exemplu 3/4.
+- În WAR simultan, afișează rolul și perechea fiecărui jucător.
+- Nu afișa doar un singur activePlayerIndex ca și cum numai un jucător
+  ar participa.
+
+H. `src/components/RoundTracker.tsx`
+- Afișează clar runda WAR și numărul de dueluri simultane.
+- Marchează perechile rezolvate și cele care așteaptă departajare.
+- Nu confunda numărul de dueluri cu numărul rundelor.
+
+I. `src/game/rules.ts`
+- Adaugă funcții pure pentru construirea/verificarea perechilor dacă acestea
+  sunt potrivite arhitecturii.
+- Adaugă rezolvarea numerică prin diferență absolută și timp secundar.
+- Adaugă funcții de validare a invariants.
+- Nu pune efecte Socket.IO sau timer logic în rules.ts.
+
+J. `src/components/RomaniaMap.tsx`
+- În WAR simultan, evidențiază numai teritoriile legale ale apărătorului
+  repartizat fiecărui atacator.
+- Nu permite vizual selectarea teritoriilor altui apărător.
+- Afișează săgeți distincte pentru fiecare atac în aceeași rundă.
+- Folosește culoarea atacatorului pentru săgeata/indicatorul atacului.
+- Dacă sunt mai multe atacuri, nu suprapune indicatorii fără diferențiere.
+
+K. Teste
+- Extinde testele existente pentru toate scenariile de mai jos.
+- Adaugă teste de integrare pentru mai mulți clienți Socket.IO.
+
+======================================================================
+30. TESTE OBLIGATORII NOI – RĂZBOI SIMULTAN
+======================================================================
+
+Test 14 – Patru jucători, două dueluri simultane
+
+Creează un meci cu 4 jucători activi.
+Așteptări:
+- 2 atacatori și 2 apărători.
+- Exact 2 perechi valide dacă graful permite.
+- Niciun participant nu apare în două perechi.
+- Atacatorii nu se atacă între ei.
+- Apărătorii nu se atacă între ei.
+- Fiecare atacator poate selecta numai teritorii ale apărătorului său.
+- O singură întrebare este creată pentru toți cei patru.
+
+Test 15 – Șase jucători, trei dueluri simultane
+
+Creează un meci cu 6 jucători.
+Așteptări:
+- 3 atacatori și 3 apărători.
+- 3 perechi.
+- Toți cei șase primesc aceeași întrebare grilă.
+- Răspunsurile sunt comparate numai în interiorul perechilor.
+
+Test 16 – Opt și zece jucători
+
+Rulează cazuri cu 8 și 10 jucători.
+Așteptări:
+- Maximum 4, respectiv 5 dueluri simultane.
+- Nu există participant dublat.
+- Nu există target duplicate.
+- Toți participanții eligibili văd același questionId și aceeași ordine a
+  variantelor.
+
+Test 17 – Două dueluri, rezultate diferite
+
+Într-un meci cu 4 jucători:
+- În perechea 1 atacatorul răspunde corect, apărătorul greșit.
+- În perechea 2 apărătorul răspunde corect, atacatorul greșit.
+Așteptări:
+- Perechea 1 transferă teritoriul către atacator.
+- Perechea 2 păstrează teritoriul la apărător și acordă +100 bonus.
+- Scorurile se actualizează independent și corect.
+
+Test 18 – O pereche are nevoie de numerică, alta nu
+
+Într-un meci cu 4 jucători:
+- Ambii membri ai perechii 1 răspund corect la grilă.
+- În perechea 2, atacatorul este corect și apărătorul greșește.
+Așteptări:
+- Perechea 2 se rezolvă fără numerică.
+- Numai perechea 1 intră în departajarea numerică.
+- Cei doi participanți ai perechii 1 primesc aceeași întrebare numerică.
+- Nu se generează întrebări numerice diferite pentru fiecare jucător.
+
+Test 19 – Mai multe perechi intră la departajare
+
+Într-un meci cu 6 jucători, ambele persoane din două perechi răspund corect.
+Așteptări:
+- Se creează o singură întrebare numerică comună pentru toate cele patru
+  persoane din cele două perechi.
+- Răspunsurile se compară doar între membrii fiecărei perechi.
+- Nu compara răspunsul perechii 1 cu un jucător din perechea 2.
+
+Test 20 – Jucător fără răspuns
+
+Un atacator nu răspunde, apărătorul răspunde corect.
+Așteptări:
+- Apărătorul păstrează teritoriul.
+- Primește +100 bonus conform regulii defensive.
+- Atacatorul nu primește răspuns greșit în statistici.
+
+Dacă amândoi nu răspund:
+- Apărătorul păstrează teritoriul.
+- Fără bonus.
+- Niciunul nu este numărat ca răspuns greșit.
+
+Test 21 – Un jucător încearcă să atace un alt atacator
+
+Serverul trebuie să respingă acțiunea, chiar dacă frontend-ul încearcă să o
+trimită manual.
+
+Test 22 – O țintă este selectată de două ori
+
+Serverul trebuie să prevină două atacuri simultane asupra aceluiași teritoriu.
+
+Test 23 – Rolurile se inversează
+
+După finalizarea unei runde cu 4 jucători:
+- Jucătorii care au fost atacatori devin apărători în runda următoare, dacă
+  sunt încă activi.
+- Jucătorii care au fost apărători devin atacatori.
+- Perechile se pot schimba.
+- Nu există favoritism permanent.
+
+Test 24 – Eliminare între runde
+
+Un jucător este eliminat la finalul unei runde.
+Așteptări:
+- Nu apare în noul plan.
+- Planul se reconstruiește pentru jucătorii activi.
+- Dacă numărul activ este impar, există un BYE rotit echitabil.
+- Nu se păstrează un duel cu participant eliminat.
+
+Test 25 – Mai multe atacuri asupra unor cetăți
+
+Două perechi atacă două cetăți diferite în aceeași rundă.
+Așteptări:
+- Fiecare duel poate distruge cel mult un turn.
+- Se actualizează separat turnurile celor doi apărători.
+- Eliminarea se aplică separat și atomic.
+- Transferul teritoriilor nu se dublează.
+
+======================================================================
+31. TESTE OBLIGATORII NOI – REZULTATE VIZUALE
+======================================================================
+
+Test 26 – Rezultate grilă pentru trei jucători
+
+Jucătorii aleg trei variante diferite.
+Așteptări:
+- Varianta corectă este evidențiată.
+- Fiecare variantă selectată arată culoarea jucătorului.
+- Se vede cine a ales fiecare variantă.
+- Se vede corect/greșit pentru fiecare.
+
+Test 27 – Mai mulți jucători pe aceeași variantă
+
+Trei jucători selectează aceeași opțiune.
+Așteptări:
+- Pe opțiunea respectivă apar trei marcaje/badge-uri.
+- Fiecare are culoarea sa.
+- Segmentele colorate sunt împărțite egal.
+- Numele/inițialele sunt lizibile.
+- Nu se suprapun elementele.
+
+Test 28 – Rezultat numeric
+
+Jucătorii introduc 1800, 1912 și 1911 pentru valoarea corectă 1887.
+Așteptări:
+- Se afișează 1887 drept răspuns corect.
+- Se afișează toate răspunsurile.
+- Se afișează diferențele 87, 25 și 24.
+- Se afișează timpii serverului.
+- Câștigă răspunsul 1911.
+- Diferența și timpul sunt explicate vizual.
+
+Test 29 – Egalitate de diferență
+
+Doi jucători au aceeași distanță față de valoarea corectă.
+Așteptări:
+- Câștigă cel care a trimis mai rapid.
+- Rezultatul afișează diferența și timpul ambilor.
+
+Test 30 – Fără răspuns
+
+Un jucător nu răspunde.
+Așteptări:
+- Afișează „Fără răspuns”.
+- Nu afișează un număr inventat.
+- Nu afișează o diferență artificială.
+- Nu apare ca răspuns greșit în statistici.
+
+Test 31 – Confidențialitate înainte de rezolvare
+
+În timpul întrebării:
+- Clientul A nu poate vedea răspunsul selectat de clientul B.
+- Clientul B nu poate vedea răspunsul selectat de clientul A.
+- Browserul nu primește correctAnswerIndex/targetNumber înainte de rezolvare.
+
+După rezolvare:
+- Toți clienții primesc aceeași listă de răspunsuri și rezultatul comun.
+
+======================================================================
+32. TESTE OBLIGATORII NOI – BLOCĂRI ȘI PUNCTAJ
+======================================================================
+
+Test 32 – Click rapid pe două variante
+
+În același interval foarte scurt, utilizatorul apasă două opțiuni diferite.
+Așteptări:
+- Este trimisă o singură alegere.
+- Prima alegere rămâne selectată.
+- Toate butoanele se dezactivează instantaneu.
+- Serverul înregistrează o singură valoare.
+
+Test 33 – Submit numeric dublu
+
+Utilizatorul apasă Enter și apoi Trimite.
+Așteptări:
+- Este înregistrat un singur răspuns.
+- Nu există două evenimente acceptate.
+- Câmpul rămâne blocat.
+
+Test 34 – Confirmare server
+
+Serverul acceptă răspunsul.
+Așteptări:
+- Clientul afișează răspuns înregistrat.
+- Nu permite schimbarea variantei.
+
+Test 35 – Server respinge răspunsul
+
+Se trimite un răspuns pentru o întrebare expirată sau pentru un jucător
+neeligibil.
+Așteptări:
+- Clientul afișează motivul real.
+- Nu afișează fals că răspunsul a fost acceptat.
+- Starea locală se reconciliază cu starea serverului.
+
+Test 36 – Punctaj după alegerea teritoriului
+
+Jucătorul răspunde corect la cucerire.
+Așteptări:
+- Primește mesajul că a câștigat dreptul de selecție.
+- Scorul nu crește încă cu 200 până la alocare.
+- După alegerea validă a teritoriului, scorul crește exact cu 200.
+- Teritoriul primește ownerId corect și punctaj 200.
+- Nu se acordă 200 de două ori.
+
+Test 37 – Consistența punctajului după mai multe atacuri simultane
+
+Execută 2–5 dueluri în aceeași rundă.
+Așteptări:
+- După aplicarea tuturor rezultatelor, scorul fiecărui jucător este corect.
+- Nu există dublări sau pierderi de puncte.
+- Numărul teritoriilor este corect.
+- Bonusurile defensive sunt corecte.
+
+======================================================================
+33. CERINȚE PENTRU TESTARE MULTIPLAYER REALĂ
+======================================================================
+
+Testele unitare nu sunt suficiente.
+
+Rulează aplicația cu 4 browsere sau contexte de browser separate, fiecare
+cu un utilizator distinct. Pentru testul cu AI, verifică și combinații om/AI.
+
+Verifică:
+- Toți văd aceeași întrebare.
+- Toți văd aceeași ordine de variante.
+- Toți au același deadline.
+- Fiecare răspuns este acceptat o singură dată.
+- Toți văd același rezultat după închidere.
+- Atacurile simultane nu se suprapun.
+- Rezultatele fiecărei perechi sunt independente.
+- Scorurile se sincronizează la toți.
+- După reconectare, clientul primește planul și întrebarea curentă fără
+  resetarea timerului.
+
+Nu considera implementarea terminată doar pentru că un singur browser poate
+juca împotriva unor date simulate.
+
+======================================================================
+34. RAPORTUL FINAL CERUT AI-ULUI
+======================================================================
+
+La terminarea implementării, prezintă obligatoriu:
+
+1. Commit-ul/versiunea de cod pe care ai modificat-o.
+2. Fișierele modificate și motivul fiecărei modificări.
+3. Cum construiești rolurile atacator/apărător.
+4. Cum creezi perechile pentru 4, 6, 8 și 10 jucători.
+5. Cum verifici că nimeni nu atacă un jucător care este atacator în aceeași
+   rundă.
+6. Cum aleg atacatorii țintele în același interval.
+7. Cum trimiți o singură întrebare tuturor.
+8. Cum rezolvi separat fiecare pereche.
+9. Cum gestionezi una sau mai multe departajări numerice simultane.
+10. Cum afișezi răspunsurile jucătorilor pe variante, în culorile lor.
+11. Cum afișezi răspunsurile numerice, diferențele și timpii.
+12. Cum blochezi prima alegere imediat.
+13. Cum confirmi acceptarea răspunsului din backend.
+14. Cum tratezi NO_RESPONSE.
+15. Numărul REAL de întrebări grilă și numerice din banca actuală.
+16. Numărul întrebărilor adăugate efectiv în acest task.
+17. Numărul duplicatelor eliminate sau respinse.
+18. Rezultatele tuturor testelor 1–37.
+19. Rezultatul build-ului și typecheck-ului.
+20. Ce rămâne incomplet.
+
+Nu raporta un test ca trecut dacă a fost doar citit codul sau dacă nu a fost
+executat. Separă clar testele automatizate, testele manuale și funcționalitățile
+neverificate.
+
+======================================================================
+35. ORDINEA DE IMPLEMENTARE – NU SĂRI PAȘII
+======================================================================
+
+PRIORITATEA 1 – Răspuns unic și confirmare
+- Lock imediat în QuestionModal.
+- Acknowledgement în App.tsx.
+- Guard server pentru duplicate și deadline.
+- Feedback clar pentru răspuns acceptat/refuzat.
+- Teste pentru click dublu și submit numeric dublu.
+
+PRIORITATEA 2 – Rezultate vizuale
+- Rezultate grilă cu toate variantele selectate de jucători.
+- Segmente/badge-uri colorate pentru fiecare jucător.
+- Rezultate numerice cu valoare, diferență și timp.
+- NO_RESPONSE vizibil.
+- Teste vizuale și multiplayer.
+
+PRIORITATEA 3 – Război simultan
+- Modelul WarRoundState și WarBattleAssignment.
+- Gruparea atacatorilor și apărătorilor.
+- Alternarea rolurilor.
+- Matching legal.
+- Selecție simultană a țintelor.
+- O întrebare grilă comună tuturor duelurilor.
+- Rezolvare independentă pe pereche.
+- Întrebare numerică comună pentru toate perechile care necesită tiebreak.
+- Aplicarea atomică a punctajelor și transferurilor.
+- Teste pentru 4, 6, 8 și 10 jucători.
+
+PRIORITATEA 4 – Banca mare de întrebări
+- Audit al întrebărilor actuale.
+- Deduplicare.
+- Import în loturi.
+- Validare și raportarea surselor.
+- Creștere spre minimum 5.000 întrebări verificate.
+- Teste pentru diversitate și lipsa repetărilor în aceeași partidă.
+
+PRIORITATEA 5 – Finalizare și verificare
+- Testare cu mai mulți clienți reali.
+- Build.
+- Typecheck.
+- Teste unitare și de integrare.
+- Verificare vizuală desktop și mobil.
+- Raport final sincer.
+
+Nu începe PRIORITATEA 3 înainte ca blocarea răspunsului și rezultatele să
+funcționeze corect. Nu începe să generezi mii de întrebări înainte de a avea
+validarea, deduplicarea și importul în siguranță.
+
+======================================================================
+36. INSTRUCȚIUNE FINALĂ
+======================================================================
+
+Această versiune a TODO-ului este o extensie a documentului anterior.
+Cerințele anterioare pentru cucerire, punctaj, răspunsuri, timer, securitate,
+întrebări și sincronizare rămân valabile.
+
+Singura schimbare majoră de regulă este în WAR: pentru 4, 6, 8 și 10 jucători
+nu mai există un singur atacator pe rând; există mai multe dueluri simultane,
+cu roluri separate și o întrebare comună tuturor participanților din rundă.
+
+Rezultatele trebuie să arate vizual alegerea fiecărui jucător, folosind
+culoarea sa, atât pentru întrebări grilă, cât și pentru întrebări numerice.
+
+Construiește mecanica pe server, păstrează clientul ca interfață, validează
+toate acțiunile și nu sacrifica corectitudinea jocului pentru efecte vizuale.
+
+Nu elimina sau rescrie funcționalități care funcționează și nu modifica
+mecanicile deja stabilite fără să explici motivul tehnic. Nu inventa
+rezultate, punctaje, întrebări sau teste trecute.
+
+Scopul final este o partidă CONQUIZ completă, coerentă și sincronizată,
+în care întrebările comune sunt realmente comune, răspunsurile sunt
+ireversibile după trimitere, punctajul este corect, iar războiul suportă
+mai multe dueluri simultane.
+
+
+======================================================================
+37. BUG NOU CRITIC – HARTA ESTE VIZUAL ÎMPĂRȚITĂ ÎN JUDEȚE, DAR INTERACTIV GRUPATĂ
+======================================================================
+
+Această secțiune este nouă în V3.0 și trebuie tratată ca o prioritate separată. Utilizatorul a observat următorul comportament:
+- Harta arată vizual multe regiuni mici, ca și cum fiecare județ ar fi un teritoriu separat.
+- Când cursorul trece peste o zonă sau când se selectează o zonă, mai multe dintre acele regiuni mici se colorează/activează împreună.
+- Rezultatul este înșelător: delimitările vizuale sugerează mai multe teritorii jucabile decât există în logica jocului.
+- În plus, utilizatorul nu vede o schimbare suficient de clară a hărții pentru meciuri cu număr diferit de participanți.
+
+Aceasta nu este doar o problemă CSS. Trebuie corectată sursa geometriei teritoriale și modul în care sunt construite preset-urile hărții.
+
+---------------------------------------------------------------------
+37.1. Ce am verificat în repository-ul actual
+---------------------------------------------------------------------
+
+În commit-ul verificat `8839408cc633a8d95e5ffe97f5f6b17f4c066ebb` din branch `main` există deja o parte din mecanismul de hărți diferite:
+
+Fișiere relevante:
+- `data/geo/romania-counties.geojson`
+- `server/romaniaMapData.ts`
+- `src/components/RomaniaMap.tsx`
+- `src/types/game.ts`
+- `server/gameEngine.ts`
+- `src/game/rules.ts`
+
+În `server/romaniaMapData.ts` sunt definite în prezent patru configurații de hartă:
+- `ROMANIA_10_TERRITORIES`
+- `ROMANIA_15_TERRITORIES`
+- `ROMANIA_25_TERRITORIES`
+- `ROMANIA_29_TERRITORIES`
+
+Funcția `createMapForPlayerCount(playerCount)` alege momentan:
+- 2 jucători: 10 teritorii;
+- 3 jucători: 15 teritorii;
+- 4–5 jucători: 25 teritorii;
+- 6–10 jucători: 29 teritorii.
+
+Funcția este apelată în `GameManager.createRoom()`, `joinRoom()`, la adăugarea/eliminarea unui bot și din nou în `startGame()`. În startGame, harta se reconstruiește după `game.players.length`, deci după numărul curent de participanți, inclusiv boții.
+
+IMPORTANT: nu afirma că proiectul nu are deloc selectare dinamică a hărții. Codul are deja patru preseturi grupate pe intervale. Problema este că nu are un preset distinct pentru fiecare număr exact de jucători și că gruparea geometrică nu este desenată ca un teritoriu unificat.
+
+### Cauza vizuală probabilă, confirmată de structura datelor și renderer
+
+În `romaniaMapData.ts`, un teritoriu grupat poate avea în `polygon` un SVG path compus din mai multe subcăi, de exemplu secvențe repetate de tipul:
+
+`M ... Z M ... Z M ... Z`
+
+Aceste segmente reprezintă contururile componentelor geografice/județelor care au fost puse în același teritoriu logic.
+
+În `RomaniaMap.tsx`, fiecare obiect `Territory` este desenat ca un singur `<path>` (sau `<polygon>`) cu:
+- un singur `fill`;
+- un singur `stroke`;
+- un singur handler `onClick` pe grupul SVG `<g>`.
+
+Pentru un SVG path compus, `stroke` trasează conturul fiecărei subcăi. În consecință, toate județele dintr-un teritoriu primesc aceeași culoare și aceeași interacțiune, dar liniile lor de contur rămân vizibile ca delimitări interne puternice. Astfel harta pare împărțită în multe teritorii mici, deși logica tratează mai multe județe ca o singură regiune.
+
+Aceasta este cauza principală care trebuie reparată: geometria fiecărui teritoriu jucabil trebuie să fie o geometrie geografică dizolvată/unionată, nu simpla concatenare a contururilor județelor componente.
+
+Nu elimina pur și simplu toate stroke-urile și nu ascunde contururile întregii hărți. Trebuie să se distingă clar conturul teritoriului jucabil de eventualele limite administrative interne.
+
+---------------------------------------------------------------------
+37.2. Recomandarea de arhitectură – da, câte un fișier pentru fiecare număr de jucători, dar fără duplicarea geometriei
+---------------------------------------------------------------------
+
+Ideea utilizatorului de a avea o hartă/configurație pentru fiecare număr de jucători este corectă. Recomand implementarea cu:
+
+A. O SINGURĂ SURSĂ GEOGRAFICĂ CANONICĂ
+
+Păstrează un singur fișier-sursă cu geometria administrativă reală a României:
+`data/geo/romania-counties.geojson`
+
+Acesta conține geometriile județelor și ale municipiului București. Nu copia aceste coordonate în fiecare preset.
+
+B. PRESET DISTINCT PENTRU FIECARE NUMĂR EXACT DE PARTICIPANȚI
+
+Creează câte un fișier de configurare pentru fiecare număr de jucători suportat:
+- `data/maps/romania/players-2.json`
+- `data/maps/romania/players-3.json`
+- `data/maps/romania/players-4.json`
+- `data/maps/romania/players-5.json`
+- `data/maps/romania/players-6.json`
+- `data/maps/romania/players-7.json`
+- `data/maps/romania/players-8.json`
+- `data/maps/romania/players-9.json`
+- `data/maps/romania/players-10.json`
+
+Dacă repo-ul folosește o structură TypeScript mai potrivită, se poate utiliza un modul `mapPresets/players-N.ts`, dar fiecare număr trebuie să aibă o configurație explicită și separată. Nu păstra doar patru intervale 2 / 3 / 4–5 / 6–10.
+
+Fiecare preset trebuie să descrie în principal GRUPAREA județelor în teritorii jucabile, nu să repete coordonatele geometrice.
+
+Structură recomandată:
+
+{
+  "playerCount": 4,
+  "mapId": "romania-4p-v1",
+  "territoryCount": 20,
+  "territories": [
+    {
+      "id": "transilvania_nord_4p",
+      "name": "Transilvania de Nord",
+      "shortName": "TN",
+      "countyIds": ["CJ", "SJ", "MM"],
+      "label": { "mode": "polylabel" }
+    }
+  ]
+}
+
+Acesta este doar un exemplu de structură, nu o listă finală de grupări geografice. Creează grupările pe baza județelor reale și verifică toate relațiile geografice.
+
+C. GEOMETRIA TERITORIULUI ESTE DERIVATĂ DIN PRESET + GEOJSON
+
+La încărcarea presetului:
+1. Citește `countyIds` pentru fiecare teritoriu jucabil.
+2. Găsește feature-urile corespunzătoare din GeoJSON-ul canonic.
+3. Verifică faptul că toate ID-urile există și că niciun județ nu lipsește.
+4. Construiește geometria unionată/dizolvată pentru fiecare teritoriu.
+5. Calculează punctul de etichetare în interiorul geometriei rezultate.
+6. Calculează vecinătățile din topologia geografică reală sau validează vecinătățile generate.
+7. Produce un obiect `Territory` pe care îl primește motorul de joc și frontend-ul.
+
+Nu duplica sursa de coordonate în 9 fișiere. Presetul descrie apartenența județelor; geometria este calculată din singura sursă canonică.
+
+---------------------------------------------------------------------
+37.3. Numărul de teritorii pentru fiecare număr de jucători
+---------------------------------------------------------------------
+
+În prezent harta are doar patru numărători (10, 15, 25, 29). Pentru V3.0 vreau un preset distinct pentru fiecare număr exact de participanți, iar densitatea hărții trebuie să crească gradual cu numărul de jucători.
+
+Tabelul de pornire recomandat pentru proiectare este:
+
+| Număr participanți | Teritorii jucabile țintă |
+| 2 | 10 |
+| 3 | 15 |
+| 4 | 20 |
+| 5 | 23 |
+| 6 | 26 |
+| 7 | 29 |
+| 8 | 32 |
+| 9 | 35 |
+| 10 | 38 |
+
+Acestea sunt ținte de proiectare pentru noile preseturi, nu valori care trebuie acceptate fără verificare. Înainte de a implementa grupările, verifică dacă numărul și forma județelor disponibile permit formarea tuturor teritoriilor compacte, conectate și suficient de echilibrate.
+
+Dacă un număr-țintă nu este fezabil geometric, propune o valoare apropiată și justifică într-un raport:
+- câte teritorii pot fi create;
+- câte județe intră în fiecare teritoriu;
+- dacă fiecare teritoriu este conectat geografic;
+- dacă harta păstrează suficientă conectivitate pentru cucerire și război;
+- dacă există suficiente poziții valide pentru bazele tuturor jucătorilor.
+
+Nu reveni în tăcere la 25 sau 29 pentru toate numerele de jucători. Nu declara că harta s-a schimbat dacă se încarcă același preset pentru mai multe valori fără o justificare explicită.
+
+Ținta de design este ca un meci cu mai mulți jucători să aibă mai multe teritorii jucabile și regiuni individuale mai mici, iar un meci cu puțini jucători să aibă mai puține teritorii, fiecare format din mai multe județe.
+
+---------------------------------------------------------------------
+37.4. Cum trebuie să arate un teritoriu grupat – union/dissolve, nu contururi concatenate
+---------------------------------------------------------------------
+
+Pentru fiecare grup de județe care formează un teritoriu jucabil, generează un singur contur exterior dizolvat.
+
+Cerințe:
+- Folosește operația GIS de `union` / `dissolve` pentru județele grupate.
+- Păstrează topologia, găurile geografice reale și formele MultiPolygon când sunt absolut necesare.
+- Nu obține geometria finală prin concatenarea simplă a stringurilor SVG ale județelor.
+- Nu desena fiecare județ component cu același stroke puternic dacă acesta face teritoriul să pară împărțit în mai multe teritorii jucabile.
+- Teritoriul trebuie să aibă un contur exterior clar, continuu, cu grosime și culoare distincte.
+- Granițele administrative interne ale județelor din același teritoriu trebuie eliminate din conturul principal.
+
+Poți păstra opțional liniile interne ale județelor ca detaliu cartografic secundar, dar numai dacă:
+- sunt mult mai subțiri și mai estompate decât granițele dintre teritorii;
+- nu sunt confundate cu limitele teritoriale jucabile;
+- nu primesc evenimente de click/hover;
+- nu schimbă culoarea separat la selecție;
+- sunt desenate într-un layer separat, cu `pointer-events: none`.
+
+Varianta implicită preferată pentru joc este să fie vizibile clar granițele dintre teritoriile jucabile, iar liniile județene interne să fie ascunse sau foarte subtile.
+
+Dacă sunt folosite mai multe poligoane într-un teritoriu, ele trebuie să reprezinte doar componente geografice legitime ale aceluiași teritoriu și să nu creeze aparența unor unități independente. În mod normal, fiecare teritoriu jucabil trebuie să fie compact și conectat. Nu grupa județe aflate la distanță sau separate geografic.
+
+---------------------------------------------------------------------
+37.5. Gruparea județelor trebuie să fie geografic corectă
+---------------------------------------------------------------------
+
+Reguli obligatorii pentru preseturi:
+1. Fiecare județ sursă aparține exact unui teritoriu jucabil în presetul respectiv.
+2. Niciun județ nu este omis.
+3. Niciun județ nu este duplicat în două teritorii.
+4. Fiecare teritoriu jucabil trebuie să fie format din județe contigue, care au granițe comune.
+5. Nu accepta grupuri separate de tip insulă fără conexiune cu restul teritoriului.
+6. Nu grupa județe îndepărtate doar pentru a ajunge la un anumit număr de teritorii.
+7. Urmărește teritorii rezonabil echilibrate ca suprafață și formă, fără a forța egalitatea perfectă.
+8. Nu crea regiuni foarte înguste sau subțiri doar pentru a respecta numărul exact.
+9. Menține forma generală a României și toate granițele externe corecte.
+10. Bucureștiul și Ilfovul trebuie tratate explicit și coerent; nu le dubla și nu le pierde în conversia GeoJSON.
+11. Denumirile trebuie să fie geografice și ușor de recunoscut, nu generice precum „Teritoriul 1”.
+12. Păstrează un identificator stabil pentru fiecare teritoriu în cadrul presetului său.
+
+Pentru un județ împărțit în componente sau MultiPolygon în sursa GIS, verifică topologia și nu presupune că toate componentele sunt teritorii distincte.
+
+---------------------------------------------------------------------
+37.6. Vecinătățile trebuie calculate din geometria dizolvată
+---------------------------------------------------------------------
+
+În prezent `romaniaMapData.ts` conține liste `neighbors`, iar `createMapForPlayerCount()` le normalizează bidirecțional. Pentru noile preseturi, nu te baza orbește pe liste scrise manual.
+
+Calculează vecinătățile pornind din geometria teritoriilor jucabile:
+- Două teritorii sunt vecine dacă au o porțiune reală de graniță comună.
+- Atingerea într-un singur punct nu este suficientă pentru vecinătate.
+- Folosește o toleranță geometrică controlată pentru a evita erori de precizie ale GeoJSON.
+- Relația trebuie să fie simetrică: dacă A este vecin cu B, atunci B este vecin cu A.
+- Nu crea vecinătate între teritorii care doar se apropie vizual sau au centre apropiate.
+- Nu permite auto-vecinătate.
+- Fiecare referință de vecin trebuie să indice un ID existent în același preset.
+
+Dacă biblioteca GIS folosită nu permite calcularea automată fiabilă, poți păstra un fișier de vecinătăți generat și verificat, dar el trebuie să provină din geometrie și să aibă teste de consistență.
+
+Aceeași listă de vecini trebuie folosită de:
+- selecția bazei și regula teritoriilor tampon;
+- cucerirea din faza conquest;
+- selecția țintei de atac în war;
+- verificarea legalității atacurilor simultane;
+- evidențierea vizuală a teritoriilor atacabile.
+
+Nu calcula vecinătățile separat în frontend.
+
+---------------------------------------------------------------------
+37.7. Selectarea presetului după numărul REAL de jucători
+---------------------------------------------------------------------
+
+Numărul relevant este numărul efectiv de participanți la partida care începe:
+- jucători umani prezenți în cameră;
+- boți AI adăugați în cameră;
+- fără locurile libere din `maxPlayers`.
+
+Nu folosi doar `maxPlayers` sau capacitatea camerei pentru a selecta harta finală.
+
+Exemple:
+- cameră cu maxPlayers=10, dar 4 participanți reali la start -> presetul pentru 4 jucători;
+- cameră cu 3 oameni și 1 bot -> presetul pentru 4 participanți;
+- cameră cu 5 oameni și 1 bot -> presetul pentru 6 participanți.
+
+În lobby:
+- când un jucător intră, harta de previzualizare se actualizează pentru numărul actual de participanți;
+- când se adaugă sau se elimină un bot, harta de previzualizare se actualizează;
+- când un participant părăsește lobby-ul, harta de previzualizare se actualizează;
+- afișează clar numărul de participanți folosit și numărul teritoriilor hărții.
+
+La `startGame()`:
+1. Calculează `actualPlayerCount = game.players.filter(player => participantIsIncludedInMatch(player)).length`.
+2. Validează că numărul este între 2 și 10.
+3. Încarcă presetul exact `players-N`.
+4. Construiește geometria și vecinătățile pentru acel preset.
+5. Validează că toate teritoriile sunt corecte.
+6. Verifică dacă există suficiente poziții de bază non-adiacente pentru toți participanții.
+7. Salvează în GameState metadatele presetului.
+8. Îngheață harta pentru întreaga partidă.
+
+Nu schimba harta în mijlocul unui meci dacă un jucător se deconectează sau este eliminat. Numărul de participanți care au început partida determină harta. Eliminarea și deconectarea nu trebuie să declanșeze încărcarea altui preset.
+
+Adaugă în GameState, sau într-o structură echivalentă:
+- `mapId`;
+- `mapPresetPlayerCount`;
+- `mapTerritoryCount`;
+- `mapVersion`.
+
+Metadatele sunt utile pentru diagnosticare, audit și afișarea corectă în UI.
+
+---------------------------------------------------------------------
+37.8. Un singur teritoriu jucabil = un singur obiect interactiv în frontend
+---------------------------------------------------------------------
+
+În `RomaniaMap.tsx`:
+- Fiecare teritoriu jucabil trebuie randat ca o singură unitate logică.
+- Fiecare teritoriu trebuie să aibă un singur ID, o singură stare de owner și un singur punctaj.
+- Hit-testing-ul trebuie să folosească geometria dizolvată a teritoriului.
+- Hover-ul trebuie să evidențieze doar teritoriul jucabil selectat, nu mai multe teritorii fără legătură.
+- Click-ul trebuie să trimită ID-ul exact al teritoriului jucabil.
+- Dacă există county-boundary overlay, acesta trebuie să aibă `pointer-events: none`.
+- Nu monta handler-e de click pe județele de bază atunci când ele fac parte din același teritoriu jucabil.
+- Nu păstra simultan un overlay interactiv pe județe și un path interactiv pe grup, deoarece pot apărea evenimente duplicate sau hover-uri contradictorii.
+
+La selectare:
+- tot teritoriul jucabil trebuie să primească hașura și indicatorul de selecție;
+- conturul exterior al teritoriului trebuie evidențiat;
+- nu trebuie să pară că sunt selectate separat mai multe județe;
+- tooltip-ul trebuie să afișeze numele teritoriului jucabil și, opțional, județele componente într-un detaliu secundar.
+
+La cucerire sau atac:
+- culoarea se aplică întregului teritoriu unionat;
+- punctajul apare o singură dată pentru teritoriul jucabil;
+- toate browserele văd același teritoriu și același owner;
+- nu colora separat județele componente ca proprietăți independente.
+
+---------------------------------------------------------------------
+37.9. Etichete, nume și puncte de ancorare
+---------------------------------------------------------------------
+
+Pentru fiecare teritoriu din fiecare preset:
+- Calculează un punct reprezentativ aflat în interiorul geometriei unionate (preferabil `polylabel` sau o metodă robustă de point-on-surface).
+- Nu folosi simplul centroid dacă acesta poate cădea în afara unui teritoriu concav.
+- Eticheta nu trebuie să apară în afara conturului.
+- Evită suprapunerea numelor pentru teritorii vecine.
+- Dacă nu există suficient spațiu, folosește etichetă compactă și tooltip/detaliu la tap.
+- Cetatea bazei rămâne ancorată în teritoriul bazei selectate.
+- Repoziționează etichetele pentru fiecare preset; nu reutiliza coordonate din harta de 29 de teritorii pe harta de 10 sau 15.
+
+Numele regiunilor trebuie să fie complete și corecte în UI. Nu afișa nume moștenite de la presetul anterior după schimbarea numărului de jucători.
+
+---------------------------------------------------------------------
+37.10. Ce trebuie afișat utilizatorului despre hartă
+---------------------------------------------------------------------
+
+În HUD-ul sau header-ul hărții afișează clar:
+- „Harta României”;
+- numărul de participanți pentru care a fost generată;
+- numărul de teritorii jucabile;
+- opțional, numărul județelor incluse într-un teritoriu selectat.
+
+Nu afișa numărul de județe ca și cum ar reprezenta numărul de teritorii jucabile.
+
+La selectarea unui teritoriu, tooltip-ul poate arăta:
+- numele teritoriului;
+- județele componente;
+- proprietarul;
+- vecinii;
+- punctajul doar dacă este ocupat, conform regulilor existente.
+
+Teritoriile neutre continuă să nu afișeze puncte.
+
+Pe telefon, tap-ul trebuie să afișeze detaliile; nu te baza numai pe hover.
+
+---------------------------------------------------------------------
+37.11. Fișiere și module care trebuie inspectate/modificate
+---------------------------------------------------------------------
+
+1. `data/geo/romania-counties.geojson`
+   - sursa geografică canonică;
+   - verificarea ID-urilor județelor și a Bucureștiului;
+   - nu o simplifica sau deforma fără motiv.
+
+2. `server/romaniaMapData.ts`
+   - elimină logica limitată la patru intervale dacă este înlocuită de map presets;
+   - încarcă presetul exact pentru 2..10;
+   - construiește geometria unionată;
+   - produce obiectele Territory;
+   - calculează/validează vecinătățile.
+
+3. `data/maps/romania/players-N.json` sau modulele echivalente
+   - un preset explicit pentru fiecare număr 2..10;
+   - fiecare județ aparține unei singure regiuni jucabile în preset;
+   - fără coordonate brute duplicate.
+
+4. `src/components/RomaniaMap.tsx`
+   - un shape unic pe teritoriu jucabil;
+   - contur exterior dizolvat;
+   - overlay administrativ interior doar dacă este discret și non-interactiv;
+   - hit-testing/hover/click corect.
+
+5. `src/types/game.ts`
+   - metadate pentru `mapId`, `mapPresetPlayerCount`, `mapTerritoryCount`, `mapVersion`, dacă sunt necesare.
+
+6. `server/gameEngine.ts`
+   - selectarea presetului la start pe baza numărului real de participanți;
+   - înghețarea hărții în timpul meciului;
+   - fără schimbarea presetului după eliminare/deconectare.
+
+7. `src/views/GameView.tsx` și componentele HUD/lobby
+   - afișarea presetului și a numărului de regiuni;
+   - preview de hartă în lobby care urmărește participanții efectivi;
+   - nu construi o a doua hartă diferită în frontend.
+
+8. Teste dedicate pentru preseturi, geometrie, topologie, selecție și sincronizare.
+
+---------------------------------------------------------------------
+37.12. Bibliotecă GIS și generarea geometriei
+---------------------------------------------------------------------
+
+Folosește o bibliotecă GIS robustă pentru union/dissolve și operații topologice. Poți utiliza Turf.js (`@turf/union` și funcțiile de topologie necesare) sau altă bibliotecă adecvată deja compatibilă cu proiectul.
+
+Înainte să adaugi o dependență:
+- verifică `package.json` și versiunea Node;
+- verifică API-ul real al versiunii instalate;
+- nu copia exemple incompatibile de la altă versiune;
+- adaugă numai dependența necesară.
+
+Preferabil, geometria dizolvată se generează la build sau printr-un script determinist de pregătire a datelor, nu se calculează costisitor la fiecare randare React.
+
+Poți avea un script precum:
+`npm run generate:map-presets`
+
+Acesta trebuie să:
+- citească sursa GeoJSON;
+- valideze grupările județelor;
+- dizolve geometria fiecărui teritoriu;
+- genereze geometria finală folosită de joc;
+- genereze punctele de etichetare;
+- genereze vecinătățile;
+- scrie rezultate stabile, reproductibile;
+- eșueze cu mesaj clar dacă există județe lipsă, duplicate sau geometrii invalide.
+
+Nu genera date aleatoriu la pornirea serverului. Aceleași preseturi trebuie să producă exact aceeași hartă la fiecare build.
+
+---------------------------------------------------------------------
+37.13. Reguli de fallback și erori
+---------------------------------------------------------------------
+
+Dacă lipsește presetul pentru numărul actual de participanți:
+- nu încărca în tăcere presetul pentru 3 jucători sau harta implicită;
+- nu porni meciul cu un număr de teritorii greșit;
+- returnează o eroare explicită în lobby;
+- înregistrează numărul de jucători și presetul lipsă în log.
+
+Dacă o geometrie unionată este invalidă:
+- blochează pornirea partidei;
+- afișează diagnostic în server log;
+- nu reveni la geometria county paths concatenată.
+
+Dacă presetul nu are destule poziții legale pentru alegerea bazelor:
+- nu modifica regula distanței dintre baze ca să ascunzi problema;
+- corectează gruparea sau numărul de teritorii;
+- validează din nou graful și setul independent de poziții.
+
+---------------------------------------------------------------------
+37.14. Teste automate obligatorii pentru hartă
+---------------------------------------------------------------------
+
+Test H1 – preset exact pentru fiecare număr de jucători
+
+Execută pentru N = 2,3,4,5,6,7,8,9,10.
+Așteptări:
+- se încarcă `players-N`;
+- `mapPresetPlayerCount === N`;
+- `mapId` este cel corespunzător;
+- numărul de teritorii este cel definit pentru N;
+- harta nu cade pe un preset generic când lipsește fișierul.
+
+Test H2 – harta se actualizează în lobby
+
+Pornește o cameră și adaugă participanți unul câte unul.
+Așteptări:
+- preview-ul reflectă numărul curent;
+- adăugarea unui bot schimbă presetul corespunzător;
+- eliminarea unui bot îl schimbă înapoi;
+- toate browserele văd același `mapId` și aceeași listă de teritorii.
+
+Test H3 – presetul final folosește numărul real, nu maxPlayers
+
+Creează cameră maxPlayers=10 cu 4 participanți reali.
+Așteptări:
+- la start se încarcă presetul pentru 4;
+- nu se încarcă presetul pentru 10.
+
+Test H4 – boții sunt incluși în numărul participanților
+
+3 oameni + 1 bot.
+Așteptări:
+- presetul pentru 4 participanți.
+
+Test H5 – harta rămâne înghețată în timpul meciului
+
+Pornește un meci cu 6 jucători, elimină unul și deconectează altul.
+Așteptări:
+- `mapId` și teritoriile nu se schimbă;
+- doar ownership-ul se actualizează.
+
+Test H6 – geometrie unionată
+
+Pentru fiecare teritoriu grupat:
+- verifică geometria validă;
+- verifică faptul că sub-județele alăturate au fost dizolvate;
+- conturul principal nu trebuie să traseze granița internă comună dintre județele aceluiași teritoriu;
+- aria unionată trebuie să corespundă sumei ariilor componentelor, cu toleranța geometrică așteptată.
+
+Test H7 – niciun județ lipsă sau duplicat
+
+Pentru fiecare preset:
+- fiecare county ID din GeoJSON apare exact o dată;
+- niciun ID necunoscut nu este folosit;
+- toate județele sunt acoperite.
+
+Test H8 – fiecare teritoriu este conectat
+
+Verifică prin topologie că toate județele componente ale unui teritoriu sunt conectate prin granițe comune. Respinge grupurile separate geografic.
+
+Test H9 – vecinătăți
+
+- fiecare vecin există;
+- relația este bidirecțională;
+- nu există self-neighbor;
+- două teritorii care doar ating într-un punct nu sunt vecine;
+- vecinătățile corespund geometriei unionate.
+
+Test H10 – lipsa suprapunerilor și a golurilor
+
+- geometriile teritoriilor nu se suprapun pe suprafețe;
+- reuniunea tuturor teritoriilor acoperă întreaga suprafață a României inclusă în joc;
+- nu există județe sau fragmente geografice pierdute;
+- nu există dublări.
+
+Test H11 – selectare vizuală
+
+- un click pe orice punct al teritoriului selectează un singur territoryId;
+- toate sub-județele componente se evidențiază împreună;
+- niciun teritoriu vecin nu se colorează accidental;
+- overlay-ul intern administrativ nu interceptează click-ul.
+
+Test H12 – etichete
+
+- fiecare etichetă este în interiorul teritoriului;
+- nu există etichete în afara României;
+- etichetele nu se suprapun critic;
+- pozițiile sunt specifice presetului.
+
+Test H13 – selecția bazelor
+
+Pentru fiecare număr de jucători 2..10:
+- există suficiente baze valide;
+- regula de non-adiacență este satisfăcută;
+- timer-ul și auto-selectarea aleg doar baze valide.
+
+Test H14 – toate hărțile renderizate
+
+Randează sau capturează fiecare preset în browser:
+- 2 jucători;
+- 3 jucători;
+- 4 jucători;
+- 5 jucători;
+- 6 jucători;
+- 7 jucători;
+- 8 jucători;
+- 9 jucători;
+- 10 jucători.
+
+Verifică dacă harta este vizibil diferită și dacă numărul teritoriilor afișat coincide cu numărul din backend.
+
+Test H15 – aceeași hartă la toți clienții
+
+Deschide același meci în minimum 3 browsere.
+Așteptări:
+- toate primesc aceeași versiune mapId/mapVersion;
+- toate primesc aceeași listă de territory IDs;
+- aceleași contururi sunt randate;
+- hover și click indică același teritoriu;
+- owner-ul se sincronizează identic.
+
+---------------------------------------------------------------------
+37.15. Testare vizuală și criterii de acceptare
+---------------------------------------------------------------------
+
+Pentru fiecare preset 2..10, generează screenshot-uri în dimensiuni de desktop și mobil.
+
+Verifică în mod special:
+- forma completă a României;
+- granița externă;
+- numărul teritoriilor jucabile;
+- diferența vizuală între hărțile cu puțini și mulți jucători;
+- conturul exterior al fiecărui teritoriu;
+- absența contururilor interne puternice în interiorul aceluiași teritoriu;
+- numele teritoriilor și cetăților;
+- punctele care apar doar pe teritorii ocupate;
+- selecția unui întreg teritoriu, nu a unui singur județ component.
+
+Criteriu de acceptare principal:
+Când utilizatorul vede harta, trebuie să poată identifica fără să dea hover câte teritorii jucabile există și unde se termină fiecare teritoriu. Când face hover/tap/click pe un teritoriu, exact acea regiune jucabilă se evidențiază. Harta nu trebuie să arate ca și cum fiecare județ ar fi un teritoriu separat dacă mai multe județe au fost grupate într-un singur teritoriu.
+
+Criteriu de acceptare pentru numărul de participanți:
+Un meci cu 2 jucători trebuie să încarce presetul pentru 2; un meci cu 3 pentru 3; un meci cu 4 pentru 4; și așa mai departe până la 10. Nu accepta map presets comune pentru intervale de număr de jucători în versiunea finală V3.0.
+
+---------------------------------------------------------------------
+37.16. Ce să nu faci la repararea hărții
+---------------------------------------------------------------------
+
+NU:
+- nu schimba doar culoarea liniilor;
+- nu ascunde complet contururile externe ale teritoriilor;
+- nu lăsa aceeași geometrie pentru toate numerele de jucători;
+- nu folosi doar 4 preseturi pentru intervalele 2, 3, 4–5 și 6–10;
+- nu duplica toate coordonatele GeoJSON în 9 fișiere;
+- nu grupa județe neadiacente;
+- nu grupa mai multe județe doar la nivel de owner și să păstrezi stroke-uri interne la fel de puternice ca granițele jucabile;
+- nu folosi `centroid` fără verificare pentru plasarea etichetelor;
+- nu păstra liste de vecini care nu corespund geometriei finale;
+- nu regenera harta în timpul jocului după eliminarea unui participant;
+- nu selecta harta după `maxPlayers` când în cameră sunt mai puțini participanți;
+- nu porni partida dacă presetul exact lipsește sau este invalid;
+- nu declara harta reparată doar pentru că numărul de obiecte din `territories` diferă.
+
+======================================================================
+38. ACTUALIZAREA INSTRUCȚIUNILOR GENERALE PENTRU HARTĂ
+======================================================================
+
+Cerințele din V3.0 pentru hartă au prioritate față de orice formulare anterioară care cerea să nu se modifice geometria.
+
+Interpretarea corectă este:
+- păstrează geometria geografică sursă reală a județelor și a României;
+- repară reprezentarea geometrică a teritoriilor jucabile prin union/dissolve;
+- creează nouă preseturi pentru numărul exact de participanți 2..10;
+- folosește aceeași hartă autoritativă pe server și în toate browserele;
+- păstrează mecanicile de joc existente, cu excepția actualizării corecte a datelor de hartă și a vecinătăților rezultate.
+
+Nu este necesară reconstruirea întregului joc. Este necesară refacerea modulului de date/hartă și integrarea lui corectă în lobby, startGame, GameState și RomaniaMap.
+
+======================================================================
+39. ORDINE NOUĂ DE IMPLEMENTARE – HARTA
+======================================================================
+
+PRIORITATEA H1 – Diagnostic și model de date
+- Citește GeoJSON-ul sursă.
+- Confirmă numărul de feature-uri, ID-urile și proiecția.
+- Inventariază cele patru preseturi existente și grupările lor.
+- Confirmă segmentele multiple M...Z din path-urile compuse.
+- Creează schema pentru preseturi players-2 până la players-10.
+- Prezintă un tabel cu numărul teritoriilor și județele din fiecare.
+
+PRIORITATEA H2 – Geometrie unionată
+- Implementează un script determinist de union/dissolve.
+- Generează contururi exterioare reale pentru fiecare teritoriu.
+- Calculează label anchors și vecinătăți.
+- Adaugă teste de topologie și acoperire.
+
+PRIORITATEA H3 – Selectarea presetului
+- Actualizează createMapForPlayerCount sau înlocuiește cu getMapPresetForPlayerCount.
+- Folosește numărul real de participanți la start.
+- Actualizează preview-ul lobby-ului când se schimbă participanții.
+- Îngheață presetul după start.
+- Include mapId/mapVersion în GameState.
+
+PRIORITATEA H4 – Renderer
+- Folosește geometria dizolvată pentru teritoriile interactive.
+- Separă optional limitele județene interne într-un layer non-interactiv, cu contrast mai mic.
+- Repară hover, tap, click și selected hatch.
+- Repară plasarea etichetelor.
+
+PRIORITATEA H5 – Validare pentru toate hărțile
+- Rulează testele H1–H15.
+- Capturează toate cele 9 preseturi.
+- Testează desktop și telefon.
+- Verifică 3 browsere în același meci.
+- Corectează grupările până când harta arată și funcționează ca o hartă cu teritorii jucabile distincte.
+
+Nu începe generarea în masă a întrebărilor și nici alte schimbări vizuale secundare până când harta nu trece testele topologice și vizuale de mai sus.
+
+======================================================================
+40. RAPORTUL FINAL EXTINS – ADAUGĂ ȘI SECȚIUNEA DE HARTĂ
+======================================================================
+
+Pe lângă raportul final deja cerut în secțiunea 34, răspunde obligatoriu:
+1. Care a fost motivul pentru care contururile județelor din același teritoriu rămâneau vizibile?
+2. Cum ai generat geometria unionată/dizolvată?
+3. Ce bibliotecă și ce versiune ai folosit pentru union/topologie?
+4. Câte județe/feature-uri există în GeoJSON-ul-sursă?
+5. Ce grupări de județe ai definit pentru fiecare număr de jucători 2..10?
+6. Câte teritorii jucabile are fiecare preset?
+7. Cum ai verificat că niciun județ nu lipsește și niciunul nu apare de două ori?
+8. Cum ai calculat vecinătățile și cum ai tratat granițele comune versus atingerea într-un punct?
+9. Cum ai verificat conectivitatea fiecărui teritoriu?
+10. Cum alegi presetul pentru o cameră cu maxPlayers=10 dar numai 4 participanți reali?
+11. Cum sunt incluși boții în numărul real de participanți?
+12. Cum te asiguri că harta nu se schimbă după start sau după eliminări?
+13. Cum se vede harta pentru 2, 3, 4, 5, 6, 7, 8, 9 și 10 jucători?
+14. Ce screenshot-uri ai generat pentru fiecare preset și la ce rezoluții?
+15. Ce teste H1–H15 au trecut și care au eșuat?
+16. Există preseturi sau geometrii care au rămas incomplete?
+
+Nu spune că ai creat 9 hărți dacă există doar 9 nume de fișiere care încarcă aceeași geometrie. Arată că fiecare preset are grupări distincte și că backend-ul încarcă presetul corect.
+
+======================================================================
+41. CRITERII FINALE DE ACCEPTARE V3.0 – HARTĂ
+======================================================================
+
+[ ] Există preset distinct pentru fiecare număr exact de jucători 2..10.
+[ ] Presetul este ales după participanții reali, inclusiv AI.
+[ ] Harta finală este înghețată la start.
+[ ] Fiecare teritoriu jucabil este construit din județe definite o singură dată.
+[ ] Geometria fiecărui teritoriu este dizolvată, nu doar concatenată.
+[ ] Granițele interne ale județelor grupate nu mai par granițe de teritorii jucabile.
+[ ] Contururile dintre teritorii jucabile sunt clare și continue.
+[ ] Geometria nu are suprapuneri sau goluri neintenționate.
+[ ] Fiecare teritoriu este geografic conectat.
+[ ] Vecinătățile corespund granițelor comune reale.
+[ ] Selecția/hover-ul evidențiază exact un teritoriu jucabil.
+[ ] Etichetele sunt poziționate în interior și nu se suprapun critic.
+[ ] Harta este aceeași la toți participanții dintr-un meci.
+[ ] Există screenshot-uri pentru toate cele 9 preseturi.
+[ ] Testele H1–H15 au rezultat raportat separat.
+
+======================================================================
+42. INSTRUCȚIUNE FINALĂ V3.0
+======================================================================
+
+Documentul V3.0 include toate cerințele anterioare V2.0 privind:
+- întrebarea comună în faza Cucerire;
+- blocarea primului răspuns;
+- confirmarea de la server;
+- corectarea punctajului;
+- tratarea distinctă a NO_RESPONSE;
+- rezultatele vizuale pentru grilă și numeric;
+- războiul simultan pentru 4, 6, 8 și 10 participanți;
+- întrebarea comună pentru toate duelurile din aceeași rundă;
+- departajările numerice și punctajul;
+- banca extinsă de întrebări și testele multiplayer.
+
+V3.0 a adăugat repararea structurală a hărții și a preset-urilor sale.
+V4.0 adaugă în plus eliminarea atacurilor la distanță și verificarea strictă a adiacenței pentru toate țintele, inclusiv cetățile.
+
+Nu considera proiectul complet până când:
+- întrebările și răspunsurile funcționează conform regulilor;
+- punctajul este corect;
+- războiul simultan trece testele;
+- fiecare preset de hartă este corect vizual și topologic;
+- toate browserele primesc aceeași hartă și aceeași stare;
+- build-ul și testele sunt trecute și raportate sincer.
+
+AI-ul trebuie să modifice codul efectiv, nu să răspundă doar cu o listă de sugestii. Păstrează proiectul existent și raportează fiecare decizie majoră înainte de a schimba regulile de joc.
+
+======================================================================
+43. V4.0 – BUG CRITIC: ATACURI PERMISE ASUPRA TERITORIILOR NEADIACENTE
+======================================================================
+
+Această secțiune este o EXTINDERE OBLIGATORIE și are prioritate față de orice
+logică mai veche din cod care permite atacuri la distanță asupra cetăților.
+
+PROBLEMA OBSERVATĂ DE UTILIZATOR:
+Un jucător deține teritorii aflate la o margine a României și poate selecta
+pentru atac teritorii aflate la o altă margine, foarte departe, fără ca vreun
+teritoriu propriu să aibă efectiv frontieră comună cu ținta. Utilizatorul a
+observat comportamentul în faza de război.
+
+AUDITUL CODULUI ACTUAL DIN BRANCH MAIN A IDENTIFICAT O CAUZĂ DIRECTĂ:
+
+1. În `src/game/rules.ts`, funcția `canTargetTerritory()` pentru `phase ===
+   'war'` calculează `isDirectNeighbor = isAdjacentToPlayer(...)`.
+2. Pentru o țintă normală, dacă `isDirectNeighbor` este false, atacul este
+   respins.
+3. Pentru o țintă cu `target.isBase === true`, există însă o EXCEPȚIE:
+   dacă ținta nu este adiacentă, codul permite un atac la distanță dacă
+   `player.baseAttackAttemptsUsed[target.ownerId] < 1`.
+4. În `server/gameEngine.ts`, `selectTerritory()` înregistrează apoi această
+   încercare la distanță în `baseAttackAttemptsUsed`.
+5. Această excepție explică de ce o cetate/bază aflată pe partea opusă a hărții
+   poate apărea ca atacabilă fără să existe o frontieră comună.
+
+IMPORTANT: Nu presupune că aceasta este singura cauză. Codul actual construiește
+și normalizează listele `neighbors` în `server/romaniaMapData.ts`, dar
+normalizarea bidirecțională NU demonstrează că două teritorii chiar au o
+frontieră comună. Dacă o listă inițială conține o vecinătate greșită, codul o
+poate propaga în ambele sensuri. Trebuie verificate ambele cauze: excepția
+explicită pentru cetăți și datele geografice/neighbor graph.
+
+43.1. REGULA NOUĂ OBLIGATORIE – ORICE ATAC NECESITĂ ADIACENȚĂ DIRECTĂ
+
+Elimină complet atacurile la distanță.
+
+În faza WAR, o țintă este legală numai dacă sunt îndeplinite TOATE condițiile:
+- ținta există în harta meciului curent;
+- ținta este ocupată;
+- ținta aparține unui adversar activ;
+- ținta nu aparține atacatorului;
+- ținta are cel puțin o frontieră geografică reală comună cu cel puțin un
+  teritoriu deținut în acel moment de atacator;
+- atacatorul și apărătorul sunt eligibili pentru duelul/runda curentă;
+- ținta nu a fost deja rezervată de alt atac simultan din aceeași rundă;
+- perechea atacator-apărător este permisă de planul de război simultan.
+
+Această regulă se aplică FĂRĂ EXCEPȚIE:
+- teritoriilor normale;
+- regiunilor de bază;
+- teritoriilor care conțin cetatea principală;
+- tuturor atacurilor asupra turnurilor cetății;
+- atacurilor simultane pentru 4, 6, 8 și 10 participanți;
+- meciurilor cu număr impar de participanți, dacă se permite război clasic.
+
+O cetate poate fi asediată numai de pe o frontieră directă. Faptul că ținta
+este o bază NU oferă o încercare specială de atac la distanță.
+
+REGULA VECHE CARE TREBUIE ELIMINATĂ:
+„Dacă nu există frontieră directă, se permite o singură încercare de atac la
+distanță asupra bazei fiecărui adversar.”
+Această regulă nu mai este valabilă și nu trebuie păstrată nici ca fallback.
+
+43.2. MODIFICĂRI CONCRETE ÎN COD
+
+A. `src/game/rules.ts` – `canTargetTerritory()`
+
+În ramura `phase === 'war'`:
+1. Verifică dacă ținta este neutră – dacă da, respinge.
+2. Verifică dacă ținta aparține jucătorului – dacă da, respinge.
+3. Calculează adiacența folosind funcția canonică `isAdjacentToPlayer()`.
+4. Dacă adiacența este false, respinge atacul indiferent de `target.isBase`.
+5. Dacă adiacența este true, continuă cu validarea regulilor cetății și ale
+   perechii de război.
+
+Nu mai trebuie să existe o ramură care întoarce `allowed: true` pentru o bază
+neadiacentă.
+
+Pseudocodul corect pentru partea de adiacență:
+
+```
+if (target.ownerId === null) return denied;
+if (target.ownerId === player.id) return denied;
+if (!isAdjacentToPlayer(targetId, player.id, territories)) {
+    return denied("Poți ataca numai un teritoriu care are frontieră comună cu domeniul tău.");
+}
+// Abia după această verificare se validează perechea și regulile cetății.
+```
+
+Nu copia pseudocodul orbește dacă proiectul are alte tipuri/mesaje; adaptează-l
+la codul curent, dar păstrează regula.
+
+B. `server/gameEngine.ts` – `selectTerritory()`
+
+În ramura WAR:
+- validează din nou atacul pe server cu aceeași funcție de reguli;
+- nu permite frontend-ului să ocolească validarea;
+- șterge logica de incrementare a `baseAttackAttemptsUsed` pentru atacuri la
+  distanță;
+- nu iniția întrebarea dacă ținta nu este direct adiacentă;
+- nu modifica turnurile cetății și nu acorda puncte pentru o selecție respinsă;
+- răspunde cu un mesaj clar în callback-ul Socket.IO.
+
+C. `src/types/game.ts` – `Player.baseAttackAttemptsUsed`
+
+Verifică toate referințele la `baseAttackAttemptsUsed` în repository.
+- Elimină câmpul dacă nu mai are alt scop legitim.
+- Dacă există stări vechi persistate care îl conțin, tratează câmpul ca
+  deprecated/ignorat în migrare, nu lăsa datele vechi să reactiveze regula.
+- Nu folosi acest câmp ca fallback pentru a permite atac la distanță.
+
+D. `server/romaniaMapData.ts` – vecinătăți
+
+Funcția actuală `createMapForPlayerCount()` filtrează vecinii la ID-urile
+existente și apoi adaugă relații inverse pentru simetrie. Aceasta este doar o
+normalizare structurală, nu o verificare geografică.
+
+Pentru fiecare preset mapă:
+- regenerează `neighbors` din geometriile unionate ale teritoriilor jucabile;
+- două teritorii sunt vecine numai dacă au o lungime pozitivă de frontieră
+  comună peste toleranța geometrică aleasă;
+- simpla apropiere nu este vecinătate;
+- atingerea într-un singur punct nu este suficientă;
+- granița externă a României NU conectează două teritorii între ele;
+- nu există „wrap-around” între nord, sud, est și vest;
+- două teritorii aflate pe margini opuse ale României nu devin vecine doar
+  pentru că ambele ating conturul extern al țării;
+- fiecare pereche de vecini trebuie să poată fi justificată prin geometrie.
+
+Nu crea un artificiu prin care toate teritoriile de frontieră devin vecine cu
+un „inel exterior” comun. Frontiera externă a țării este un contur de margine,
+nu un teritoriu și nu o legătură între zone.
+
+43.3. DEFINIȚIA CORECTĂ A ADIACENȚEI
+
+Pentru un teritoriu țintă T și un jucător P:
+
+`isAdjacentToPlayer(T, P) = există un teritoriu O astfel încât O.ownerId = P.id
+și geometria(T) are o frontieră reală comună cu geometria(O).`
+
+Este suficient să existe cel puțin un teritoriu propriu adiacent, nu este
+necesar ca toate teritoriile proprii să fie conectate la țintă.
+
+În același timp, nu este suficient ca:
+- T să se afle pe granița României;
+- O să se afle și el pe o graniță a României;
+- T și O să fie ambele în nord/sud/est/vest;
+- centrele poligoanelor să fie apropiate;
+- bounding boxes să se atingă;
+- două poligoane să atingă doar același punct;
+- două nume de regiune să aibă aceeași macro-zonă.
+
+Singurul criteriu este o frontieră comună efectivă între geometria țintei și
+geometria unui teritoriu deținut de atacator.
+
+Dacă geometriile sunt ușor decalate din cauza preciziei GeoJSON, folosește o
+normalizare/topologie GIS cu toleranță mică, explicită și testată. Nu folosi un
+buffer atât de mare încât să unească teritorii separate.
+
+43.4. ACEEAȘI REGULĂ ÎN FRONTEND ȘI BACKEND
+
+Frontend:
+- RomaniaMap evidențiază ca atacabile numai teritoriile pe care serverul le-ar
+  accepta;
+- folosește aceeași listă `neighbors` validată din GameState/preset;
+- nu crea o funcție frontend diferită de adiacență;
+- nu evidenția cetăți neadiacente ca ținte valide;
+- la tap/click asupra unei ținte ilegale, afișează un mesaj discret care spune
+  că trebuie să existe o frontieră comună;
+- nu trimite acțiuni pentru ținte care sunt evident ilegale.
+
+Backend:
+- repetă integral validarea;
+- nu are încredere în faptul că butonul din frontend a fost dezactivat;
+- respinge orice ID de teritoriu care nu aparține grafului/hărții curente;
+- verifică owner-ul și adiacența chiar în momentul procesării acțiunii;
+- pentru atac simultan, verifică iar ținta înainte de înghețarea țintelor;
+- după ce țintele sunt înghețate, o schimbare ulterioară a proprietarilor nu
+  trebuie să creeze o a doua țintă duplicată sau să permită atacuri invalide.
+
+Dacă mai mulți jucători atacă simultan, fiecare pereche trebuie să treacă
+aceeași verificare de adiacență. Un matching între jucători nu trebuie să
+permită o țintă neadiacentă doar pentru că nu există altă pereche disponibilă.
+
+43.5. REGULI SPECIALE PENTRU CETATE DUPĂ ELIMINAREA ATACULUI LA DISTANȚĂ
+
+Păstrează mecanica cetății cu trei turnuri, dar schimbă doar accesul la asediu:
+- un atac asupra bazei este posibil doar dintr-un teritoriu propriu adiacent;
+- fiecare atac câștigat asupra cetății distruge un singur turn, conform
+  mecanicii existente/stabilite;
+- atacurile ulterioare asupra aceleiași cetăți trebuie să respecte în
+  continuare adiacența directă;
+- dacă atacatorul pierde controlul asupra tuturor teritoriilor adiacente
+  cetății, nu mai poate continua asediul până nu recâștigă o frontieră directă;
+- nu permite atacul cetății printr-un teritoriu propriu situat la distanță;
+- nu permite atacul unei cetăți dintr-o regiune de frontieră opusă.
+
+Nu modifica numărul de turnuri, punctajul sau condiția de eliminare decât dacă
+există o contradicție demonstrată în implementarea curentă. Scopul acestei
+secțiuni este să elimine atacul neadiacent.
+
+43.6. TESTE OBLIGATORII – ATACURI LA FRONTIERĂ ȘI ADIACENȚĂ
+
+Creează teste unitare și de integrare pentru toate cazurile:
+
+TEST A – Teritoriu advers direct adiacent
+- Jucătorul A deține teritoriul X.
+- Teritoriul Y aparține jucătorului B.
+- X și Y au frontieră comună reală.
+Așteptare: atacul X -> Y este permis.
+
+TEST B – Teritoriu advers pe marginea opusă a României
+- A deține un teritoriu de la granița vestică.
+- B deține un teritoriu de la granița estică.
+- Nu există nicio frontieră comună între teritoriile lui A și ținta lui B.
+Așteptare: atacul este respins.
+
+TEST C – Bază adversă neadiacentă
+- A deține teritorii în vest.
+- B are cetatea într-un teritoriu din est.
+- Nu există frontieră comună între niciun teritoriu A și baza B.
+Așteptare: atacul asupra cetății este respins. Nu se consumă nicio încercare,
+nu se generează întrebare și nu se modifică turnurile.
+
+TEST D – Bază adversă direct adiacentă
+- A deține cel puțin un teritoriu cu frontieră comună cu baza B.
+Așteptare: atacul asupra cetății este permis.
+
+TEST E – Două teritorii de frontieră opuse
+- Ambele teritorii ating conturul extern al României.
+- Ele nu au frontieră comună una cu cealaltă.
+Așteptare: nu sunt vecine. Nu există wrap-around al graniței externe.
+
+TEST F – Colț comun într-un singur punct
+- Două poligoane ating doar într-un singur punct.
+Așteptare: nu sunt vecine pentru atac.
+
+TEST G – Frontiera comună mică, dar reală
+- Două teritorii împart o porțiune de linie mai mare decât toleranța GIS.
+Așteptare: sunt vecine.
+
+TEST H – Proprietate indirectă
+- A deține X și Z.
+- X este adiacent cu Y, Z nu este.
+- Y aparține lui B.
+Așteptare: atacul este permis, deoarece există cel puțin un teritoriu propriu
+adiacent (X). Nu trebuie cerut ca toate teritoriile lui A să fie conectate.
+
+TEST I – Fără teritoriu propriu adiacent
+- A deține mai multe regiuni în alte părți ale hărții.
+- Niciuna nu are frontieră comună cu Y.
+Așteptare: atacul asupra lui Y este respins.
+
+TEST J – Atac simultan cu perechi diferite
+- În meci cu 4/6/8/10 jucători, fiecare atacator este asociat unui apărător.
+- O pereche are țintă adiacentă, alta are doar o țintă neadiacentă.
+Așteptare: prima pereche poate continua; a doua pereche trebuie rearanjată,
+marcată fără țintă legală sau sărită. Nu se permite atacul neadiacent.
+
+TEST K – Încercare repetată pe o bază neadiacentă
+- Jucătorul A încearcă să atace baza B fără frontieră comună.
+- Repetă acțiunea de două ori.
+Așteptare: ambele cereri sunt respinse identic. Nu există „prima încercare
+specială” și nici o contorizare a atacurilor la distanță.
+
+TEST L – Harta diferită per player count
+- Rulează testele B–K pentru fiecare preset disponibil 2..10.
+Așteptare: vecinătățile sunt corecte pentru presetul respectiv.
+
+TEST M – Verificare a grafului
+Pentru fiecare preset:
+- fiecare neighbor ID există;
+- nu există self-neighbors;
+- relația este simetrică;
+- fiecare edge are frontieră comună GIS validă;
+- nicio pereche de teritorii de pe margini opuse nu este conectată printr-o
+  relație artificială.
+
+43.7. AUDIT ȘI CURĂȚARE A CÂMPURILOR VECHI
+
+Caută în întreg repository-ul următoarele identificatoare și verifică fiecare
+folosire:
+- `baseAttackAttemptsUsed`;
+- `isDirectNeighbor`;
+- `isAdjacentToPlayer`;
+- `canTargetTerritory`;
+- `neighbors`;
+- orice `remoteAttack`, `longRange`, `distanceAttack` sau echivalent.
+
+Nu elimina nume fără să urmărești toate utilizările. Scopul este ca nicio
+cale veche să nu permită atacul la distanță.
+
+Verifică în special:
+- UI de highlight al țintelor;
+- `selectTerritory()` server-side;
+- funcția de matching al perechilor simultane;
+- selecția automată la expirarea timerului;
+- AI turn selection;
+- revalidarea țintelor după deconectări/eliminări;
+- datele vechi persistate în JSON.
+
+Selecția automată la timeout trebuie să aleagă numai o țintă direct adiacentă
+și permisă în perechea curentă. Dacă nu există, duelul se marchează SKIPPED.
+Nu folosi fallback-ul „orice teritoriu al apărătorului”.
+
+43.8. RAPORT FINAL OBLIGATORIU PENTRU V4.0
+
+Răspunde explicit:
+1. Care a fost cauza exactă a atacurilor de la o margine la alta?
+2. Ai eliminat excepția `baseAttackAttemptsUsed` pentru bazele neadiacente?
+3. Ce fișiere ai modificat?
+4. Cum calculezi acum adiacența?
+5. Vecinătățile sunt generate din geometriile unionate sau încă sunt liste
+   manuale neverificate?
+6. Ce toleranță GIS ai folosit pentru frontiera comună și de ce?
+7. Cum ai tratat poligoanele care ating doar într-un punct?
+8. Cum ai verificat că estul și vestul României nu devin vecini artificiali?
+9. Cum funcționează aceeași regulă în cucerire, război, asediu și atac
+   simultan?
+10. Ce se întâmplă când nu există nicio țintă legală pentru perechea
+    atacator-apărător?
+11. Ce teste A–M au trecut și care au eșuat?
+12. Ai verificat manual o hartă pentru cel puțin 2, 3, 4 și 10 jucători?
+
+Nu declara bugul rezolvat doar pentru că ai eliminat o linie de cod. Demonstrează
+prin teste că un atacator nu poate ataca o regiune de pe partea opusă a hărții
+fără frontieră comună cu un teritoriu propriu.
+
+======================================================================
+44. PRIORITATEA V4.0 – REGULA FINALĂ
+======================================================================
+
+Orice teritoriu atacat, inclusiv o cetate, trebuie să fie adiacent direct cu
+cel puțin un teritoriu deținut de atacator la momentul validării.
+
+NU există atacuri la distanță.
+NU există excepție pentru baze.
+NU există legătură între teritorii doar pentru că ambele sunt pe conturul
+extern al României.
+NU există fallback automat către un teritoriu advers neadiacent.
+
+Dacă două teritorii nu au frontieră comună reală, atacul este ilegal.
+Această regulă este valabilă atât în frontend, cât și în backend și trebuie
+aplicată identic în toate modurile de joc.
+
+V4.0 păstrează toate cerințele V3.0 și V2.0 care nu sunt contrazise de această
+secțiune. Dacă o instrucțiune veche sugerează permisivitate la atacul asupra
+unei baze neadiacente, secțiunea 43–44 V4.0 o înlocuiește explicit.
+
+
+======================================================================
+45. SNAPSHOT NOU AL REPOSITORY-ULUI – CE ESTE DEJA IMPLEMENTAT ȘI CE NU
+======================================================================
+
+Această secțiune are prioritate față de orice descriere a stării codului din
+secțiunile istorice anterioare. A fost adăugată după verificarea repository-
+ului public actual:
+
+Repository: https://github.com/Jorjicaru/QuizMore
+Branch: main
+HEAD verificat: 27eb0f863e21259ff39a760fe0ee39f70e455706
+Părinte: 8839408cc633a8d95e5ffe97f5f6b17f4c066ebb
+Mesaj commit: feat: update game mechanics and engine configuration
+
+Fișiere-cheie verificate:
+- server/romaniaMapData.ts
+- scripts/generate_all_maps.cjs
+- scripts/map_builder_core.cjs
+- data/maps/romania/players-2.json ... players-10.json
+- src/components/RoundTracker.tsx
+- src/components/GameHUD.tsx
+- src/components/RomaniaMap.tsx
+- src/views/GameView.tsx
+- src/game/rules.ts
+- src/game/rules.test.ts
+- server/gameEngine.ts
+- src/types/game.ts
+
+Link-uri directe pentru AI:
+- https://github.com/Jorjicaru/QuizMore/tree/main
+- https://github.com/Jorjicaru/QuizMore/blob/main/src/components/RoundTracker.tsx
+- https://github.com/Jorjicaru/QuizMore/blob/main/src/components/GameHUD.tsx
+- https://github.com/Jorjicaru/QuizMore/blob/main/src/components/RomaniaMap.tsx
+- https://github.com/Jorjicaru/QuizMore/blob/main/src/game/rules.ts
+- https://github.com/Jorjicaru/QuizMore/blob/main/server/romaniaMapData.ts
+- https://github.com/Jorjicaru/QuizMore/blob/main/scripts/map_builder_core.cjs
+- https://github.com/Jorjicaru/QuizMore/blob/main/scripts/generate_all_maps.cjs
+
+IMPORTANT: V4.0 NU trebuie considerat deja implementat doar pentru că a fost
+scris în acest document. În repository se vede că proiectul a primit modificări
+V3.0 pentru hartă și război simultan, însă codul actual mai conține excepții de
+atac la distanță. Secțiunile 43–44 V4.0 rămân sarcini obligatorii și trebuie
+implementate acum, împreună cu cerințele noi V5.0.
+
+45.1. CE ESTE DEJA IMPLEMENTAT ÎN CODUL ACTUAL – PRESETURI DE HARTĂ
+
+În commitul 27eb0f8 există nouă preseturi, câte unul pentru fiecare număr de
+jucători de la 2 la 10. Acest lucru este deja prezent în:
+- server/romaniaMapData.ts – ROMANIA_MAP_PRESETS și MAP_METADATA;
+- data/maps/romania/players-N.json – un JSON pentru fiecare N între 2 și 10;
+- scripts/generate_all_maps.cjs – definițiile presetului și generarea lor;
+- scripts/map_builder_core.cjs – procesarea geometriei;
+- server/gameEngine.ts – applyMapPreset() la creare, join, add/remove bot și
+  înainte de start, în funcție de numărul real de participanți.
+
+Distribuția din repository-ul actual este:
+
+2 jucători  = 10 teritorii
+3 jucători  = 15 teritorii
+4 jucători  = 20 teritorii
+5 jucători  = 23 teritorii
+6 jucători  = 26 teritorii
+7 jucători  = 29 teritorii
+8 jucători  = 32 teritorii
+9 jucători  = 35 teritorii
+10 jucători = 38 teritorii
+
+Capturile utilizatorului din 09.11.2026 confirmă vizual că preview-ul afișează
+„4 Jucători • 20 Teritorii” și „10 Jucători • 38 Teritorii”. Prin urmare,
+NU reconstrui încă o dată cele nouă preseturi și NU schimba automat distribuția
+numărului de teritorii. Verifică și repară doar problemele demonstrate.
+
+Păstrează regulile deja implementate:
+- folosește numărul efectiv de jucători din partidă, inclusiv boții AI;
+- capacitatea maximă a camerei nu este numărul efectiv de participanți;
+- presetul se poate actualiza cât timp camera este în WAITING;
+- la start, presetul se îngheață pentru toată partida;
+- plecarea, deconectarea sau eliminarea unui jucător după start nu schimbă
+  harta și nu regenerează teritoriile.
+
+Verifică aceste reguli din nou în cod și în testele de integrare. Nu le elimina.
+
+45.2. CE ESTE DEJA IMPLEMENTAT – GEOMETRIA DIZOLVATĂ
+
+În scripts/map_builder_core.cjs există deja:
+- încărcarea GeoJSON-ului județelor din data/geo/romania-counties.geojson;
+- funcția unionCounties() bazată pe @turf/turf;
+- generarea unui contur SVG exterior pentru grupul de județe;
+- internalLinesSvg pentru limitele județene interne;
+- generarea JSON-urilor players-N.json;
+- generarea server/romaniaMapData.ts.
+
+În src/components/RomaniaMap.tsx, fiecare teritoriu este randat ca un singur
+obiect interactiv <g> cu un singur id de teritoriu. Calea exterioară dizolvată
+este desenată în acel grup. internalLinesSvg este randat separat, cu
+pointer-events-none, deci liniile interne nu trebuie să devină ținte separate.
+
+Aceasta explică de ce poți vedea linii care împart un grup în județe, dar când
+ții cursorul sau selectezi, se evidențiază tot grupul. Din punct de vedere al
+modelului de joc, grupul este un singur teritoriu; liniile interioare sunt
+limite geografice județene păstrate ca detaliu vizual.
+
+Problema rămasă este CLARITATEA VIZUALĂ. În forma actuală, linia județeană
+internă poate semăna prea mult cu frontiera dintre două teritorii jucabile.
+Repară ierarhia vizuală, nu elimina arbitrar geometria geografică.
+
+45.3. BUG/SLĂBICIUNE ÎN CALCULUL VECINĂTĂȚILOR – NU CONFUNDA SIMETRIA CU TOPOLOGIA
+
+În scripts/map_builder_core.cjs, countyAdjacency este construit în prezent
+folosind un grid de coordonate cuantizate/rotunjite. Această metodă poate
+considera vecine două geometrii doar pentru că punctele lor ajung în celule
+apropiate sau comune, fără să demonstreze o frontieră comună reală.
+
+În server/romaniaMapData.ts, createMapForPlayerCount() normalizează apoi
+relațiile pentru a le face bidirecționale, adăugând un edge lipsă la celălalt
+capăt. Această operație poate ascunde o eroare din datele-sursă: transformă o
+relație unilaterală greșită într-o relație bilaterală greșită.
+
+CERINȚĂ:
+- înlocuiește detecția aproximativă cu o metodă topologică GIS reală;
+- două teritorii sunt vecine numai dacă poligoanele lor au un segment de
+  frontieră comună cu lungime pozitivă peste o toleranță mică, documentată;
+- atingerea într-un singur punct NU este adiacență pentru atac;
+- proximitatea, bounding box-urile sau apartenența la aceeași margine a țării
+  NU demonstrează adiacența;
+- calculează vecinătățile la nivel de județ din geometria-sursă, apoi agregă
+  județele în teritorii, SAU calculează direct din geometria dizolvată;
+- dacă folosești TopoJSON, utilizează arcele comune ale topologiei;
+- dacă folosești Turf, identifică efectiv porțiunea liniară comună și măsoară
+  lungimea ei; nu folosi doar booleanTouches() deoarece și o atingere într-un
+  punct poate fi raportată ca touch;
+- generează o singură listă canonică de edges, apoi construiește ambele
+  direcții în generator, nu prin reparare silențioasă în runtime;
+- runtime-ul trebuie să valideze simetria și să raporteze eroarea dacă presetul
+  nu este simetric, nu să adauge automat edges pentru a ascunde problema.
+
+Toleranța GIS trebuie aleasă pe baza preciziei GeoJSON și a proiecției folosite.
+Documentează în kilometri/metri ce înseamnă toleranța și testează separat
+frontierele foarte scurte. Nu folosi un buffer mare care unește regiuni care
+nu au frontieră comună.
+
+45.4. V4.0 NU ESTE ÎNCĂ APLICAT ÎN CODUL ACTUAL – ATACURI LA DISTANȚĂ
+
+În src/game/rules.ts din HEAD 27eb0f8, canTargetTerritory() încă permite
+excepții care trebuie eliminate conform V4.0:
+- în cazul unui defender desemnat, codul poate permite o bază neadiacentă dacă
+  există deja o frontieră cu acel apărător și nu s-a folosit încercarea;
+- există încă folosiri ale baseAttackAttemptsUsed;
+- există o excepție pentru atacul la distanță asupra unei baze;
+- există un fallback când atacatorul nu are niciun inamic adiacent, care poate
+  permite selectarea unei ținte inamice neadiacente.
+
+În server/gameEngine.ts există în continuare înregistrarea încercărilor de
+atac la distanță asupra bazelor. Nu este suficient să blochezi ținta în
+RomaniaMap.tsx. Backend-ul trebuie să respingă acțiunea.
+
+Aplică integral secțiunile 43–44 V4.0:
+- orice țintă de război trebuie să fie deținută de apărătorul desemnat;
+- ținta trebuie să aibă frontieră comună reală cu cel puțin un teritoriu al
+  atacatorului;
+- regula se aplică și cetății principale;
+- nu există atac la distanță, nici măcar o singură dată;
+- nu există fallback care permite orice teritoriu al apărătorului;
+- dacă nu există țintă legală, perechea este SKIPPED/replanificată în mod
+  determinist, fără să inventeze o țintă ilegală;
+- elimină baseAttackAttemptsUsed din model după ce toate utilizările au fost
+  eliminate și migrarea datelor vechi este sigură.
+
+45.5. STAREA CURENTĂ A TRACKER-ULUI VIZUAL – PROBLEMĂ CONFIRMATĂ
+
+În src/components/RoundTracker.tsx există în desktop o bară ornamentală mare,
+centrată, cu sloturi de rundă și o bandă de slash-uri colorate sub ea.
+
+Codul actual creează slash-urile prin imbricarea:
+  roundsArray.map(round => players.map(player => renderSlash(player)))
+
+Asta produce N x N marcaje pentru N jucători/runde. Exemple:
+- 4 jucători / 4 pași de bază: 16 slash-uri;
+- 10 jucători / 10 pași de bază: 100 slash-uri.
+
+Rezultatul este banda multicoloră lungă și aglomerată din capturile utilizatorului.
+În plus, ordinea vizuală este construită din players[] repetat pentru fiecare
+rundă, nu din ordinea reală în care participanții sunt selectați sau acționează.
+La război, nu reprezintă structura efectivă a perechilor din warRound.battles.
+
+În src/components/GameHUD.tsx, RoundTracker este montat în centrul header-ului
+pentru desktop. Bara ocupă inutil înălțime și atrage atenția mai mult decât
+harta. Player cards sunt apoi puse deasupra hărții; la 5–10 jucători desktop,
+GameHUD construiește un grid cu 5 coloane, deci două rânduri de carduri. Astfel,
+încă o parte din înălțimea viewport-ului este consumată, iar harta rămâne mică.
+
+Aceasta este problema principală arătată în capturile din 09.11.2026.
+
+======================================================================
+46. REDESIGN COMPLET AL TRACKER-ULUI – MIC, ORDONAT ȘI DISCRET
+======================================================================
+
+Obiectiv: elimină bara mare, centrată, și banda de culori repetată. Păstrează
+informația utilă, dar mută indicatorul de rundă/progres într-un widget mic,
+discret, poziționat în colțul din dreapta-jos al zonei hărții, asemănător
+poziționării din captura de referință a jocului original ConQUIZtador.
+
+Nu copia logo-ul sau asset-urile protejate. Reproduce doar ideea de layout:
+indicator mic, într-un colț, care nu domină ecranul și nu micșorează harta.
+
+46.1. CE TREBUIE SĂ DISPARĂ
+
+- Elimină bara mare de sloturi bronz centrată în header.
+- Elimină rândul de slash-uri colorate repetate pentru fiecare rundă.
+- Elimină multiplicarea N x N a culorilor.
+- Nu ține un indicator de progres lat cât tot ecranul.
+- Nu folosi tracker-ul ca element decorativ care ocupă o zonă întreagă.
+- Nu afișa în aceeași zonă atât runda, cât și zeci de marcaje redundante.
+
+Titlul fazei trebuie să rămână vizibil, dar compact și clar. În partea de sus
+poate exista un rând mic cu titlul fazei și `Runda X/Y` sau `Alegerea X/N`,
+însă indicatorul grafic de progres trebuie să fie discret în colțul dreapta-jos
+al hărții sau al canvasului de joc.
+
+46.2. WIDGETUL NOU DE PROGRES – DESIGN
+
+Creează un widget compact, de tip overlay, cu următoarele caracteristici:
+- poziție: bottom-right în interiorul containerului hărții, cu margini de
+  siguranță de aproximativ 10–14px;
+- lățime desktop recomandată: 150–220px, în funcție de conținut;
+- înălțime desktop recomandată: aproximativ 42–64px;
+- fundal închis semitransparent, ușor blurat, border discret;
+- colțuri rotunjite, aceeași paletă medievală/bronze ca restul jocului;
+- nu trebuie să ascundă permanent regiuni importante sau cetăți;
+- să fie suficient de transparent și compact pentru a rămâne secundar;
+- nu captura click-urile hărții în afara elementelor proprii;
+- poate avea o opțiune discretă de colapsare dacă e nevoie.
+
+Structură recomandată:
+Rând 1: `CUCERIRE` / `RĂZBOI` și `Runda 1/6`.
+Rând 2: progres simplu și segmentat, sau un grup foarte compact de markere.
+Dacă sunt necesare culorile jucătorilor, acestea se afișează pe un singur rând
+și fiecare jucător apare o singură dată pentru secvența curentă.
+
+Widgetul trebuie să semene funcțional cu indicatorul mic din captura originală
+atașată: apare discret în dreapta-jos, nu în mijlocul header-ului.
+
+46.3. ORDINEA CULORILOR – REGULĂ OBLIGATORIE
+
+Utilizatorul a observat că banda actuală prezintă culorile într-o succesiune
+care pare aleatorie și nu respectă ordinea reală în care jucătorii sunt aleși.
+Corectează această problemă.
+
+REGULĂ:
+- Fiecare jucător își păstrează culoarea proprie pe toată durata partidei.
+- Culoarea nu se randomizează la fiecare rundă sau la fiecare randare.
+- Succesiunea markerelor trebuie să reflecte ordinea reală a jucătorilor pentru
+  acțiunea/faza respectivă.
+- Nu sorta culorile după cod HEX, username, scor sau ordinea arbitrară din CSS.
+- Nu crea o listă aleatoare separată de culori.
+- Nu deriva ordinea vizuală din produsul cartezian `roundsArray x players`.
+
+Folosește ordinea autoritativă a serverului:
+
+A. ALEGEREA BAZEI
+- Ordine: exact ordinea în care jucătorii aleg baza.
+- În implementarea curentă, verifică dacă ordinea poate fi derivată din
+  players[] și activePlayerIndex; dacă da, folosește acea ordine.
+- Fiecare jucător apare exact o singură dată.
+- Jucătorul care a ales deja poate avea marker completat; jucătorul curent
+  are contur/lumină; cei care urmează sunt mai discreți.
+
+B. CUCERIRE – ÎNTREBARE COMUNĂ
+- În timpul întrebării, toți participanții activi răspund simultan.
+- Markerii se afișează o singură dată per jucător, într-o ordine stabilă și
+  deterministă, de preferat seating order/server participants order.
+- Statusurile pot fi: așteaptă, răspuns trimis, corect, greșit, fără răspuns.
+- După rezolvarea întrebării, dacă jucătorii corecți primesc drept de alegere,
+  ordinea culorilor trebuie să reflecte exact conquestPickQueue, adică ordinea
+  reală în care aceștia urmează să aleagă (de regulă după timpul răspunsului).
+- Nu păstra ordinea generică dacă serverul are deja o coadă autoritativă.
+
+C. ALOCARE / ÎMPĂRȚIRE
+- În timpul estimării numerice simultane, fiecare participant activ apare
+  o singură dată, în participant order stabil.
+- După rezultat, câștigătorul este evidențiat ca următorul care selectează.
+
+D. RĂZBOI SIMULTAN
+- Nu folosi doar `players[]` pentru a simula ordinea perechilor.
+- Citește `game.warRound.battles` în ordinea transmisă de server.
+- Fiecare bătălie trebuie reprezentată ca o pereche de markere: culoarea
+  atacatorului și culoarea apărătorului, grupate vizual.
+- Perechile apar în ordinea exactă a `warRound.battles`.
+- Un jucător apare o singură dată în rolul său din runda respectivă.
+- Dacă există BYE, markerul jucătorului în repaus este separat și nu este
+  confundat cu o bătălie.
+- Ordinea perechilor nu trebuie randomizată în frontend.
+
+E. RUNDĂ CU ATACURI SIMULTANE
+- Pentru 4, 6, 8 și 10 jucători, fiecare atacator și apărător sunt deja
+  repartizați în perechi de server.
+- Afișajul trebuie să respecte acea repartizare exactă.
+- Nu prezenta culorile în ordinea unui vector construit independent.
+
+46.4. MODEL DE DATE PENTRU TRACKER
+
+Nu înghesui logica de derivare a ordinii în JSX. Creează o funcție pură,
+testabilă, de exemplu:
+  buildRoundDisplayItems(gameState)
+
+Returnează o structură tipată cu:
+- phase;
+- roundNumber;
+- totalRounds;
+- progressPercent;
+- items[];
+- fiecare item: playerId, username, color, role, status, orderIndex;
+- groupId sau battleId pentru gruparea perechilor, când este război.
+
+Statusurile trebuie să fie explicite, de exemplu:
+- PENDING;
+- ACTIVE;
+- ANSWERED;
+- CORRECT;
+- WRONG;
+- NO_RESPONSE;
+- PICKING;
+- COMPLETED;
+- ATTACKER;
+- DEFENDER;
+- BYE;
+- SKIPPED.
+
+Nu inventa `turnOrder` din indexul curent dacă serverul are deja o ordine
+explicită. Dacă modelul GameState nu expune o listă suficientă pentru UI,
+adaugă un câmp clar, tipat, în starea publică transmisă clienților, fără să
+expui răspunsurile corecte sau informații ascunse ale întrebărilor.
+
+Pentru secvența de alegere a bazelor poți folosi players[] + activePlayerIndex,
+dacă ordinea este stabilă. Pentru selecția după răspuns corect folosește
+conquestPickQueue/conquestPickerId. Pentru război folosește warRound.battles.
+
+46.5. LOGICA VIZUALĂ A MARKERELOR
+
+Fiecare jucător trebuie reprezentat de culoarea lui actuală (`player.color`).
+
+Nu folosi culori noi doar pentru stare. Starea se comunică prin contur, opacitate,
+iconiță/check sau glow, nu prin înlocuirea culorii jucătorului.
+
+Exemple:
+- marker completat: culoarea jucătorului, opacitate 1;
+- marker activ: culoarea jucătorului + contur/glow discret;
+- marker în așteptare: aceeași culoare, opacitate redusă;
+- răspuns corect: check mic peste/în dreptul markerului;
+- răspuns greșit: semn X mic, fără a recolora markerul;
+- NO_RESPONSE: marker estompat și indicator de timeout;
+- BYE: marker neutru cu simbol pauză, dar păstrează asocierea cu jucătorul.
+
+Nu crea 10 x 10 slash-uri. Pentru 10 jucători și 10 alegeri de bază trebuie
+să existe 10 markere, nu 100. Pentru 6 runde de război nu trebuie să existe
+36 sau 60 de markere redundante; trebuie să existe strict markerii pentru
+jucătorii/perechile rundei afișate.
+
+46.6. RESPONSIVE PENTRU TRACKER
+
+Desktop/laptop:
+- tracker-ul compact rămâne în colțul dreapta-jos al hărții;
+- lățime 150–220px, înălțime 42–64px;
+- fără bandă lată centrată;
+- să nu ocupe spațiul necesar hărții.
+
+Tabletă:
+- tracker-ul poate avea lățime aproximativ 140–190px;
+- nu acoperă selecții importante;
+- poate fi redus la un pill cu fază, rundă și progres.
+
+Telefon:
+- tracker-ul nu trebuie să fie mare sau să acopere harta;
+- afișează faza + runda într-un pill compact;
+- culorile pot fi un șir de markere mici într-un rând, cu scroll doar dacă
+  este absolut necesar;
+- fără zeci de slash-uri;
+- dacă modalul de întrebare este activ, tracker-ul poate fi mutat sau redus
+  pentru a nu concura cu întrebarea.
+
+======================================================================
+47. REDESIGN AL LAYOUT-ULUI DE JOC – HARTA TREBUIE SĂ PRIMEASCĂ PRIORITATE
+======================================================================
+
+Capturile utilizatorului din 09.11.2026 arată următoarele probleme:
+- cu 4 jucători, HUD-ul, RoundTracker-ul, timerul și cardurile ocupă prea mult
+  din înălțimea disponibilă;
+- cu 10 jucători, cardurile desktop ocupă două rânduri (5 coloane x 2 rânduri)
+  deasupra hărții;
+- harta rămâne foarte mică pe verticală, iar SVG-ul cu preserveAspectRatio
+  xMidYMid meet este redimensionat după înălțimea redusă a containerului;
+- indicatorul grafic de progres din partea de sus atrage prea multă atenție;
+- spațiul de joc este consumat de informații secundare în loc să fie folosit
+  pentru hartă.
+
+Obiectiv prioritar: harta României trebuie să fie elementul dominant și să
+primească cel mai mult spațiu disponibil, mai ales în meciurile de 8–10 jucători.
+
+47.1. LAYOUT DESKTOP/LAPTOP – PROPUNEREA RECOMANDATĂ
+
+Pentru viewport-uri largi (recomandat >= 1280px):
+- header-ul global rămâne compact și nu se schimbă inutil;
+- titlul fazei, statusul acțiunii și timerul formează un rând superior compact;
+- zona principală de joc devine un layout cu două coloane:
+  A. zona principală pentru hartă, aproximativ 70–75% din lățimea disponibilă;
+  B. panou lateral pentru jucători/scoruri, aproximativ 25–30%, cu lățime
+     țintă 250–310px;
+- harta umple înălțimea rămasă în coloana principală;
+- panoul de jucători este vertical, nu o grilă lată de 5 coloane în două rânduri;
+- pentru 10 jucători, panoul lateral poate avea scroll intern și carduri/rows
+  compacte, fără a reduce înălțimea hărții;
+- tracker-ul mic este overlay bottom-right în containerul hărții.
+
+Layout structural orientativ:
+  game-shell: column, height = 100dvh
+    navbar: fixed-height, shrink-0
+    phase-toolbar: compact, shrink-0
+    selection-timer: thin, shrink-0 (numai când este cazul)
+    game-body: flex-1, min-height: 0, grid
+      map-area: minmax(0, 1fr)
+      player-rail: 250–310px, max-height: 100%, overflow-y: auto
+
+Nu copia literal dimensiunile dacă viewport-ul este diferit. Scopul este ca
+harta să primească spațiul rămas după un HUD compact, nu să fie forțată într-un
+container cu înălțime mică.
+
+47.2. CARDURILE JUCĂTORILOR ÎN DESKTOP
+
+Mută cardurile de jucători într-un panou lateral pe ecrane late.
+
+Păstrează pentru fiecare jucător:
+- username;
+- culoarea;
+- scorul;
+- numărul de teritorii;
+- turnurile cetății;
+- starea eliminat/activ;
+- rolul ATTACKER/DEFENDER/BYE în război;
+- starea răspunsului când întrebarea este comună.
+
+Dar afișează aceste date într-un row/card compact, nu într-un card înalt.
+Pentru 10 jucători:
+- toate intrările rămân accesibile;
+- lista poate avea scroll intern;
+- jucătorul activ sau perechea curentă este evidențiată;
+- panoul nu trebuie să ocupe mai mult de aproximativ 30% din lățime;
+- nu ascunde ultimii jucători sub fold fără scroll evident.
+
+Pentru 2–4 jucători, poți utiliza aceeași coloană laterală cu carduri ceva mai
+înalte, dar nu trebuie să micșoreze harta inutil.
+
+47.3. TABLETĂ ȘI LAPTOPURI MAI ÎNGUSTE
+
+Pentru 1024–1279px:
+- nu forța panou lateral prea îngust;
+- folosește o bandă compactă sau carousel cu cardurile jucătorilor deasupra
+  hărții;
+- păstrează numai 1–2 rânduri de informații;
+- harta primește zona verticală rămasă;
+- tracker-ul rămâne mini și în colțul hărții.
+
+Pentru ecrane sub 1024px, adaptează pragurile pe baza container width,
+nu doar pe baza viewport width, dacă layoutul componentelor o cere.
+
+47.4. TELEFON
+
+Pentru mobil:
+- păstrează un HUD compact;
+- afișează jucătorii într-un carousel orizontal compact, cu scroll-snap;
+- nu afișa 10 carduri în două sau trei rânduri mari;
+- harta trebuie să rămână vizibilă și utilizabilă;
+- nu pune tracker-ul în mijlocul ecranului;
+- folosește un pill compact sau o mică zonă în colțul hărții;
+- întrebarea/modalul are prioritate când este activ;
+- nu micșora întregul site cu transform: scale pentru a încăpea.
+
+Pentru mobil portrait, o pagină cu scroll vertical este acceptabilă dacă harta
+rămâne suficient de mare. Pentru landscape, harta trebuie să primească mai mult
+spațiu pe înălțime, iar HUD-ul să se comprime.
+
+47.5. HARTA – FIT TO AVAILABLE AREA, FĂRĂ MICȘORARE INUTILĂ
+
+Păstrează raportul de aspect al hărții și `preserveAspectRatio="xMidYMid meet"`.
+Nu deforma România și nu tăia părți din contur.
+
+Problema din capturi nu trebuie „rezolvată” prin eliminarea proporțiilor sau
+prin întinderea SVG-ului. Problema principală este spațiul vertical consumat de
+HUD și carduri. După reorganizarea layoutului, harta trebuie să primească o
+înălțime reală suficientă.
+
+Cerințe:
+- containerul hărții are `flex: 1`, `min-height: 0`, `min-width: 0`;
+- SVG-ul se încadrează în width și height disponibile;
+- Fit to Screen este starea inițială;
+- zoom/pan rămân funcționale;
+- reset zoom readuce harta integrală;
+- toolbar-ul de zoom nu acoperă tracker-ul;
+- tracker-ul nu acoperă o cetate sau un buton critic;
+- zoom-ul nu trebuie resetat la fiecare update de scor sau la fiecare event
+  Socket.IO, doar pentru că GameState s-a schimbat.
+
+Nu micșora harta special pentru 10 jucători. Dimpotrivă, layoutul trebuie să
+elibereze înălțimea consumată de cele 10 carduri din două rânduri și să o dea
+hărții.
+
+47.6. ÎNĂLȚIME ȘI OVERFLOW
+
+În timpul partidei pe desktop:
+- folosește 100dvh pentru shell-ul jocului;
+- header-ul nu crește din cauza tracker-ului;
+- `main`, `GameView`, `game-body` și `map-area` trebuie să aibă min-height: 0
+  unde sunt flex/grid children;
+- player rail folosește overflow-y-auto intern;
+- documentul nu trebuie să capete scroll vertical accidental la rezoluțiile
+  1280x720, 1366x768, 1440x900 și 1920x1080;
+- nu folosi overflow-hidden pe un container părinte dacă asta taie carduri,
+  modaluri sau butoane fără alternativă de acces.
+
+======================================================================
+48. HARTA – CLARITATEA TERITORIILOR GRUPATE
+======================================================================
+
+Nu mai trata problema ca pe un simplu bug de hover. În modelul actual, un
+teritoriu jucabil poate fi format din mai multe județe. Este normal să existe
+limite interne județene, dar acestea nu trebuie confundate vizual cu granițele
+teritoriilor jucabile.
+
+48.1. IERARHIE VIZUALĂ OBLIGATORIE
+
+FRONTIERĂ DE TERITORIU JUCABIL:
+- linie continuă;
+- mai groasă și cu contrast mai mare;
+- aceeași linie delimitează întregul poligon unionat al teritoriului;
+- este singura linie care trebuie să arate ca o graniță strategică.
+
+LIMITĂ INTERNĂ DE JUDEȚ:
+- mult mai subțire (de exemplu 0.5–0.7 unități SVG, ajustată după scalare);
+- opacitate mult mai mică decât conturul teritoriului;
+- culoare neutră, discretă;
+- fără glow și fără contur auriu puternic;
+- nu trebuie să primească hover/click separat;
+- poate fi dezactivată printr-un toggle „Limite județe” dacă este util.
+
+Nu păstra aceeași grosime/culoare/contrast pentru conturul strategic și limita
+județeană internă. Altfel jucătorul continuă să creadă că vede mai multe
+teritorii decât sunt efectiv în joc.
+
+48.2. HOVER ȘI SELECTARE
+
+La hover sau tap pe orice parte a unui teritoriu grupat:
+- se evidențiază întregul teritoriu jucabil;
+- se modifică fill-ul întregului poligon unionat;
+- conturul exterior al întregii regiuni devine vizibil mai puternic;
+- limitele interne rămân decorative și nu se evidențiază ca ținte separate;
+- tooltip-ul arată numele teritoriului jucabil, nu doar numele unui județ;
+- detaliile pot arăta județele componente: „Format din: Bihor, Sălaj”.
+
+La click/tap:
+- serverul primește un singur territoryId;
+- toată gruparea este tratată ca o singură țintă;
+- nu trebuie să existe id diferit pentru fiecare județ din grup.
+
+48.3. VALIDAREA GRUPĂRILOR
+
+Pentru fiecare preset 2..10:
+- fiecare județ sursă apare exact o singură dată;
+- fiecare teritoriu trebuie să fie format din județe geografic conectate;
+- dacă un teritoriu are MultiPolygon, justifică insulele/enclavele reale și
+  verifică dacă nu a fost grupat din județe separate geografic;
+- nu elimina componente geometrice mici doar pe baza unui prag arbitrar de
+  suprafață, fără să verifici dacă fac parte din datele reale;
+- păstrează enclavele/golurile geografice reale (inclusiv situația București/
+  Ilfov) corect, fără să le umpli sau să le ștergi accidental;
+- unirea trebuie să păstreze exact suprafața județelor componente în limitele
+  toleranței de simplificare, fără goluri și fără suprapuneri.
+
+48.4. TEST VIZUAL SPECIFIC
+
+Generează screenshot pentru 2, 3, 4, 5, 6, 7, 8, 9 și 10 jucători.
+Pentru fiecare preset:
+- compară contururile strategice cu liniile județene interne;
+- verifică faptul că hover pe un județ dintr-un grup iluminează întregul grup;
+- verifică faptul că hover nu pare să selecteze separat toate județele;
+- verifică că numele teritoriului grupat este clar;
+- verifică că aria vizuală nu este tăiată sau deformată.
+
+======================================================================
+49. CULORILE JUCĂTORILOR ȘI ORDINEA LOR ÎN INDICATOR
+======================================================================
+
+Culorile jucătorilor nu trebuie confundate cu ordinea rundelor. Culoarea este
+identitatea vizuală persistentă a jucătorului. Ordinea în care apar markerii
+este determinată de acțiunea curentă.
+
+49.1. CULOARE STABILĂ PER JUCĂTOR
+
+- Host-ul își păstrează culoarea.
+- Fiecare jucător/AI primește o culoare unică în camera respectivă.
+- Culoarea se păstrează pe toată partida.
+- Nu alege culoare random la fiecare render.
+- Nu modifica culoarea după ce partida a început.
+- La reconectare, același playerId trebuie să primească aceeași culoare.
+- La eliminare, culoarea nu se transferă altui jucător.
+
+49.2. ORDINEA MARKERILOR
+
+Folosește ordinea reală descrisă în 46.3. Nu afișa doar lista `players[]` dacă
+ordinea de selecție/duel este alta. Nu randomiza ordinea markerilor în UI.
+
+În special:
+- pentru alegerea bazelor, afișează ordinea efectivă a alegerilor;
+- pentru coada conquestPicker, afișează ordinea exactă din conquestPickQueue;
+- pentru război, afișează perechile din warRound.battles în ordinea serverului;
+- fiecare participant apare o singură dată în starea/rolul său curent;
+- în timpul unei întrebări comune, toți apar ca participanți simultani, nu ca
+  o secvență serială falsă.
+
+49.3. TESTE
+
+- Într-un meci cu 4 jucători, confirmă că indicatorul nu afișează 16 slash-uri.
+- Într-un meci cu 10 jucători, confirmă că nu afișează 100 slash-uri.
+- Verifică faptul că ordinea markerilor este identică cu ordinea selecției.
+- Verifică faptul că răspunsurile rapide din conquest apar în ordinea exactă
+  a cozii de selecție după rezolvarea întrebării.
+- În război, verifică perechile atacator/apărător.
+- Verifică că nu apare nicio reordonare la un simplu rerender React.
+- Verifică că aceeași culoare aparține aceluiași playerId pe toate ecranele.
+
+======================================================================
+50. TESTE OBLIGATORII PENTRU NOUL LAYOUT ȘI TRACKER
+======================================================================
+
+Rezoluții desktop/laptop:
+- 1280 x 720;
+- 1366 x 768;
+- 1440 x 900;
+- 1600 x 900;
+- 1920 x 1080.
+
+Rezoluții tabletă:
+- 768 x 1024;
+- 1024 x 768.
+
+Rezoluții telefon:
+- 320 x 720;
+- 360 x 800;
+- 375 x 812;
+- 390 x 844;
+- 414 x 896;
+- 430 x 932.
+
+Pentru fiecare clasă de ecran testează cel puțin meciuri cu:
+- 2 jucători;
+- 4 jucători;
+- 6 jucători;
+- 8 jucători;
+- 10 jucători.
+
+TESTE UI:
+1. La desktop, tracker-ul nu mai este o bară mare centrată.
+2. Tracker-ul apare mic în dreapta-jos al hărții.
+3. Tracker-ul nu acoperă cetăți sau regiuni importante în mod permanent.
+4. Culorile sunt în ordinea reală a selecției/duelurilor.
+5. 4 jucători nu produc 16 markere repetitive.
+6. 10 jucători nu produc 100 markere repetitive.
+7. La 10 jucători, lista jucătorilor nu mai ocupă două rânduri late deasupra hărții pe desktop.
+8. Harta are o înălțime semnificativ mai mare decât în screenshoturile actuale.
+9. Harta se încadrează integral și păstrează raportul 960:660.
+10. Niciun card de jucător nu este inaccesibil.
+11. Panoul lateral (dacă este folosit) are scroll intern pentru 10 jucători.
+12. Pe mobil, cardurile sunt ușor accesibile prin carousel/scroll intern.
+13. Nu există overflow orizontal al documentului.
+14. Modalele de întrebare rămân deasupra hărții și tracker-ului.
+15. La zoom și pan, tracker-ul rămâne atașat containerului hărții, nu SVG-ului.
+
+TESTE DE REGRESIE GAMEPLAY:
+- În timpul întrebării comune, tracker-ul afișează toți participanții.
+- După răspuns corect, coada de selecție este reflectată corect.
+- În război, perechile sunt afișate corect.
+- Modificarea layout-ului nu schimbă `activePlayerIndex`, `warRound`,
+  `conquestPickQueue`, `allocationWinnerId` sau orice altă stare server-side.
+- Redimensionarea ecranului nu repornește timerul.
+- Zoom-ul hărții nu schimbă selecția de teritoriu.
+
+======================================================================
+51. ORDINEA DE IMPLEMENTARE V5.0 – FĂRĂ A STRICA CE EXISTĂ
+======================================================================
+
+ETAPA 1 – AUDIT ȘI BACKUP
+1. Confirmă HEAD-ul main și salvează hash-ul commitului.
+2. Citește codul curent; nu presupune că V4 este implementat.
+3. Rulează testele existente înainte de modificări.
+4. Salvează o copie/branch de backup.
+5. Notează erorile care existau înainte de schimbări.
+
+ETAPA 2 – APLICĂ V4 ADIACENȚĂ STRICTĂ
+1. Elimină toate excepțiile remote base attack.
+2. Elimină fallback-ul pentru orice teritoriu inamic când nu există vecin direct.
+3. Corectează `getLegalWarTargetsForPair()` și selecția automată la timeout.
+4. Refă vecinătățile topologic, nu pe grid aproximativ.
+5. Validează simetria în generator; nu repara automat în runtime.
+6. Rulează testele A–M din secțiunea 43.
+
+ETAPA 3 – CLARITATEA HĂRȚII
+1. Verifică preseturi și JSON-urile 2..10.
+2. Păstrează numărul actual de teritorii.
+3. Verifică union/dissolve.
+4. Reduce contrastul liniilor interne de județ.
+5. Accentuază conturul exterior al teritoriului jucabil.
+6. Verifică hover/tap pe grup.
+7. Testează toate cele nouă preseturi.
+
+ETAPA 4 – TRACKER COMPACT
+1. Refactorizează RoundTracker într-un widget compact.
+2. Elimină banda centrală mare și N x N slash-uri.
+3. Construiește o funcție pură pentru elementele afișate.
+4. Utilizează ordinea autoritativă din GameState.
+5. Păstrează culorile playerilor stabile.
+6. Mută tracker-ul în dreapta-jos pe harta desktop.
+7. Adaptează mobilul fără să acopere întrebarea/harta.
+
+ETAPA 5 – REORGANIZAREA LAYOUT-ULUI
+1. Compactează phase toolbar.
+2. Mută player cards în panou lateral pe desktop lat.
+3. Păstrează roster compact pe tabletă/mobil.
+4. Dă înălțimea rămasă hărții.
+5. Testează 10 jucători în special.
+6. Verifică toate rezoluțiile cerute.
+
+ETAPA 6 – REGRESIE ȘI BUILD
+1. Rulează toate testele unitare.
+2. Rulează integrarea GameManager + Socket.IO.
+3. Rulează `npm run typecheck` sau comanda echivalentă reală din package.json.
+4. Rulează `npm run build`.
+5. Testează meci complet cu 2, 4, 6, 8 și 10 jucători, incluzând AI.
+6. Generează screenshots pentru toate preset-urile de hartă și pentru layout.
+7. Nu declara complet dacă există teste eșuate.
+
+======================================================================
+52. RAPORT FINAL OBLIGATORIU PENTRU V5.0
+======================================================================
+
+AI-ul trebuie să răspundă în raport la toate întrebările:
+
+A. REPOSITORY ȘI VERSIUNE
+1. Ce commit ai folosit la început?
+2. Ce commit ai creat după modificări?
+3. Ce fișiere ai modificat?
+4. Ai păstrat cele nouă preseturi curente 2..10?
+
+B. HARTĂ
+5. Ce număr de teritorii are fiecare preset 2..10?
+6. Cum verifici că fiecare județ este inclus o singură dată?
+7. Cum verifici că fiecare teritoriu grupat este geografic contiguu?
+8. Cum generezi geometria dizolvată?
+9. Cum sunt reprezentate limitele interne ale județelor?
+10. Cum ai separat vizual limita strategică de limita județeană?
+11. Ce metodă exactă folosești pentru vecinătate?
+12. Cum excluzi atingerea într-un punct?
+13. De ce nu mai pot ataca teritoriile de pe granițe opuse?
+14. Cum ai eliminat excepția de bază la distanță?
+15. Ai eliminat fallback-urile remote din server, AI și timeout?
+
+C. TRACKER ȘI UI
+16. Ai eliminat bara mare centrală?
+17. Unde este tracker-ul nou?
+18. Câte markere apar pentru 4 jucători?
+19. Câte markere apar pentru 10 jucători?
+20. Cum se determină ordinea culorilor?
+21. Ce sursă de date autoritativă folosești pentru ordinea cuceririi?
+22. Cum afișezi perechile din război?
+23. Cum ai eliberat spațiul vertical pentru hartă la 10 jucători?
+24. Cum este afișat roster-ul pe mobil/tabletă/desktop?
+
+D. TESTARE
+25. Ce teste au fost rulate și care au trecut?
+26. Ce teste au eșuat?
+27. Ce rezoluții au fost testate?
+28. Ai capturi pentru 4 și 10 jucători?
+29. Ai testat un atac neadiacent asupra cetății și ai confirmat respingerea?
+30. Ai testat un atac simultan valid și unul fără țintă legală?
+31. Au trecut typecheck și build?
+32. Ce rămâne incomplet?
+
+Nu raporta „responsive”, „topologic corect” sau „rezolvat” fără să indici
+rezoluția/testul/cazul efectiv care demonstrează asta.
+
+======================================================================
+53. CRITERII FINALE DE ACCEPTARE V5.0
+======================================================================
+
+V5.0 este acceptat numai când toate condițiile următoare sunt îndeplinite:
+
+1. V4 adiacență strictă este aplicată în frontend, backend, AI și timeout.
+2. Nu există atac la distanță, inclusiv asupra cetăților.
+3. Vecinătățile provin din topologie geografică reală, nu din apropiere de grid.
+4. Fiecare preset 2..10 păstrează distribuția validată și geometriile corecte.
+5. Un teritoriu format din mai multe județe are un contur strategic exterior clar.
+6. Liniile interne județene sunt discrete și non-interactive.
+7. Hover/tap pe orice județ component evidențiază numai și întreg teritoriul
+   jucabil corespunzător.
+8. RoundTracker nu mai apare ca bandă mare centrală.
+9. RoundTracker este compact și discret în dreapta-jos al hărții pe desktop.
+10. Culorile sunt afișate în ordinea reală a selecției/acțiunii, nu aleator.
+11. 4 jucători nu produc 16 slash-uri repetitive.
+12. 10 jucători nu produc 100 slash-uri repetitive.
+13. Player roster nu mai consumă două rânduri mari deasupra hărții pe desktop.
+14. Harta primește spațiul principal și nu devine mai mică odată cu creșterea
+    numărului de participanți.
+15. 10-player map este lizibilă, completă și corect încadrată.
+16. Mobile și tablet layout rămân utilizabile fără overflow orizontal.
+17. Întrebările, răspunsurile, punctajele și multiplayer-ul nu sunt afectate.
+18. Toate testele existente și cele noi trec.
+19. Build-ul și typecheck-ul trec.
+20. Raportul final menționează orice limitare rămasă.
+
+======================================================================
+54. INSTRUCȚIUNE FINALĂ PENTRU AI
+======================================================================
+
+Acesta este documentul consolidat V5.0. El păstrează toate cerințele V2.0,
+V3.0 și V4.0 și adaugă verificarea repo-ului actual, clarificarea hărții,
+tracker-ul discret în dreapta-jos, ordinea corectă a culorilor și layout-ul
+map-first pentru 2–10 jucători.
+
+Nu presupune că cerințele V4 au fost deja aplicate în cod. Repository-ul main
+verificat la commit 27eb0f8 include schimbări V3.0, dar conține încă excepții
+pentru atacuri la distanță. Aplică V4 și V5.
+
+Nu șterge sau recrea cele nouă preseturi de hartă care funcționează deja.
+Nu duplica geometria de bază în nouă locuri. Păstrează un singur GeoJSON
+canonic și câte un preset de grupare.
+Nu elimina detaliile județene fără să clarifici vizual ierarhia dintre limita
+județului și limita teritoriului jucabil.
+Nu randomiza ordinea culorilor din tracker. Folosește ordinea reală a jocului.
+Nu sacrifica harta pentru a afișa carduri mari și un tracker decorativ.
+Nu modifica mecanicile de joc pentru a repara layout-ul.
+
+Începe cu audit comparativ al commitului actual, marchează ce este deja corect,
+ce este implementat parțial și ce lipsește. Apoi aplică etapele 2–6 în ordine.
+Păstrează un jurnal al modificărilor și rulează testele după fiecare etapă.
+
+Criteriul principal: când pornesc un meci cu 4 sau 10 jucători, văd harta
+României mare și clară, cardurile de jucători nu îi fură spațiul, tracker-ul
+este discret în dreapta-jos, culorile respectă ordinea reală, iar niciun
+jucător nu poate ataca o regiune care nu are frontieră comună cu un teritoriu
+propriu.

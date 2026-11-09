@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Territory, Player, GamePhase, WarRoundState } from '../types/game';
+import { Territory, Player, GamePhase, WarRoundState, GameState } from '../types/game';
 import { canTargetTerritory, canSelectBase } from '../game/rules';
+import { RoundTracker } from './RoundTracker';
 import { sound } from '../services/audio';
-import { Crosshair, Award, ZoomIn, ZoomOut, RotateCcw, MapPin } from 'lucide-react';
+import { Crosshair, Award, ZoomIn, ZoomOut, RotateCcw, MapPin, Layers } from 'lucide-react';
 
 interface RomaniaMapProps {
+  game?: GameState;
   territories: Record<string, Territory>;
   players: Player[];
   activePlayerId?: string;
@@ -28,6 +30,7 @@ interface LabelPlacement {
 }
 
 export const RomaniaMap: React.FC<RomaniaMapProps> = ({
+  game,
   territories,
   players,
   activePlayerId,
@@ -42,6 +45,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(960);
+  const [showInternalCounties, setShowInternalCounties] = useState<boolean>(true);
 
   // Zoom & Pan state (Initial state is Fit to Screen: zoom = 1, pan = 0,0)
   const [zoom, setZoom] = useState<number>(1);
@@ -355,16 +359,16 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         )}
       </div>
 
-      {/* Zoom & Fit-to-Screen Controls */}
-      <div className="absolute bottom-11 right-2.5 z-20 flex flex-col gap-1 rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md">
+      {/* Bottom-Left Controls: Zoom & Fit-to-Screen + Discrete County Lines Toggle */}
+      <div className="absolute bottom-10 left-2.5 z-20 flex items-center gap-1 rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md">
         <button
           type="button"
           onClick={handleZoomIn}
           title="Mărește Harta (Zoom In)"
           aria-label="Zoom In"
-          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
         >
-          <ZoomIn className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <ZoomIn className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -372,9 +376,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           disabled={zoom <= 1}
           title="Micșorează Harta (Zoom Out)"
           aria-label="Zoom Out"
-          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
         >
-          <ZoomOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <ZoomOut className="h-3.5 w-3.5" />
         </button>
         {zoom > 1 && (
           <button
@@ -382,12 +386,37 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
             onClick={handleResetZoom}
             title="Încadrează toată harta (Fit to Screen)"
             aria-label="Reset Zoom"
-            className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
           >
-            <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setShowInternalCounties((prev) => !prev)}
+          title={
+            showInternalCounties
+              ? 'Ascunde conturul județelor componente'
+              : 'Afișează conturul județelor componente'
+          }
+          data-testid="toggle-county-lines"
+          className={`flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-semibold transition ${
+            showInternalCounties
+              ? 'bg-stone-900 text-stone-300 hover:bg-stone-800'
+              : 'bg-stone-900/50 text-stone-500 hover:bg-stone-800/70'
+          }`}
+        >
+          <Layers className="h-3 w-3 text-amber-400/80" />
+          <span className="hidden sm:inline">Județe</span>
+        </button>
       </div>
+
+      {/* Bottom-Right Compact Round Tracker Overlay (Section 46 & 49 of TODO V5.0) */}
+      {game && (
+        <div className="pointer-events-none absolute bottom-10 right-2.5 z-20">
+          <RoundTracker game={game} />
+        </div>
+      )}
 
       {/* SVG Canvas Container */}
       <div className="w-full flex-1 min-h-0 flex items-center justify-center p-1 sm:p-2 overflow-hidden">
@@ -486,25 +515,26 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 fillOpacity = 0.5;
               }
 
+              const isHovered = hoveredId === t.id;
               const strokeColor = isSelected
                 ? '#38bdf8'
-                : isInspected
+                : isInspected || isHovered
                 ? '#f59e0b'
                 : isActionable
                 ? '#fbbf24'
                 : owner
                 ? '#fef08a'
-                : '#785a32';
+                : '#6b4c28';
 
               const strokeWidth = isSelected
-                ? 3.8
-                : isInspected
-                ? 3
+                ? 4.0
+                : isInspected || isHovered
+                ? 3.2
                 : isActionable
-                ? 2.8
+                ? 2.9
                 : owner
-                ? 2.1
-                : 1.7;
+                ? 2.4
+                : 2.1;
               const isPath = t.svgPath.startsWith('M');
 
               return (
@@ -545,14 +575,14 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     />
                   )}
 
-                  {/* Subtle decorative internal county lines (non-interactive, low opacity) */}
-                  {t.internalLinesSvg && (
+                  {/* Subtle decorative internal county lines (Section 48: very thin, low opacity, non-interactive) */}
+                  {showInternalCounties && t.internalLinesSvg && (
                     <path
                       d={t.internalLinesSvg}
                       fill="none"
-                      stroke="rgba(28, 17, 9, 0.18)"
-                      strokeWidth="0.9"
-                      strokeDasharray="3 3"
+                      stroke="rgba(28, 17, 9, 0.11)"
+                      strokeWidth="0.55"
+                      strokeDasharray="2 3"
                       className="pointer-events-none"
                     />
                   )}
@@ -887,8 +917,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 ({activeTerritory.region})
               </span>
               {activeTerritory.counties && activeTerritory.counties.length > 1 && (
-                <span className="text-[10px] text-stone-400 hidden md:inline truncate max-w-[260px]">
-                  [{activeTerritory.counties.join(', ')}]
+                <span className="text-[10px] text-stone-400 hidden md:inline truncate max-w-[320px]">
+                  Format din: {activeTerritory.counties.join(', ')}
                 </span>
               )}
             </div>

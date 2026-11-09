@@ -18,6 +18,15 @@ const paddingY = 28;
 const mapWidth = viewBoxWidth - paddingX * 2;
 const mapHeight = viewBoxHeight - paddingY * 2;
 
+/**
+ * Documented GIS Topological Tolerances (V4.0 / V5.0):
+ * - BOUNDARY_PROXIMITY_TOLERANCE_KM = 0.35 km (350m): maximum digitization gap between two shared county border lines in GeoJSON.
+ * - MIN_SHARED_BORDER_KM = 1.5 km (1500m): minimum positive shared linear border length required for two counties/territories to be neighbors.
+ *   Single-point contacts (0 km) or tiny corner touches (< 1.5 km) are strictly excluded.
+ */
+const BOUNDARY_PROXIMITY_TOLERANCE_KM = 0.35;
+const MIN_SHARED_BORDER_KM = 1.5;
+
 function project(lon, lat) {
   const x = paddingX + ((lon - minLon) / (maxLon - minLon)) * mapWidth;
   const y = paddingY + ((maxLat - lat) / (maxLat - minLat)) * mapHeight;
@@ -77,7 +86,6 @@ function geometryToSvgPath(geom, hasEnclaveHole = false) {
       }
     }
   } else if (geom.type === 'MultiPolygon') {
-    // Keep major polygons (filter out microscopic topological union slivers)
     const polyEntries = geom.coordinates.map(poly => {
       const extProj = poly[0].map(pt => project(pt[0], pt[1]));
       return { poly, area: ringSignedArea(extProj) };
@@ -106,14 +114,131 @@ function geometryToSvgPath(geom, hasEnclaveHole = false) {
     .join(' ');
 }
 
+// Extract exterior rings (in WGS84 [lon, lat]) from a Polygon/MultiPolygon feature
+function extractWgs84Rings(feature) {
+  const geom = feature.geometry;
+  if (geom.type === 'Polygon') {
+    return geom.coordinates;
+  }
+  if (geom.type === 'MultiPolygon') {
+    const rings = [];
+    for (const poly of geom.coordinates) {
+      for (const r of poly) rings.push(r);
+    }
+    return rings;
+  }
+  return [];
+}
+
+// Fast degree-to-km conversion around Romania's latitude (~46 deg N)
+const KM_PER_DEG_LAT = 111.132;
+const KM_PER_DEG_LON = 111.320 * Math.cos((46 * Math.PI) / 180); // ~77.33 km/deg
+
+function toLocalKm(coord) {
+  return [coord[0] * KM_PER_DEG_LON, coord[1] * KM_PER_DEG_LAT];
+}
+
+function pointToSegmentDistKm(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function minDistToSegmentsKm(px, py, segmentsB) {
+  let best = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < segmentsB.length; i++) {
+    const s = segmentsB[i];
+    const d = pointToSegmentDistKm(px, py, s[0], s[1], s[2], s[3]);
+    if (d < best) {
+      best = d;
+      if (best <= 0.01) return best;
+    }
+  }
+  return best;
+}
+
+function buildCountySegmentsKm(feature) {
+  const rings = extractWgs84Rings(feature);
+  const segments = [];
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const ring of rings) {
+    const kmPts = ring.map(toLocalKm);
+    for (let i = 0; i < kmPts.length - 1; i++) {
+      const a = kmPts[i];
+      const b = kmPts[i + 1];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len <= 0.001) continue;
+      segments.push([a[0], a[1], b[0], b[1], len]);
+      if (a[0] < minX) minX = a[0];
+      if (b[0] < minX) minX = b[0];
+      if (a[0] > maxX) maxX = a[0];
+      if (b[0] > maxX) maxX = b[0];
+      if (a[1] < minY) minY = a[1];
+      if (b[1] < minY) minY = b[1];
+      if (a[1] > maxY) maxY = a[1];
+      if (b[1] > maxY) maxY = b[1];
+    }
+  }
+  return { segments, bbox: [minX, minY, maxX, maxY] };
+}
+
+/**
+ * Computes the topological shared boundary length (in km) between two counties.
+ * A segment of county A counts as shared with county B only if its start, midpoint, AND end
+ * all lie within BOUNDARY_PROXIMITY_TOLERANCE_KM (0.35 km) of county B's boundary segments.
+ * Single-point touches have 0 km shared length and are strictly rejected.
+ */
+function computeSharedBorderLengthKm(dataA, dataB) {
+  const pad = BOUNDARY_PROXIMITY_TOLERANCE_KM + 0.5;
+  if (
+    dataA.bbox[2] + pad < dataB.bbox[0] ||
+    dataB.bbox[2] + pad < dataA.bbox[0] ||
+    dataA.bbox[3] + pad < dataB.bbox[1] ||
+    dataB.bbox[3] + pad < dataA.bbox[1]
+  ) {
+    return 0;
+  }
+
+  function directedSharedKm(segsFrom, segsTo) {
+    let totalKm = 0;
+    for (const seg of segsFrom) {
+      const [ax, ay, bx, by, len] = seg;
+      const mx = (ax + bx) * 0.5;
+      const my = (ay + by) * 0.5;
+      const dMid = minDistToSegmentsKm(mx, my, segsTo);
+      if (dMid > BOUNDARY_PROXIMITY_TOLERANCE_KM) continue;
+      const dStart = minDistToSegmentsKm(ax, ay, segsTo);
+      if (dStart > BOUNDARY_PROXIMITY_TOLERANCE_KM) continue;
+      const dEnd = minDistToSegmentsKm(bx, by, segsTo);
+      if (dEnd > BOUNDARY_PROXIMITY_TOLERANCE_KM) continue;
+      totalKm += len;
+    }
+    return totalKm;
+  }
+
+  const ab = directedSharedKm(dataA.segments, dataB.segments);
+  const ba = directedSharedKm(dataB.segments, dataA.segments);
+  return Math.max(ab, ba);
+}
+
 // Map county features by name & pre-simplify slightly in projected space for internal line lookup
 const countyFeatures = {};
 const countyProjectedPoints = {};
 const countyGridCells = {};
+const countySegmentData = {};
 
 for (const f of geo.features) {
   const name = f.properties.name;
   countyFeatures[name] = f;
+  countySegmentData[name] = buildCountySegmentsKm(f);
+
   const pts = [];
   if (f.geometry.type === 'Polygon') {
     f.geometry.coordinates[0].forEach(p => pts.push(project(p[0], p[1])));
@@ -135,38 +260,25 @@ for (const f of geo.features) {
   countyGridCells[name] = cellSet;
 }
 
-// Compute county adjacencies using shared boundary grid
-const grid = new Map();
-for (const f of geo.features) {
-  const name = f.properties.name;
-  const seen = new Set();
-  function addCoords(c) {
-    if (typeof c[0] === 'number') {
-      const gx = Math.floor(c[0] * 100);
-      const gy = Math.floor(c[1] * 100);
-      const key = `${gx},${gy}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push(name);
-      }
-    } else {
-      c.forEach(addCoords);
-    }
-  }
-  addCoords(f.geometry.coordinates);
+// Compute canonical county-level topological adjacency using real shared border length >= MIN_SHARED_BORDER_KM
+const countyNamesList = Object.keys(countyFeatures).sort();
+const countyAdjacency = {};
+const countySharedBorderKm = {};
+for (const name of countyNamesList) {
+  countyAdjacency[name] = new Set();
+  countySharedBorderKm[name] = {};
 }
 
-const countyAdjacency = {};
-for (const name of Object.keys(countyFeatures)) countyAdjacency[name] = new Set();
-
-for (const [, list] of grid.entries()) {
-  if (list.length > 1) {
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        countyAdjacency[list[i]].add(list[j]);
-        countyAdjacency[list[j]].add(list[i]);
-      }
+for (let i = 0; i < countyNamesList.length; i++) {
+  for (let j = i + 1; j < countyNamesList.length; j++) {
+    const c1 = countyNamesList[i];
+    const c2 = countyNamesList[j];
+    const sharedKm = computeSharedBorderLengthKm(countySegmentData[c1], countySegmentData[c2]);
+    if (sharedKm >= MIN_SHARED_BORDER_KM) {
+      countyAdjacency[c1].add(c2);
+      countyAdjacency[c2].add(c1);
+      countySharedBorderKm[c1][c2] = Math.round(sharedKm * 10) / 10;
+      countySharedBorderKm[c2][c1] = Math.round(sharedKm * 10) / 10;
     }
   }
 }
@@ -252,6 +364,29 @@ function computeInternalCountyLines(countyNames) {
   return lines.join(' ');
 }
 
+// Verify that a multi-county territory forms a single connected component in the topological adjacency graph
+function verifyCountyGroupContiguity(playerCount, territoryId, counties) {
+  if (counties.length <= 1) return;
+  const allowed = new Set(counties);
+  const visited = new Set([counties[0]]);
+  const queue = [counties[0]];
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    for (const next of countyAdjacency[curr] || []) {
+      if (allowed.has(next) && !visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  if (visited.size !== counties.length) {
+    const disconnected = counties.filter(c => !visited.has(c));
+    throw new Error(
+      `Territory ${territoryId} in ${playerCount}p preset is NOT geographically contiguous! Disconnected counties: ${disconnected.join(', ')}`
+    );
+  }
+}
+
 // Function to process a full preset definition
 function processPreset(playerCount, territoryDefinitions) {
   const allCountiesInPreset = new Set();
@@ -269,6 +404,7 @@ function processPreset(playerCount, territoryDefinitions) {
       allCountiesInPreset.add(c);
       territoryCountyMap.set(c, tDef.id);
     }
+    verifyCountyGroupContiguity(playerCount, tDef.id, tDef.counties);
   }
 
   // Verify all 42 counties are covered
@@ -301,17 +437,21 @@ function processPreset(playerCount, territoryDefinitions) {
     });
   }
 
-  // Derive neighbors from county-level adjacency
+  // Derive canonical symmetric neighbors from topological county-level shared border length (>= 1.5 km)
   const territoryById = new Map(territories.map(t => [t.id, t]));
-  for (const tDef of territoryDefinitions) {
-    const currentT = territoryById.get(tDef.id);
-    for (const c of tDef.counties) {
-      for (const neighborCounty of countyAdjacency[c]) {
-        const neighborTerritoryId = territoryCountyMap.get(neighborCounty);
-        if (neighborTerritoryId && neighborTerritoryId !== tDef.id) {
-          currentT.neighbors.add(neighborTerritoryId);
-          territoryById.get(neighborTerritoryId)?.neighbors.add(tDef.id);
+  for (let i = 0; i < territoryDefinitions.length; i++) {
+    for (let j = i + 1; j < territoryDefinitions.length; j++) {
+      const tA = territoryDefinitions[i];
+      const tB = territoryDefinitions[j];
+      let sharedKm = 0;
+      for (const cA of tA.counties) {
+        for (const cB of tB.counties) {
+          sharedKm += countySharedBorderKm[cA]?.[cB] || 0;
         }
+      }
+      if (sharedKm >= MIN_SHARED_BORDER_KM) {
+        territoryById.get(tA.id).neighbors.add(tB.id);
+        territoryById.get(tB.id).neighbors.add(tA.id);
       }
     }
   }
@@ -332,4 +472,8 @@ function processPreset(playerCount, territoryDefinitions) {
 
 module.exports = {
   processPreset,
+  countyAdjacency,
+  countySharedBorderKm,
+  MIN_SHARED_BORDER_KM,
+  BOUNDARY_PROXIMITY_TOLERANCE_KM,
 };

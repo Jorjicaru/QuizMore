@@ -1,255 +1,183 @@
 import React from 'react';
-import { GamePhase, Player } from '../types/game';
+import { GameState, RoundTrackerMarkerItem } from '../types/game';
+import { buildRoundDisplayItems } from '../game/rules';
+import { Swords, Shield, Check, Clock, Sparkles } from 'lucide-react';
 
 interface RoundTrackerProps {
-  phase: GamePhase;
-  currentRound: number;
-  maxRounds: number;
-  players: Player[];
-  activePlayerIndex: number;
+  game: GameState;
 }
 
-export const RoundTracker: React.FC<RoundTrackerProps> = ({
-  phase,
-  currentRound,
-  maxRounds,
-  players,
-  activePlayerIndex,
-}) => {
-  const getPhaseTitle = (): string => {
-    switch (phase) {
-      case 'base_selection':
-        return 'ALEGEREA BAZEI';
-      case 'conquest':
-        return 'CUCERIRE';
-      case 'allocation':
-        return 'DEPARTAJARE';
-      case 'war':
-        return 'RĂZBOI';
-      case 'finished':
-        return 'FINAL DE JOC';
-      default:
-        return 'PREGĂTIRE';
-    }
+export const RoundTracker: React.FC<RoundTrackerProps> = ({ game }) => {
+  const model = buildRoundDisplayItems(game);
+  const {
+    phase,
+    phaseLabel,
+    subModeLabel,
+    currentRound,
+    totalRounds,
+    items,
+    battlePairs,
+    byeItems,
+  } = model;
+
+  const progressSteps = Math.max(1, Math.min(10, totalRounds));
+  const completedSteps = Math.max(0, Math.min(progressSteps, currentRound));
+
+  const renderMarkerBadge = (item: RoundTrackerMarkerItem, compact = false) => {
+    const isCurrentActive = item.state === 'active' || item.state === 'winner';
+    const isDone =
+      item.state === 'done' ||
+      item.state === 'answered' ||
+      item.state === 'correct';
+    const isMuted =
+      item.state === 'wrong' ||
+      item.state === 'no_response' ||
+      item.state === 'eliminated' ||
+      item.state === 'bye';
+
+    return (
+      <div
+        key={item.playerId}
+        data-testid={`tracker-marker-${item.playerId}`}
+        data-marker-state={item.state}
+        title={`${item.orderIndex}. ${item.username} — ${item.label}`}
+        className={`relative flex items-center justify-center rounded transition-all duration-200 ${
+          compact ? 'h-4 w-3.5' : 'h-4.5 w-4'
+        } ${
+          isCurrentActive
+            ? 'ring-2 ring-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.9)] scale-110 z-10'
+            : isDone
+            ? 'ring-1 ring-white/50 opacity-95'
+            : isMuted
+            ? 'opacity-40 grayscale-[40%]'
+            : 'opacity-80 ring-1 ring-stone-700'
+        }`}
+        style={{
+          backgroundColor: item.color,
+        }}
+      >
+        {item.state === 'active' && (
+          <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
+        )}
+        {item.state === 'winner' && (
+          <Sparkles className="h-2.5 w-2.5 text-stone-950 stroke-[2.5]" />
+        )}
+        {(item.state === 'done' || item.state === 'answered' || item.state === 'correct') && (
+          <Check className="h-2.5 w-2.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] stroke-[3]" />
+        )}
+        {item.state === 'pending' && (
+          <span className="text-[8px] font-black text-white/95 drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] leading-none">
+            {item.orderIndex}
+          </span>
+        )}
+      </div>
+    );
   };
 
-  const title = getPhaseTitle();
-  const totalRoundsCount =
-    phase === 'base_selection'
-      ? Math.max(1, players.length)
-      : Math.max(1, maxRounds || 1);
-  const visualCurrentRound =
-    phase === 'base_selection'
-      ? Math.min(players.length, activePlayerIndex + 1)
-      : Math.min(Math.max(1, currentRound), totalRoundsCount);
-  const roundsArray = Array.from({ length: totalRoundsCount }, (_, i) => i + 1);
-  const remainingCount =
-    phase === 'base_selection'
-      ? Math.max(0, players.length - activePlayerIndex)
-      : Math.max(0, totalRoundsCount - visualCurrentRound + 1);
-  const activePlayer = players[activePlayerIndex];
-  const progressPercent = Math.min(
-    100,
-    Math.max(8, Math.round((visualCurrentRound / totalRoundsCount) * 100))
-  );
-
-  // Adaptive sizing for desktop decorative slots & slashes so 10-player matches never overflow
-  const isManyRounds = totalRoundsCount > 6;
-  const isManyPlayers = players.length > 5;
-  const slotWidthClass = isManyRounds
-    ? 'w-6 lg:w-7 h-3'
-    : 'w-8 lg:w-9 h-3.5';
-  const slashWidthClass = isManyPlayers
-    ? 'w-1 h-3'
-    : 'w-1.5 h-3.5';
+  const compactPhaseTitle =
+    phase === 'base_selection' ? 'ALEGERE BAZĂ' : phaseLabel;
+  const compactSubLabel = subModeLabel
+    .replace(' alegeri rămase', ' rămase')
+    .replace(' alegeri pe hartă', ' alegeri');
 
   return (
-    <div className="w-full select-none">
-      {/* ============================================================
-          MOBILE & TABLET PORTRAIT VARIANT (< 768px)
-          No dozens of slashes; shows full Phase Title, Round X/Y,
-          Remaining choices, Active Player, and Visual Progress Bar.
-      ============================================================ */}
-      <div className="flex flex-col gap-1.5 md:hidden w-full">
-        <div className="flex items-center justify-between gap-2">
-          <h3
-            className="font-serif text-sm sm:text-base font-black tracking-wider text-amber-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]"
-            style={{ fontFamily: 'Cinzel, Georgia, serif' }}
-          >
-            {title}
-          </h3>
-
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-amber-300 tabular-nums shrink-0">
-            <span>
-              Runda {visualCurrentRound}/{totalRoundsCount}
-            </span>
-            <span className="text-stone-500">&bull;</span>
-            <span className="text-amber-100/90">
-              {remainingCount} {remainingCount === 1 ? 'rămasă' : 'rămase'}
-            </span>
-          </div>
-        </div>
-
-        {/* Visual segmented progress bar */}
-        <div
-          className="w-full rounded-lg border border-stone-800/90 p-1 shadow-inner"
-          style={{
-            background: 'linear-gradient(180deg, #3d2516 0%, #28170d 50%, #1a0f08 100%)',
-          }}
-        >
-          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${totalRoundsCount}, minmax(0, 1fr))` }}>
-            {roundsArray.map((r) => {
-              const isCompleted = r < visualCurrentRound;
-              const isActive = r === visualCurrentRound;
-              return (
-                <div
-                  key={r}
-                  className="h-2 rounded-full transition-all duration-300"
-                  style={{
-                    backgroundColor: isActive
-                      ? '#ffffff'
-                      : isCompleted
-                      ? '#f59e0b'
-                      : '#1c1008',
-                    boxShadow: isActive
-                      ? '0 0 8px 1px rgba(255, 255, 255, 0.9)'
-                      : 'none',
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Active player summary strip inside tracker */}
-        <div className="flex items-center justify-between text-[11px] text-stone-300 px-0.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-stone-400 shrink-0">Jucător activ:</span>
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: activePlayer?.color || '#f59e0b' }}
-            />
-            <span
-              className="font-bold truncate"
-              style={{ color: activePlayer?.color || '#fde68a' }}
-            >
-              {activePlayer?.username || 'Jucător'}
-            </span>
-          </div>
-          <span className="font-mono text-[10px] text-amber-200/80 shrink-0 tabular-nums">
-            {progressPercent}%
-          </span>
-        </div>
+    <div
+      data-testid="round-tracker"
+      data-phase={phase}
+      className="pointer-events-none select-none w-[196px] sm:w-[228px] rounded-xl border border-amber-500/35 bg-stone-950/90 px-2.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.85)] backdrop-blur-md flex flex-col gap-1"
+    >
+      {/* Row 1: Phase Name + Compact Round / Remaining Counter */}
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="font-serif text-[10px] sm:text-[11px] font-black tracking-wider text-amber-300 uppercase whitespace-nowrap">
+          {compactPhaseTitle}
+        </span>
+        <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold text-amber-200 whitespace-nowrap shrink-0">
+          <Clock className="h-2.5 w-2.5 text-amber-400 shrink-0" />
+          {compactSubLabel}
+        </span>
       </div>
 
-      {/* ============================================================
-          DESKTOP & LAPTOP DECORATIVE VARIANT (>= 768px)
-          Preserves authentic Conquiztador bronze bar + angled slashes
-          while staying compact vertically for laptop viewports.
-      ============================================================ */}
-      <div className="hidden md:flex flex-col items-center py-0.5">
-        <div className="flex items-center gap-3 mb-1">
-          <h3
-            className="font-serif text-sm lg:text-base font-black tracking-wider text-amber-100/95 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] whitespace-nowrap"
-            style={{ fontFamily: 'Cinzel, Georgia, serif' }}
-          >
-            {title}
-          </h3>
-          <span className="text-[10px] font-mono font-semibold tracking-wide text-amber-200/80 whitespace-nowrap tabular-nums">
-            {phase === 'base_selection'
-              ? `(${remainingCount} alegeri de bază rămase)`
-              : phase === 'allocation'
-              ? `(Întrebarea ${visualCurrentRound} din ${totalRoundsCount})`
-              : `(Runda ${visualCurrentRound}/${totalRoundsCount} · ${remainingCount} rămase)`}
-          </span>
-        </div>
+      {/* Row 2: Compact Round Progress Segments */}
+      <div
+        data-testid="round-tracker-progress"
+        className="flex items-center gap-1 w-full"
+      >
+        {Array.from({ length: progressSteps }, (_, idx) => {
+          const stepNumber = idx + 1;
+          const isCurrent = stepNumber === completedSteps;
+          const isPast = stepNumber < completedSteps;
+          return (
+            <div
+              key={stepNumber}
+              className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                isCurrent
+                  ? 'bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,0.85)]'
+                  : isPast
+                  ? 'bg-amber-500/75'
+                  : 'bg-stone-800'
+              }`}
+            />
+          );
+        })}
+      </div>
 
-        {/* Recessed Brown Bronze Bar with Pill Slots */}
-        <div
-          className="flex items-center gap-2 lg:gap-2.5 px-3 py-1 rounded-sm shadow-xl border border-stone-800/90"
-          style={{
-            background: 'linear-gradient(180deg, #3d2516 0%, #28170d 50%, #1a0f08 100%)',
-            boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.6)',
-          }}
-        >
-          {roundsArray.map((r) => {
-            const isCompleted = r < visualCurrentRound;
-            const isActive = r === visualCurrentRound;
-
-            return (
+      {/* Row 3: Authoritative Turn / Pick / War Duel Order (1 marker per player, NEVER N x N) */}
+      <div
+        data-testid="round-tracker-markers"
+        className="flex items-center justify-between gap-1 pt-0.5"
+      >
+        {phase === 'war' && battlePairs.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1 w-full">
+            {battlePairs.map((pair) => (
               <div
-                key={r}
-                className={`${slotWidthClass} rounded-full transition-all duration-300 flex items-center justify-center`}
-                style={{
-                  backgroundColor: isActive
-                    ? '#ffffff'
-                    : isCompleted
-                    ? '#ded7cc'
-                    : '#120a05',
-                  boxShadow: isActive
-                    ? '0 0 10px 2px rgba(255, 255, 255, 0.95), inset 0 1px 2px rgba(255,255,255,0.8)'
-                    : isCompleted
-                    ? 'inset 0 1px 2px rgba(0,0,0,0.4)'
-                    : 'inset 0 2px 5px rgba(0,0,0,0.95)',
-                  border: isActive
-                    ? '1px solid #ffffff'
-                    : isCompleted
-                    ? '1px solid #9c8e7e'
-                    : '1px solid #28160c',
-                }}
-              />
-            );
-          })}
-        </div>
-
-        {/* Angled Player Slashes under each round slot */}
-        <div className="flex items-center gap-2 lg:gap-2.5 px-3 mt-1">
-          {roundsArray.map((r) => {
-            const isCurrentRound = r === visualCurrentRound;
-
-            return (
-              <div
-                key={`slashes_${r}`}
-                className={`${isManyRounds ? 'w-6 lg:w-7' : 'w-8 lg:w-9'} flex items-center justify-center ${
-                  isManyPlayers ? 'gap-0.5' : 'gap-1'
+                key={pair.battleId}
+                data-testid={`tracker-battle-${pair.battleId}`}
+                title={`${pair.attacker.username} (Atac) ⚔️ ${pair.defender.username} (Apărare)`}
+                className={`inline-flex items-center gap-0.5 rounded-md border px-1 py-0.5 ${
+                  pair.status === 'skipped'
+                    ? 'border-stone-700/70 bg-stone-900/50 opacity-50'
+                    : pair.targetTerritoryId
+                    ? 'border-amber-500/45 bg-amber-950/35'
+                    : 'border-sky-400/50 bg-sky-950/35'
                 }`}
               >
-                {players.map((p, pIdx) => {
-                  const isThisPlayerTurn = isCurrentRound && pIdx === activePlayerIndex;
-
-                  return (
-                    <div
-                      key={p.id}
-                      title={`${p.username} ${isThisPlayerTurn ? '(Rândul activ)' : ''}`}
-                      className="relative flex items-center justify-center"
-                    >
-                      {isThisPlayerTurn && (
-                        <div
-                          className="absolute -inset-0.5 rounded-xs border border-cyan-400 bg-cyan-400/25 shadow-[0_0_6px_rgba(34,211,238,0.95)] animate-pulse z-10"
-                          style={{
-                            transform: 'skewX(-16deg)',
-                          }}
-                        />
-                      )}
-
-                      <div
-                        className={`${slashWidthClass} rounded-xs transition-all shadow-sm`}
-                        style={{
-                          backgroundColor: p.color,
-                          transform: 'skewX(-16deg)',
-                          opacity: isCurrentRound ? 1 : r < visualCurrentRound ? 0.75 : 0.35,
-                          boxShadow: isThisPlayerTurn
-                            ? `0 0 5px ${p.color}`
-                            : '0 1px 2px rgba(0,0,0,0.6)',
-                        }}
-                      />
-                    </div>
-                  );
-                })}
+                <span
+                  data-testid={`tracker-marker-${pair.attacker.playerId}`}
+                  className="h-3 w-3 rounded-sm ring-1 ring-white/50 shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: pair.attacker.color }}
+                >
+                  <Swords className="h-2 w-2 text-white drop-shadow" />
+                </span>
+                <span className="text-[8px] font-black text-amber-300 px-0.5">⚔</span>
+                <span
+                  data-testid={`tracker-marker-${pair.defender.playerId}`}
+                  className="h-3 w-3 rounded-sm ring-1 ring-white/40 shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: pair.defender.color }}
+                >
+                  <Shield className="h-2 w-2 text-white drop-shadow" />
+                </span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+            {byeItems.map((bye) => (
+              <div
+                key={bye.playerId}
+                data-testid={`tracker-marker-${bye.playerId}`}
+                title={`${bye.username} — Repaus (BYE)`}
+                className="inline-flex items-center gap-0.5 rounded border border-stone-700/80 bg-stone-900/70 px-1 py-0.5 opacity-60"
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-sm"
+                  style={{ backgroundColor: bye.color }}
+                />
+                <span className="text-[8px] font-mono text-stone-400">BYE</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 flex-nowrap">
+            {items.map((item) => renderMarkerBadge(item, items.length > 6))}
+          </div>
+        )}
       </div>
     </div>
   );

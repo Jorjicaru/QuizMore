@@ -75,7 +75,7 @@ export interface Player {
   territoriesCount: number;
   correctAnswers: number;
   wrongAnswers: number;
-  baseAttackAttemptsUsed: Record<string, number>;
+  baseAttackAttemptsUsed?: Record<string, number>;
 }
 
 export interface PlayerAnswerSubmission {
@@ -109,7 +109,7 @@ export interface WarBattleAssignment {
   attackerId: string;
   defenderId: string;
   targetTerritoryId: string | null;
-  status: 'selecting_target' | 'ready' | 'choice_question' | 'numeric_tiebreak' | 'resolved' | 'auto_selected';
+  status: 'selecting_target' | 'ready' | 'choice_question' | 'numeric_tiebreak' | 'resolved' | 'auto_selected' | 'skipped';
   attackerChoiceCorrect?: boolean;
   defenderChoiceCorrect?: boolean;
   attackerChoiceAnswer?: number | null;
@@ -121,7 +121,7 @@ export interface WarBattleAssignment {
   attackerSubmitTime?: number | null;
   defenderSubmitTime?: number | null;
   winnerId?: string | null;
-  outcome?: 'attacker_won' | 'defender_won' | 'draw_no_bonus' | 'needs_tiebreak';
+  outcome?: 'attacker_won' | 'defender_won' | 'draw_no_bonus' | 'needs_tiebreak' | 'skipped';
 }
 
 export interface WarRoundState {
@@ -134,6 +134,50 @@ export interface WarRoundState {
   battles: WarBattleAssignment[];
   selectionDeadline: number | null;
   questionDeadline: number | null;
+}
+
+export type RoundTrackerMarkerState =
+  | 'done'
+  | 'active'
+  | 'pending'
+  | 'answered'
+  | 'correct'
+  | 'wrong'
+  | 'no_response'
+  | 'winner'
+  | 'attacker'
+  | 'defender'
+  | 'bye'
+  | 'eliminated';
+
+export interface RoundTrackerMarkerItem {
+  playerId: string;
+  username: string;
+  color: string;
+  state: RoundTrackerMarkerState;
+  label: string;
+  orderIndex: number;
+}
+
+export interface RoundTrackerBattlePair {
+  battleId: string;
+  attacker: RoundTrackerMarkerItem;
+  defender: RoundTrackerMarkerItem;
+  targetTerritoryId: string | null;
+  status: WarBattleAssignment['status'];
+}
+
+export interface RoundDisplayModel {
+  phase: GamePhase;
+  phaseLabel: string;
+  subMode: 'base_selection' | 'question' | 'picking' | 'war_selecting' | 'war_question' | 'war_resolving' | 'finished';
+  subModeLabel: string;
+  currentRound: number;
+  totalRounds: number;
+  remainingSteps: number;
+  items: RoundTrackerMarkerItem[];
+  battlePairs: RoundTrackerBattlePair[];
+  byeItems: RoundTrackerMarkerItem[];
 }
 
 export interface GameLogEntry {

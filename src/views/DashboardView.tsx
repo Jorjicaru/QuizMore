@@ -316,7 +316,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <div className="font-mono text-red-300 font-black text-lg mb-2">400 Puncte</div>
             <p className="text-stone-300">
-              Duel între vecini! Câștigătorul primește 400 pct. Atacul pe baza inamică este permis nelimitat pentru vecini, sau o singură încercare pe meci la distanță.
+              Duel exclusiv între vecini! Câștigătorul primește 400 pct. Poți ataca doar teritorii și cetăți inamice care au graniță directă cu teritoriile tale.
             </p>
           </div>
         </div>
@@ -479,8 +479,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   className="mt-2.5 w-full accent-amber-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-                  <span>2 jucători (15 zone)</span>
-                  <span>4 jucători (24 zone)</span>
+                  <span>2 jucători (10 zone)</span>
+                  <span>4 jucători (20 zone)</span>
                   <span>10 jucători (38 zone)</span>
                 </div>
               </div>

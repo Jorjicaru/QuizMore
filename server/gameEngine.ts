@@ -579,23 +579,32 @@ export class GameManager {
     // SIMULTANEOUS WAR TARGET SELECTION TIMEOUT
     if (game.phase === 'war' && game.warRound && game.warRound.status === 'selecting_targets') {
       for (const battle of game.warRound.battles) {
-        if (!battle.targetTerritoryId) {
+        if (!battle.targetTerritoryId && battle.status !== 'skipped') {
           const validIds = getLegalWarTargetsForPair(
             battle.attackerId,
             battle.defenderId,
             game.territories
           );
+          const atk = game.players.find((p) => p.id === battle.attackerId);
           if (validIds.length > 0) {
             const pickId = validIds[Math.floor(Math.random() * validIds.length)];
             battle.targetTerritoryId = pickId;
             battle.status = 'auto_selected';
-            const atk = game.players.find((p) => p.id === battle.attackerId);
             const tName = game.territories[pickId]?.name || pickId;
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `⏱️ Timpul a expirat pentru ${atk?.username || 'Atacator'}! S-a selectat automat ținta ${tName}.`,
+              text: `⏱️ Timpul a expirat pentru ${atk?.username || 'Atacator'}! S-a selectat automat ținta învecinată ${tName}.`,
               timestamp: Date.now(),
               type: 'battle',
+            });
+          } else {
+            battle.status = 'skipped';
+            battle.outcome = 'skipped';
+            game.gameLog.push({
+              id: this.makeLogId(),
+              text: `⚖️ Duelul pentru ${atk?.username || 'Atacator'} a fost omis: nu există niciun teritoriu inamic direct învecinat.`,
+              timestamp: Date.now(),
+              type: 'info',
             });
           }
         }
@@ -784,14 +793,6 @@ export class GameManager {
         return { success: false, message: check.reason || 'Atac nepermis pe acest teritoriu!' };
       }
 
-      const isDirectNeighbor = Object.values(game.territories).some(
-        (t) => t.ownerId === attackerPlayer.id && territory.neighbors.includes(t.id)
-      );
-      if (territory.isBase && !isDirectNeighbor) {
-        attackerPlayer.baseAttackAttemptsUsed[battle.defenderId] =
-          (attackerPlayer.baseAttackAttemptsUsed[battle.defenderId] || 0) + 1;
-      }
-
       battle.targetTerritoryId = territoryId;
       battle.status = 'ready';
       game.pendingTerritoryId = territoryId;
@@ -803,12 +804,16 @@ export class GameManager {
         type: 'battle',
       });
 
-      const allSelected = game.warRound.battles.every((b) => b.targetTerritoryId !== null);
+      const allSelected = game.warRound.battles.every(
+        (b) => b.targetTerritoryId !== null || b.status === 'skipped'
+      );
       if (allSelected) {
         this.launchSimultaneousWarChoiceQuestion(game);
       } else {
         // Set activePlayerIndex to the next attacker who still needs to pick a target
-        const nextUnpicked = game.warRound.battles.find((b) => b.targetTerritoryId === null);
+        const nextUnpicked = game.warRound.battles.find(
+          (b) => b.targetTerritoryId === null && b.status !== 'skipped'
+        );
         if (nextUnpicked) {
           const idx = game.players.findIndex((p) => p.id === nextUnpicked.attackerId);
           if (idx >= 0) game.activePlayerIndex = idx;
@@ -1148,6 +1153,17 @@ export class GameManager {
           if (validIds.length > 0) {
             const pickId = validIds[Math.floor(Math.random() * validIds.length)];
             this.selectTerritory(roomId, currentBattle.attackerId, pickId);
+          } else {
+            currentBattle.status = 'skipped';
+            currentBattle.outcome = 'skipped';
+            const allDone = currentGame.warRound.battles.every(
+              (b) => b.targetTerritoryId !== null || b.status === 'skipped'
+            );
+            if (allDone) {
+              this.launchSimultaneousWarChoiceQuestion(currentGame);
+            } else {
+              this.notifyUpdate(roomId);
+            }
           }
         }, 1100 + Math.random() * 1100);
 

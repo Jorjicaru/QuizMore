@@ -1,4 +1,12 @@
-import { Territory, Player } from '../types/game';
+import {
+  Territory,
+  Player,
+  GameState,
+  RoundDisplayModel,
+  RoundTrackerMarkerItem,
+  RoundTrackerBattlePair,
+  RoundTrackerMarkerState,
+} from '../types/game';
 
 /**
  * Constantele oficiale de punctaj CONQUIZ
@@ -12,7 +20,7 @@ export const SCORING = {
 } as const;
 
 /**
- * Numărul dedicat de teritorii pentru fiecare număr de jucători (2..10) conform V3.0:
+ * Numărul dedicat de teritorii pentru fiecare număr de jucători (2..10) conform V3.0 / V5.0:
  * - 2 jucători: 10 teritorii (2 baze + 8 neutre)
  * - 3 jucători: 15 teritorii (3 baze + 12 neutre)
  * - 4 jucători: 20 teritorii (4 baze + 16 neutre)
@@ -47,12 +55,27 @@ export function calculateConquestRounds(territoryCount: number, playerCount: num
 }
 
 /**
+ * Verifică dacă două teritorii sunt direct învecinate conform grafului de vecinătăți simetric.
+ */
+export function areTerritoriesAdjacent(
+  territoryAId: string,
+  territoryBId: string,
+  territories: Record<string, Pick<Territory, 'id' | 'neighbors'>>
+): boolean {
+  if (!territoryAId || !territoryBId || territoryAId === territoryBId) return false;
+  const a = territories[territoryAId];
+  const b = territories[territoryBId];
+  if (!a || !b) return false;
+  return a.neighbors.includes(territoryBId) && b.neighbors.includes(territoryAId);
+}
+
+/**
  * Verifică dacă un teritoriu este direct învecinat cu cel puțin un teritoriu deținut de playerId
  */
 export function isAdjacentToPlayer(
   territoryId: string,
   playerId: string,
-  territories: Record<string, Territory>
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
 ): boolean {
   const target = territories[territoryId];
   if (!target) return false;
@@ -133,8 +156,12 @@ export function canCompleteBaseSelection(
  * Verifică dacă un jucător poate ținti un teritoriu în faza curentă:
  * - base_selection: neutru și neadiacent cu alte baze
  * - conquest: neutru și OBLIGATORIU adiacent cu un teritoriu deținut de jucător
- * - allocation: neutru (preferabil adiacent dacă jucătorul are teritorii neutre adiacente, altfel orice neutru)
- * - war: teritoriu inamic; dacă este specificat assignedDefenderId, trebuie să aparțină acelui apărător desemnat!
+ * - allocation: neutru
+ * - war: REGULĂ V4.0 / V5.0 ABSOLUTĂ:
+ *   1. teritoriul aparține unui inamic (`target.ownerId !== null && target.ownerId !== player.id`)
+ *   2. dacă există `assignedDefenderId`, teritoriul aparține apărătorului desemnat (`target.ownerId === assignedDefenderId`)
+ *   3. teritoriul este OBLIGATORIU direct învecinat cu cel puțin un teritoriu deținut de atacator (`isAdjacentToPlayer === true`),
+ *      inclusiv pentru Cetăți/Baze (`isBase`). Niciun atac la distanță nu este permis!
  */
 export function canTargetTerritory(
   territoryId: string,
@@ -188,65 +215,14 @@ export function canTargetTerritory(
     }
 
     const isAdjacent = isAdjacentToPlayer(territoryId, player.id, territories);
-
-    // Dacă avem un apărător desemnat în runda simultană de război:
-    if (assignedDefenderId) {
-      const defenderTerritories = Object.values(territories).filter(
-        (t) => t.ownerId === assignedDefenderId
-      );
-      const hasAdjacentToDefender = defenderTerritories.some((t) =>
-        isAdjacentToPlayer(t.id, player.id, territories)
-      );
-      if (hasAdjacentToDefender && !isAdjacent) {
-        if (target.isBase) {
-          const used = player.baseAttackAttemptsUsed?.[target.ownerId] || 0;
-          if (used >= 1) {
-            return {
-              allowed: false,
-              reason: 'Ai folosit deja singura încercare de atac la distanță asupra acestei baze!',
-            };
-          }
-          return { allowed: true };
-        }
-        return {
-          allowed: false,
-          reason: 'Trebuie să ataci un teritoriu învecinat al apărătorului desemnat!',
-        };
-      }
-      return { allowed: true };
+    if (!isAdjacent) {
+      return {
+        allowed: false,
+        reason: 'Nu poți ataca un teritoriu care nu este vecin cu teritoriile tale.',
+      };
     }
 
-    if (isAdjacent) {
-      return { allowed: true };
-    }
-
-    // Regula specială pentru atacul la distanță asupra unei baze: permis o singură dată per bază inamică
-    if (target.isBase) {
-      const used = player.baseAttackAttemptsUsed?.[target.ownerId] || 0;
-      if (used >= 1) {
-        return {
-          allowed: false,
-          reason: 'Ai folosit deja singura încercare de atac la distanță asupra acestei baze!',
-        };
-      }
-      return { allowed: true };
-    }
-
-    // Fallback dacă jucătorul nu are niciun vecin inamic direct (de ex. izolat)
-    const hasAnyAdjacentEnemy = Object.values(territories).some(
-      (t) =>
-        t.ownerId !== null &&
-        t.ownerId !== player.id &&
-        isAdjacentToPlayer(t.id, player.id, territories)
-    );
-    if (!hasAnyAdjacentEnemy) {
-      return { allowed: true };
-    }
-
-    return {
-      allowed: false,
-      reason: 'Poți ataca doar teritorii inamice direct învecinate cu ale tale!',
-    };
+    return { allowed: true };
   }
 
   return { allowed: false, reason: 'Fază inactivă.' };
@@ -343,6 +319,7 @@ export function playersShareBorder(
   playerB: string,
   territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
 ): boolean {
+  if (!playerA || !playerB || playerA === playerB) return false;
   const aTerritories = Object.values(territories).filter((t) => t.ownerId === playerA);
   return aTerritories.some((t) =>
     t.neighbors.some((nId) => territories[nId]?.ownerId === playerB)
@@ -350,13 +327,17 @@ export function playersShareBorder(
 }
 
 /**
- * Returnează teritoriile valide pe care attackerId le poate ataca de la defenderId în runda de război
+ * Returnează teritoriile valide pe care attackerId le poate ataca de la defenderId în runda de război.
+ * REGULĂ V4.0 / V5.0 ABSOLUTĂ:
+ * Returnează DOAR teritoriile apărătorului care sunt direct învecinate cu cel puțin un teritoriu al atacatorului.
+ * Dacă nu există nicio țintă adiacentă, returnează `[]` (NICIODATĂ fallback la toate teritoriile apărătorului!).
  */
 export function getLegalWarTargetsForPair(
   attackerId: string,
   defenderId: string,
   territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
 ): string[] {
+  if (!attackerId || !defenderId || attackerId === defenderId) return [];
   const myTerritories = Object.values(territories).filter((t) => t.ownerId === attackerId);
   const defenderTerritories = Object.values(territories).filter((t) => t.ownerId === defenderId);
   if (defenderTerritories.length === 0 || myTerritories.length === 0) return [];
@@ -364,19 +345,17 @@ export function getLegalWarTargetsForPair(
   const adjacentTargets = defenderTerritories.filter((dt) =>
     myTerritories.some((mt) => mt.neighbors.includes(dt.id))
   );
-  if (adjacentTargets.length > 0) {
-    return adjacentTargets.map((t) => t.id);
-  }
-  return defenderTerritories.map((t) => t.id);
+  return adjacentTargets.map((t) => t.id);
 }
 
 /**
  * Construiește împerecherile simultane Atacator vs Apărător pentru o rundă de Război (2..10 jucători).
- * Reguli:
- * - La N jucători activi, se formează exact floor(N / 2) bătălii simultane (1 la 2-3p, 2 la 4-5p, 3 la 6-7p, 4 la 8-9p, 5 la 10p).
- * - Dacă N este impar, exact 1 jucător primește BYE în runda curentă, rotit echitabil (fără 2 BYE consecutive).
- * - Rolurile Atacator / Apărător alternează echitabil de la o rundă la alta.
- * - Se maximizează numărul de perechi (Atacator, Apărător) care au graniță comună directă pe hartă.
+ * Reguli V4.0 / V5.0:
+ * - Un duel (attacker, defender) este permis DOAR dacă cei doi jucători împart graniță directă
+ *   (`playersShareBorder(attacker, defender, territories) === true`) și există cel puțin o țintă adiacentă legală!
+ * - Caută cuplajul maxim (maximum matching) de perechi disjuncte cu graniță comună, optimizând totodată
+ *   alternanța echitabilă a rolurilor (Atacator / Apărător / BYE) de la o rundă la alta.
+ * - Jucătorii care nu pot fi cuplați cu un adversar vecin intră în `byePlayerIds` (fără atacuri la distanță!).
  */
 export function buildSimultaneousWarPairings(
   activePlayerIds: string[],
@@ -394,39 +373,15 @@ export function buildSimultaneousWarPairings(
     return { attackerIds: [], defenderIds: [], byePlayerIds: [...activePlayerIds], pairs: [] };
   }
 
-  let pool = [...activePlayerIds];
-  const byePlayerIds: string[] = [];
-
-  if (n % 2 === 1) {
-    const candidates = [...pool].sort((a, b) => {
-      const histA = roleHistory[a] || [];
-      const histB = roleHistory[b] || [];
-      const lastWasByeA = histA[histA.length - 1] === 'bye' ? 1 : 0;
-      const lastWasByeB = histB[histB.length - 1] === 'bye' ? 1 : 0;
-      if (lastWasByeA !== lastWasByeB) return lastWasByeA - lastWasByeB;
-      const totalByesA = histA.filter((r) => r === 'bye').length;
-      const totalByesB = histB.filter((r) => r === 'bye').length;
-      if (totalByesA !== totalByesB) return totalByesA - totalByesB;
-      const idxA = (activePlayerIds.indexOf(a) + roundNumber) % n;
-      const idxB = (activePlayerIds.indexOf(b) + roundNumber) % n;
-      return idxB - idxA;
-    });
-
-    const byePlayer = candidates[0];
-    byePlayerIds.push(byePlayer);
-    pool = pool.filter((id) => id !== byePlayer);
-  }
-
-  const pairCount = Math.floor(pool.length / 2);
-
   const attackerPriorityScore = (pid: string, idx: number): number => {
     const hist = roleHistory[pid] || [];
     const lastRole = hist[hist.length - 1];
     const attackerCount = hist.filter((r) => r === 'attacker').length;
     const defenderCount = hist.filter((r) => r === 'defender').length;
-    let score = (defenderCount - attackerCount) * 10;
+    const byeCount = hist.filter((r) => r === 'bye').length;
+    let score = (defenderCount - attackerCount) * 12 + byeCount * 8;
     if (lastRole === 'defender') score += 25;
-    else if (lastRole === 'bye') score += 20;
+    else if (lastRole === 'bye') score += 22;
     else if (lastRole === 'attacker') score -= 25;
     else {
       score += (idx + roundNumber) % 2 === 0 ? 10 : -10;
@@ -434,55 +389,139 @@ export function buildSimultaneousWarPairings(
     return score;
   };
 
-  const sortedForAttacker = [...pool].sort((a, b) => {
-    const diff =
-      attackerPriorityScore(b, pool.indexOf(b)) - attackerPriorityScore(a, pool.indexOf(a));
-    if (diff !== 0) return diff;
-    return pool.indexOf(a) - pool.indexOf(b);
+  const byePenaltyScore = (pid: string, idx: number): number => {
+    const hist = roleHistory[pid] || [];
+    const lastWasBye = hist[hist.length - 1] === 'bye';
+    const totalByes = hist.filter((r) => r === 'bye').length;
+    return (lastWasBye ? 200 : 0) + totalByes * 40 + ((idx + roundNumber) % n);
+  };
+
+  const priorityById = new Map<string, number>();
+  const byePenaltyById = new Map<string, number>();
+  activePlayerIds.forEach((pid, idx) => {
+    priorityById.set(pid, attackerPriorityScore(pid, idx));
+    byePenaltyById.set(pid, byePenaltyScore(pid, idx));
   });
 
-  const attackerIds = sortedForAttacker.slice(0, pairCount);
-  const defenderIds = sortedForAttacker.slice(pairCount, pairCount * 2);
+  // Sort candidate players so players who should NOT get a bye (high byePenalty) are matched first
+  const orderedIds = [...activePlayerIds].sort(
+    (a, b) => (byePenaltyById.get(b) || 0) - (byePenaltyById.get(a) || 0)
+  );
 
-  let bestScore = -1;
-  let bestPerm: string[] = [...defenderIds];
-
-  function permute(arr: string[], l: number) {
-    if (l === arr.length) {
-      let score = 0;
-      for (let i = 0; i < attackerIds.length; i++) {
-        if (playersShareBorder(attackerIds[i], arr[i], territories)) {
-          score += 100;
-        } else {
-          score += 1;
-        }
+  // Precompute valid adjacent opponent pairs
+  const adjMap = new Map<string, Set<string>>();
+  for (const id of orderedIds) {
+    adjMap.set(id, new Set<string>());
+  }
+  for (let i = 0; i < orderedIds.length; i++) {
+    for (let j = i + 1; j < orderedIds.length; j++) {
+      const a = orderedIds[i];
+      const b = orderedIds[j];
+      if (
+        playersShareBorder(a, b, territories) &&
+        getLegalWarTargetsForPair(a, b, territories).length > 0 &&
+        getLegalWarTargetsForPair(b, a, territories).length > 0
+      ) {
+        adjMap.get(a)!.add(b);
+        adjMap.get(b)!.add(a);
       }
-      if (score > bestScore) {
-        bestScore = score;
-        bestPerm = [...arr];
-      }
-      return;
-    }
-    for (let i = l; i < arr.length; i++) {
-      [arr[l], arr[i]] = [arr[i], arr[l]];
-      permute(arr, l + 1);
-      [arr[l], arr[i]] = [arr[i], arr[l]];
     }
   }
 
-  permute([...defenderIds], 0);
+  let bestPairs: Array<{ attackerId: string; defenderId: string; sharesBorder: boolean }> = [];
+  let bestScore = Number.NEGATIVE_INFINITY;
 
-  const pairs = attackerIds.map((atk, i) => ({
-    attackerId: atk,
-    defenderId: bestPerm[i],
-    sharesBorder: playersShareBorder(atk, bestPerm[i], territories),
-  }));
+  const used = new Set<string>();
+  const currentPairs: Array<{ attackerId: string; defenderId: string; sharesBorder: boolean }> = [];
+
+  function search(startIdx: number, currentRoleScore: number) {
+    const remaining = orderedIds.length - used.size;
+    const maxPossiblePairs = currentPairs.length + Math.floor(remaining / 2);
+    if (maxPossiblePairs < bestPairs.length) {
+      return;
+    }
+
+    // Find next unmatched player
+    let uIdx = -1;
+    for (let i = startIdx; i < orderedIds.length; i++) {
+      if (!used.has(orderedIds[i])) {
+        uIdx = i;
+        break;
+      }
+    }
+
+    if (uIdx === -1) {
+      // Evaluate complete assignment: penalize leaving someone with high byePenalty unmatched
+      let totalScore = currentRoleScore;
+      for (const pid of orderedIds) {
+        if (!used.has(pid)) {
+          totalScore -= byePenaltyById.get(pid) || 0;
+        }
+      }
+      if (
+        currentPairs.length > bestPairs.length ||
+        (currentPairs.length === bestPairs.length && totalScore > bestScore)
+      ) {
+        bestPairs = currentPairs.map((p) => ({ ...p }));
+        bestScore = totalScore;
+      }
+      return;
+    }
+
+    const u = orderedIds[uIdx];
+    const uNeighbors = adjMap.get(u)!;
+
+    for (let vIdx = uIdx + 1; vIdx < orderedIds.length; vIdx++) {
+      const v = orderedIds[vIdx];
+      if (used.has(v) || !uNeighbors.has(v)) continue;
+
+      const uPrio = priorityById.get(u) || 0;
+      const vPrio = priorityById.get(v) || 0;
+      const attackerId = uPrio >= vPrio ? u : v;
+      const defenderId = uPrio >= vPrio ? v : u;
+      const pairGain = (priorityById.get(attackerId) || 0) - (priorityById.get(defenderId) || 0);
+
+      used.add(u);
+      used.add(v);
+      currentPairs.push({ attackerId, defenderId, sharesBorder: true });
+
+      search(uIdx + 1, currentRoleScore + pairGain);
+
+      currentPairs.pop();
+      used.delete(u);
+      used.delete(v);
+    }
+
+    // Option to leave u unmatched (BYE)
+    if (orderedIds.length - (uIdx + 1) >= (bestPairs.length - currentPairs.length) * 2) {
+      search(uIdx + 1, currentRoleScore);
+    }
+  }
+
+  search(0, 0);
+
+  // Order pairs deterministically by attacker priority
+  bestPairs.sort(
+    (a, b) => (priorityById.get(b.attackerId) || 0) - (priorityById.get(a.attackerId) || 0)
+  );
+
+  const matched = new Set<string>();
+  const attackerIds: string[] = [];
+  const defenderIds: string[] = [];
+  for (const p of bestPairs) {
+    attackerIds.push(p.attackerId);
+    defenderIds.push(p.defenderId);
+    matched.add(p.attackerId);
+    matched.add(p.defenderId);
+  }
+
+  const byePlayerIds = activePlayerIds.filter((id) => !matched.has(id));
 
   return {
     attackerIds,
-    defenderIds: pairs.map((p) => p.defenderId),
+    defenderIds,
     byePlayerIds,
-    pairs,
+    pairs: bestPairs,
   };
 }
 
@@ -713,3 +752,381 @@ export function sanitizeNumericInput(raw: string): string {
   }
   return sign + body;
 }
+
+/**
+ * Construiește modelul pur și testabil pentru RoundTracker (Secțiunea 46 din TODO V5.0).
+ * REGULĂ ABSOLUTĂ:
+ * - Fiecare jucător apare CEL MULT O SINGURĂ DATĂ în lista de markeri ai rundei curente
+ *   (pentru 4 jucători -> 4 markeri; pentru 10 jucători -> 10 markeri; NICIODATĂ N x N = 16 sau 100!).
+ * - Ordinea markerilor reflectă exact ordinea autoritativă de joc din server:
+ *   1. base_selection: ordinea de alegere a bazei (players[] + activePlayerIndex)
+ *   2. conquest (întrebare): participanții simultani + starea răspunsului (answered / pending / correct / wrong / no_response)
+ *   3. conquest (alegere teritoriu): ordinea exactă din `conquestPickQueue` (cu `conquestPickerId` activ)
+ *   4. allocation: participanții la estimare sau câștigătorul departajării (`allocationWinnerId`)
+ *   5. war: perechile reale din `warRound.battles` în ordinea exactă de pe server (`[Atacator ⚔️ Apărător]`) + `byePlayerIds`
+ */
+export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
+  const playersById = new Map<string, Player>();
+  for (const p of game.players) {
+    playersById.set(p.id, p);
+  }
+
+  const basesPlacedCount = game.players.filter((p) => Boolean(p.baseTerritoryId)).length;
+  const totalBasePicks = game.players.length;
+
+  // 1. BASE SELECTION
+  if (game.phase === 'base_selection') {
+    const items: RoundTrackerMarkerItem[] = game.players.map((p, idx) => {
+      const hasBase = Boolean(p.baseTerritoryId);
+      const isActive = idx === game.activePlayerIndex && !hasBase;
+      const state: RoundTrackerMarkerState = hasBase ? 'done' : isActive ? 'active' : 'pending';
+      return {
+        playerId: p.id,
+        username: p.username,
+        color: p.color,
+        state,
+        label: hasBase ? 'Bază aleasă' : isActive ? 'Alege baza acum' : 'În așteptare',
+        orderIndex: idx + 1,
+      };
+    });
+
+    return {
+      phase: game.phase,
+      phaseLabel: 'ALEGEREA BAZEI',
+      subMode: 'base_selection',
+      subModeLabel: `${Math.max(0, totalBasePicks - basesPlacedCount)} alegeri rămase`,
+      currentRound: Math.min(totalBasePicks, basesPlacedCount + 1),
+      totalRounds: Math.max(1, totalBasePicks),
+      remainingSteps: Math.max(0, totalBasePicks - basesPlacedCount),
+      items,
+      battlePairs: [],
+      byeItems: [],
+    };
+  }
+
+  // 2. CONQUEST
+  if (game.phase === 'conquest') {
+    const cq = game.currentQuestion;
+    const pickQueue = game.conquestPickQueue || [];
+    const pickerId = game.conquestPickerId || null;
+
+    if (!cq && (pickerId || pickQueue.length > 0)) {
+      const orderedQueueIds: string[] = [];
+      if (pickerId && !orderedQueueIds.includes(pickerId)) {
+        orderedQueueIds.push(pickerId);
+      }
+      for (const id of pickQueue) {
+        if (!orderedQueueIds.includes(id)) {
+          orderedQueueIds.push(id);
+        }
+      }
+
+      const items: RoundTrackerMarkerItem[] = [];
+      orderedQueueIds.forEach((id, idx) => {
+        const p = playersById.get(id);
+        if (!p) return;
+        const isCurrentPicker = id === pickerId;
+        items.push({
+          playerId: p.id,
+          username: p.username,
+          color: p.color,
+          state: isCurrentPicker ? 'active' : 'pending',
+          label: isCurrentPicker ? 'Alege teritoriu acum' : `Urmează (#${idx + 1})`,
+          orderIndex: idx + 1,
+        });
+      });
+
+      for (const p of game.players) {
+        if (orderedQueueIds.includes(p.id)) continue;
+        items.push({
+          playerId: p.id,
+          username: p.username,
+          color: p.color,
+          state: 'done',
+          label: 'Fără alegere rămasă',
+          orderIndex: items.length + 1,
+        });
+      }
+
+      return {
+        phase: game.phase,
+        phaseLabel: 'CUCERIRE',
+        subMode: 'picking',
+        subModeLabel: `${orderedQueueIds.length} alegeri pe hartă`,
+        currentRound: game.round,
+        totalRounds: Math.max(1, game.maxRounds),
+        remainingSteps: orderedQueueIds.length,
+        items,
+        battlePairs: [],
+        byeItems: [],
+      };
+    }
+
+    const items: RoundTrackerMarkerItem[] = game.players.map((p, idx) => {
+      const sub = cq?.playerAnswers?.[p.id];
+      let state: RoundTrackerMarkerState = 'pending';
+      let label = 'Gândește...';
+
+      if (cq?.resolved) {
+        if (sub?.answerStatus === 'CORRECT' || sub?.isCorrect) {
+          state = 'correct';
+          label = 'Corect';
+        } else if (sub?.answerStatus === 'NO_RESPONSE') {
+          state = 'no_response';
+          label = 'Fără răspuns';
+        } else {
+          state = 'wrong';
+          label = 'Greșit';
+        }
+      } else if (sub !== undefined && sub.answer !== null && sub.answer !== undefined) {
+        state = 'answered';
+        label = 'A răspuns';
+      }
+
+      return {
+        playerId: p.id,
+        username: p.username,
+        color: p.color,
+        state,
+        label,
+        orderIndex: idx + 1,
+      };
+    });
+
+    return {
+      phase: game.phase,
+      phaseLabel: 'CUCERIRE',
+      subMode: 'question',
+      subModeLabel: `Runda ${game.round}/${game.maxRounds}`,
+      currentRound: game.round,
+      totalRounds: Math.max(1, game.maxRounds),
+      remainingSteps: Math.max(0, game.maxRounds - game.round + 1),
+      items,
+      battlePairs: [],
+      byeItems: [],
+    };
+  }
+
+  // 3. ALLOCATION (DEPARTAJARE NUMERICĂ)
+  if (game.phase === 'allocation') {
+    const cq = game.currentQuestion;
+    const winnerId = game.allocationWinnerId || null;
+    const unownedCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
+
+    if (!cq && winnerId && game.allocationPickReady) {
+      const items: RoundTrackerMarkerItem[] = [];
+      const winner = playersById.get(winnerId);
+      if (winner) {
+        items.push({
+          playerId: winner.id,
+          username: winner.username,
+          color: winner.color,
+          state: 'active',
+          label: 'Câștigător – Alege teritoriu',
+          orderIndex: 1,
+        });
+      }
+      for (const p of game.players) {
+        if (p.id === winnerId) continue;
+        items.push({
+          playerId: p.id,
+          username: p.username,
+          color: p.color,
+          state: 'done',
+          label: 'Așteaptă alegerea',
+          orderIndex: items.length + 1,
+        });
+      }
+
+      return {
+        phase: game.phase,
+        phaseLabel: 'DEPARTAJARE',
+        subMode: 'picking',
+        subModeLabel: `${unownedCount} zone libere`,
+        currentRound: 1,
+        totalRounds: Math.max(1, unownedCount),
+        remainingSteps: unownedCount,
+        items,
+        battlePairs: [],
+        byeItems: [],
+      };
+    }
+
+    const items: RoundTrackerMarkerItem[] = game.players.map((p, idx) => {
+      const sub = cq?.playerAnswers?.[p.id];
+      let state: RoundTrackerMarkerState = 'pending';
+      let label = 'Estimează...';
+
+      if (cq?.resolved) {
+        if (cq.winnerIds?.includes(p.id) || p.id === winnerId) {
+          state = 'winner';
+          label = 'Cel mai aproape!';
+        } else if (sub?.answerStatus === 'NO_RESPONSE') {
+          state = 'no_response';
+          label = 'Fără răspuns';
+        } else {
+          state = 'done';
+          label = sub?.rank ? `Locul #${sub.rank}` : 'Evaluat';
+        }
+      } else if (sub !== undefined && sub.answer !== null && sub.answer !== undefined) {
+        state = 'answered';
+        label = 'A trimis număr';
+      }
+
+      return {
+        playerId: p.id,
+        username: p.username,
+        color: p.color,
+        state,
+        label,
+        orderIndex: idx + 1,
+      };
+    });
+
+    return {
+      phase: game.phase,
+      phaseLabel: 'DEPARTAJARE',
+      subMode: 'question',
+      subModeLabel: `${unownedCount} zone libere`,
+      currentRound: 1,
+      totalRounds: Math.max(1, unownedCount),
+      remainingSteps: unownedCount,
+      items,
+      battlePairs: [],
+      byeItems: [],
+    };
+  }
+
+  // 4. WAR (RĂZBOI SIMULTAN)
+  if (game.phase === 'war') {
+    const wr = game.warRound;
+    const battlePairs: RoundTrackerBattlePair[] = [];
+    const byeItems: RoundTrackerMarkerItem[] = [];
+    const items: RoundTrackerMarkerItem[] = [];
+
+    if (wr) {
+      wr.battles.forEach((b, idx) => {
+        const atk = playersById.get(b.attackerId);
+        const def = playersById.get(b.defenderId);
+        if (!atk || !def) return;
+
+        const atkItem: RoundTrackerMarkerItem = {
+          playerId: atk.id,
+          username: atk.username,
+          color: atk.color,
+          state:
+            b.status === 'skipped'
+              ? 'bye'
+              : wr.status === 'selecting_targets' && !b.targetTerritoryId
+              ? 'active'
+              : 'attacker',
+          label:
+            b.status === 'skipped'
+              ? 'Fără graniță comună'
+              : b.targetTerritoryId
+              ? 'Țintă fixată'
+              : 'Alege ținta de atac',
+          orderIndex: idx * 2 + 1,
+        };
+
+        const defItem: RoundTrackerMarkerItem = {
+          playerId: def.id,
+          username: def.username,
+          color: def.color,
+          state: b.status === 'skipped' ? 'bye' : 'defender',
+          label: `Apără împotriva ${atk.username}`,
+          orderIndex: idx * 2 + 2,
+        };
+
+        battlePairs.push({
+          battleId: b.battleId,
+          attacker: atkItem,
+          defender: defItem,
+          targetTerritoryId: b.targetTerritoryId,
+          status: b.status,
+        });
+
+        items.push(atkItem, defItem);
+      });
+
+      wr.byePlayerIds.forEach((id) => {
+        const p = playersById.get(id);
+        if (!p) return;
+        const byeItem: RoundTrackerMarkerItem = {
+          playerId: p.id,
+          username: p.username,
+          color: p.color,
+          state: 'bye',
+          label: 'Rămas fără duel în această rundă',
+          orderIndex: items.length + 1,
+        };
+        byeItems.push(byeItem);
+        items.push(byeItem);
+      });
+    } else {
+      game.players
+        .filter((p) => !p.isEliminated)
+        .forEach((p, idx) => {
+          items.push({
+            playerId: p.id,
+            username: p.username,
+            color: p.color,
+            state: idx === game.activePlayerIndex ? 'active' : 'pending',
+            label: idx === game.activePlayerIndex ? 'La rând' : 'Activ',
+            orderIndex: idx + 1,
+          });
+        });
+    }
+
+    const subMode =
+      wr?.status === 'selecting_targets'
+        ? 'war_selecting'
+        : wr?.status === 'choice_question' || wr?.status === 'numeric_tiebreak'
+        ? 'war_question'
+        : 'war_resolving';
+
+    const subModeLabel =
+      wr?.status === 'selecting_targets'
+        ? 'Alegere ținte'
+        : wr?.status === 'numeric_tiebreak'
+        ? 'Departajare duel'
+        : `Runda ${game.round}/${game.maxRounds}`;
+
+    return {
+      phase: game.phase,
+      phaseLabel: 'RĂZBOI',
+      subMode,
+      subModeLabel,
+      currentRound: game.round,
+      totalRounds: Math.max(1, game.maxRounds),
+      remainingSteps: Math.max(0, game.maxRounds - game.round + 1),
+      items,
+      battlePairs,
+      byeItems,
+    };
+  }
+
+  // 5. FINISHED / WAITING
+  const items: RoundTrackerMarkerItem[] = game.players.map((p, idx) => ({
+    playerId: p.id,
+    username: p.username,
+    color: p.color,
+    state: game.winner?.id === p.id ? 'winner' : p.isEliminated ? 'eliminated' : 'done',
+    label: game.winner?.id === p.id ? 'Câștigător' : p.isEliminated ? 'Eliminat' : 'Finalizat',
+    orderIndex: idx + 1,
+  }));
+
+  return {
+    phase: game.phase,
+    phaseLabel: game.phase === 'finished' ? 'FINAL MECI' : 'PREGĂTIRE',
+    subMode: 'finished',
+    subModeLabel: `Runda ${game.round}/${game.maxRounds}`,
+    currentRound: game.round,
+    totalRounds: Math.max(1, game.maxRounds),
+    remainingSteps: 0,
+    items,
+    battlePairs: [],
+    byeItems: [],
+  };
+}
+

@@ -1,8 +1,8 @@
 {
-  "mapId": "romania-2p-v3",
+  "mapId": "romania-2p-v5",
   "playerCount": 2,
   "territoryCount": 10,
-  "version": "3.0.0",
+  "version": "5.0.0",
   "territories": [
     {
       "id": "maramures_crisana",

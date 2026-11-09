@@ -1,6 +1,7 @@
 /**
  * Date Geografice Reale ale României – Proiectate SVG conform ANCPI / OpenStreetMap
  * Generat automat din data/geo/romania-counties.geojson cu geometrie dizolvată (dissolve/union)
+ * și vecinătăți topologice reale (graniță liniară comună >= 1.5 km, zero atingeri într-un singur punct).
  *
  * Configurație dedicată pentru FIECARE număr de jucători de la 2 la 10:
  * - 2 jucători: 10 teritorii
@@ -36,58 +37,58 @@ export interface MapMetadata {
 
 export const MAP_METADATA: Record<number, MapMetadata> = {
   "2": {
-    "mapId": "romania-2p-v3",
+    "mapId": "romania-2p-v5",
     "playerCount": 2,
     "territoryCount": 10,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "3": {
-    "mapId": "romania-3p-v3",
+    "mapId": "romania-3p-v5",
     "playerCount": 3,
     "territoryCount": 15,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "4": {
-    "mapId": "romania-4p-v3",
+    "mapId": "romania-4p-v5",
     "playerCount": 4,
     "territoryCount": 20,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "5": {
-    "mapId": "romania-5p-v3",
+    "mapId": "romania-5p-v5",
     "playerCount": 5,
     "territoryCount": 23,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "6": {
-    "mapId": "romania-6p-v3",
+    "mapId": "romania-6p-v5",
     "playerCount": 6,
     "territoryCount": 26,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "7": {
-    "mapId": "romania-7p-v3",
+    "mapId": "romania-7p-v5",
     "playerCount": 7,
     "territoryCount": 29,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "8": {
-    "mapId": "romania-8p-v3",
+    "mapId": "romania-8p-v5",
     "playerCount": 8,
     "territoryCount": 32,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "9": {
-    "mapId": "romania-9p-v3",
+    "mapId": "romania-9p-v5",
     "playerCount": 9,
     "territoryCount": 35,
-    "version": "3.0.0"
+    "version": "5.0.0"
   },
   "10": {
-    "mapId": "romania-10p-v3",
+    "mapId": "romania-10p-v5",
     "playerCount": 10,
     "territoryCount": 38,
-    "version": "3.0.0"
+    "version": "5.0.0"
   }
 };
 
@@ -4759,6 +4760,46 @@ export const ROMANIA_35_TERRITORIES: TerritoryDef[] = ROMANIA_MAP_PRESETS[9];
 export const ROMANIA_38_TERRITORIES: TerritoryDef[] = ROMANIA_MAP_PRESETS[10];
 
 /**
+ * Validează strict graful de vecinătăți al unui preset:
+ * - niciun teritoriu nu se are pe sine ca vecin
+ * - toate ID-urile vecinilor există în preset
+ * - simetrie bidirecțională 100% (dacă A îl conține pe B, atunci B îl conține obligatoriu pe A)
+ * - niciun teritoriu nu este izolat (neighbors.length === 0)
+ */
+export function validatePresetNeighborGraph(playerCount: number, defs: TerritoryDef[]): void {
+  const validIds = new Set(defs.map(t => t.id));
+  const byId = new Map<string, Set<string>>();
+
+  for (const t of defs) {
+    if (!t.neighbors || t.neighbors.length === 0) {
+      throw new Error(`[Preset ${playerCount}p] Teritoriul ${t.id} este izolat (nu are niciun vecin valid).`);
+    }
+    const set = new Set<string>();
+    for (const nId of t.neighbors) {
+      if (nId === t.id) {
+        throw new Error(`[Preset ${playerCount}p] Teritoriul ${t.id} se are pe sine ca vecin.`);
+      }
+      if (!validIds.has(nId)) {
+        throw new Error(`[Preset ${playerCount}p] Teritoriul ${t.id} referențiază un vecin inexistent: ${nId}.`);
+      }
+      set.add(nId);
+    }
+    byId.set(t.id, set);
+  }
+
+  for (const [id, neighbors] of byId.entries()) {
+    for (const neighborId of neighbors) {
+      const reverseNeighbors = byId.get(neighborId);
+      if (!reverseNeighbors || !reverseNeighbors.has(id)) {
+        throw new Error(
+          `[Preset ${playerCount}p] Asimetrie în graful de vecinătăți: ${id} -> ${neighborId}, dar ${neighborId} nu îl are ca vecin pe ${id}.`
+        );
+      }
+    }
+  }
+}
+
+/**
  * Generează starea teritoriilor inițializată pentru un meci.
  * Folosește numărul REAL de participanți (jucători umani + roboți AI activi).
  */
@@ -4766,19 +4807,7 @@ export function createMapForPlayerCount(playerCount: number): Record<string, any
   const count = Math.max(2, Math.min(10, Math.round(playerCount || 4)));
   const defs = ROMANIA_MAP_PRESETS[count] || ROMANIA_MAP_PRESETS[4];
 
-  const validIds = new Set(defs.map(t => t.id));
-  const neighborsById = new Map<string, Set<string>>();
-
-  for (const t of defs) {
-    neighborsById.set(t.id, new Set(t.neighbors.filter(id => validIds.has(id) && id !== t.id)));
-  }
-
-  // Normalize graph edges (garantează simetrie bidirecțională completă: dacă A este vecin cu B, atunci și B este vecin cu A)
-  for (const [id, neighbors] of neighborsById.entries()) {
-    for (const neighborId of neighbors) {
-      neighborsById.get(neighborId)?.add(id);
-    }
-  }
+  validatePresetNeighborGraph(count, defs);
 
   const map: Record<string, any> = {};
   for (const t of defs) {
@@ -4798,7 +4827,7 @@ export function createMapForPlayerCount(playerCount: number): Record<string, any
       basePlayerName: undefined,
       castleTowers: 3,
       defensiveBonus: 0,
-      neighbors: Array.from(neighborsById.get(t.id) || []),
+      neighbors: [...t.neighbors],
     };
   }
 

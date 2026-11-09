@@ -1,8 +1,8 @@
 {
-  "mapId": "romania-10p-v3",
+  "mapId": "romania-10p-v5",
   "playerCount": 10,
   "territoryCount": 38,
-  "version": "3.0.0",
+  "version": "5.0.0",
   "territories": [
     {
       "id": "satu_mare",
