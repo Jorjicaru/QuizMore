@@ -112,8 +112,8 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       )}
 
-      {/* Map-First Workspace: Map takes full remaining height + width on left, PlayerSidebar on right on >=1024px */}
-      <div className="flex-1 min-h-0 w-full flex flex-col lg:flex-row gap-2 overflow-hidden">
+      {/* Map-First Workspace: Map takes full width on <1280px; on >=1280px (xl) RomaniaMap is on left and PlayerSidebar is on right */}
+      <div className="flex-1 min-h-0 w-full flex flex-col xl:flex-row gap-2 overflow-hidden">
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
           <RomaniaMap
             game={game}
@@ -130,7 +130,7 @@ export const GameView: React.FC<GameViewProps> = ({
           />
         </div>
 
-        {/* Vertical Right-Hand Player Roster on Desktop (>= 1024px) */}
+        {/* Vertical Right-Hand Scoreboard Roster on Desktop (>= 1280px) */}
         <PlayerSidebar game={game} currentUserId={currentUser.id} />
       </div>
 

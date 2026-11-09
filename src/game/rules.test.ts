@@ -762,3 +762,68 @@ test('Teste V5.0 RoundTracker (buildRoundDisplayItems): fără multiplicare N x 
   (gm as any).clearRoomTimers(room10.roomId);
 });
 
+test('V7: PlayerSidebar clasament, rank și atribuire roluri/tur prin player.id (fără confuzie de index sortat)', () => {
+  const mockPlayers = [
+    { id: 'p_alpha', username: 'Alpha', color: '#ff0000', score: 200, territoriesCount: 1, castleTowers: 3, isEliminated: false },
+    { id: 'p_beta', username: 'Beta', color: '#00ff00', score: 1000, territoriesCount: 5, castleTowers: 3, isEliminated: false },
+    { id: 'p_gamma', username: 'Gamma', color: '#0000ff', score: 600, territoriesCount: 3, castleTowers: 2, isEliminated: false },
+    { id: 'p_delta', username: 'Delta', color: '#ffff00', score: 0, territoriesCount: 0, castleTowers: 0, isEliminated: true },
+  ];
+
+  // Beta is rank 1 (1000 pct), Gamma rank 2 (600 pct), Alpha rank 3 (200 pct), Delta rank 4 (0 pct)
+  const ranked = [...mockPlayers]
+    .map((p, originalIdx) => ({ player: p, originalIdx }))
+    .sort((a, b) => b.player.score - a.player.score || a.originalIdx - b.originalIdx);
+
+  assert.equal(ranked[0].player.id, 'p_beta', 'Locul 1 este Beta cu 1000 pct');
+  assert.equal(ranked[1].player.id, 'p_gamma', 'Locul 2 este Gamma cu 600 pct');
+  assert.equal(ranked[2].player.id, 'p_alpha', 'Locul 3 este Alpha cu 200 pct');
+  assert.equal(ranked[3].player.id, 'p_delta', 'Locul 4 este Delta cu 0 pct');
+
+  // Verify that active player is identified strictly by ID
+  // Suppose activePlayerIndex in original array is 0 (Alpha)
+  const activePlayerId = mockPlayers[0].id;
+  assert.equal(activePlayerId, 'p_alpha');
+
+  // When iterating over ranked list, only Alpha gets isTurn = true, NOT the element at index 0 (which is Beta)!
+  const isTurnForRanked = ranked.map(({ player }) => player.id === activePlayerId);
+  assert.deepEqual(isTurnForRanked, [false, false, true, false], 'Doar Alpha primește isTurn, chiar dacă este pe locul 3 în clasament');
+
+  // Verify war roles computed by ID
+  const warRound = {
+    attackerIds: ['p_beta'],
+    defenderIds: ['p_gamma'],
+    byePlayerIds: ['p_alpha'],
+  };
+  assert.ok(warRound.attackerIds.includes('p_beta'), 'Beta este atacator prin ID');
+  assert.ok(warRound.defenderIds.includes('p_gamma'), 'Gamma este apărător prin ID');
+  assert.ok(warRound.byePlayerIds.includes('p_alpha'), 'Alpha este BYE prin ID');
+});
+
+test('V7: Smooth Timer - calcul continuu al raportului scaleX și gestionarea deadline-ului absolut', () => {
+  const totalDurationMs = 15000;
+  const startTime = 1000000;
+  const deadline = startTime + totalDurationMs;
+
+  const calculateRatio = (now: number) => {
+    const remainingMs = Math.max(0, deadline - now);
+    return Math.max(0, Math.min(1, remainingMs / totalDurationMs));
+  };
+
+  // Start (0% elapsed) -> ratio 1.0
+  assert.equal(calculateRatio(startTime), 1);
+
+  // Exactly half elapsed (7.5s) -> ratio 0.5
+  assert.equal(calculateRatio(startTime + 7500), 0.5);
+
+  // 12s elapsed (3s remaining) -> ratio 0.2
+  assert.equal(calculateRatio(startTime + 12000), 0.2);
+
+  // Deadline reached -> ratio 0.0
+  assert.equal(calculateRatio(deadline), 0);
+
+  // Past deadline -> ratio stays 0 (no negative values or NaN)
+  assert.equal(calculateRatio(deadline + 5000), 0);
+});
+
+

@@ -55,12 +55,16 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
   const instanceKey = questionInstanceId || `${question.id}_${startTime}`;
 
-  const [progressPercent, setProgressPercent] = useState<number>(100);
   const [timeLeft, setTimeLeft] = useState<number>(durationSeconds);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [estimationInput, setEstimationInput] = useState<string>('');
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Smooth RAF countdown timer DOM ref
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const prevTickSecRef = useRef<number>(-1);
 
   // Immediate synchronous lock to prevent double-click / double-Enter before state re-renders
   const submittingLockRef = useRef<boolean>(false);
@@ -120,31 +124,77 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     }
   }, [question.type, isLocked, resolved, isParticipant, instanceKey]);
 
-  // Smooth 30ms countdown timer effect
+  // Smooth RAF countdown timer effect with direct DOM transform scaleX (zero re-render overhead)
   useEffect(() => {
     const totalMs = durationSeconds * 1000;
-    const tick = () => {
-      const elapsedMs = Date.now() - startTime;
-      const remainingMs = Math.max(0, totalMs - elapsedMs);
-      const pct = Math.max(0, Math.min(100, (remainingMs / totalMs) * 100));
-      setProgressPercent(pct);
+    const deadline = startTime + totalMs;
 
-      const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
-      setTimeLeft((prev) => {
-        if (remainingSec <= 4 && remainingSec > 0 && remainingSec !== prev && !resolved) {
+    if (resolved) {
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transform = 'scaleX(0)';
+      }
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      return;
+    }
+
+    const update = () => {
+      const now = Date.now();
+      const remainingMs = Math.max(0, deadline - now);
+      const ratio = Math.max(0, Math.min(1, remainingMs / totalMs));
+
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transform = `scaleX(${ratio})`;
+        const remSec = Math.ceil(remainingMs / 1000);
+        if (remSec <= 3) {
+          progressBarRef.current.style.backgroundColor = '#ef4444'; // red-500
+        } else if (remSec <= 7) {
+          progressBarRef.current.style.backgroundColor = '#f59e0b'; // amber-500
+        } else {
+          progressBarRef.current.style.backgroundColor = '#10b981'; // emerald-500
+        }
+      }
+
+      const currentSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      if (currentSeconds !== prevTickSecRef.current) {
+        prevTickSecRef.current = currentSeconds;
+        if (currentSeconds <= 4 && currentSeconds > 0 && !resolved) {
           sound.playTick();
         }
-        return remainingSec;
-      });
+        setTimeLeft(currentSeconds);
+      }
 
       if (remainingMs <= 0 && !resolved && !hasServerRecord && submitStatus === 'idle') {
         setSubmitStatus('expired');
       }
+
+      if (remainingMs > 0 && !resolved) {
+        rafIdRef.current = requestAnimationFrame(update);
+      } else {
+        rafIdRef.current = null;
+      }
     };
 
-    tick();
-    const interval = setInterval(tick, 30);
-    return () => clearInterval(interval);
+    update();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && deadline > Date.now() && !resolved) {
+        if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+        update();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [startTime, durationSeconds, resolved, hasServerRecord, submitStatus]);
 
   // Audio trigger on question resolve
@@ -259,9 +309,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     sound.playClick();
     setEstimationInput('');
   };
-
-  const timerColor =
-    timeLeft > 7 ? 'bg-emerald-500' : timeLeft > 3 ? 'bg-amber-500' : 'bg-red-500';
 
   const categoryNames: Record<string, string> = {
     istorie: 'Istorie',
@@ -389,7 +436,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             <div className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-950 px-3 py-0.5 font-mono text-xs sm:text-sm font-bold shadow-inner shrink-0 tabular-nums">
               <Clock
                 className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
-                  timeLeft <= 4 && !resolved ? 'text-red-500 animate-spin' : 'text-amber-400'
+                  timeLeft <= 4 && !resolved ? 'text-red-500 animate-pulse' : 'text-amber-400'
                 }`}
               />
               <span
@@ -448,11 +495,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             </div>
           )}
 
-          {/* Progress Timer Line */}
+          {/* Progress Timer Line (Smooth RAF Animation) */}
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-stone-950 border border-stone-800/80">
             <div
-              className={`h-full ${timerColor}`}
-              style={{ width: `${resolved ? 0 : progressPercent}%`, transition: 'none' }}
+              ref={progressBarRef}
+              className="h-full w-full origin-left will-change-transform bg-emerald-500"
+              style={{ transform: resolved ? 'scaleX(0)' : 'scaleX(1)' }}
             />
           </div>
         </div>

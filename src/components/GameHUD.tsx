@@ -23,15 +23,43 @@ interface GameHUDProps {
   onLeaveGame: () => void;
 }
 
+export const getAvatarSymbol = (avatar?: string): string => {
+  if (!avatar) return '🗡️';
+  switch (avatar) {
+    case 'av_stefan':
+      return '👑';
+    case 'av_vlad':
+      return '🧛';
+    case 'av_mihai':
+      return '⚔️';
+    case 'av_ecaterina':
+      return '🛡️';
+    case 'av_mircea':
+      return '🏰';
+    case 'av_decebal':
+      return '🐺';
+    case 'av_iancu':
+      return '🦅';
+    case 'av_maria':
+      return '💎';
+    case 'av_vlaicu':
+      return '✈️';
+    case 'av_aslan':
+      return '🧪';
+    case 'av_razes':
+    default:
+      return avatar.startsWith('av_') ? '🗡️' : avatar;
+  }
+};
+
 export const renderPlayerCardItem = (
   player: Player,
   game: GameState,
   currentUserId: string,
-  idx: number,
   variant: 'sidebar' | 'mobile'
 ) => {
   const isTurn =
-    idx === game.activePlayerIndex &&
+    game.players[game.activePlayerIndex]?.id === player.id &&
     game.phase !== 'finished' &&
     game.phase !== 'war';
   const isMe = player.id === currentUserId;
@@ -44,8 +72,6 @@ export const renderPlayerCardItem = (
   const isWarBye =
     game.phase === 'war' && Boolean(game.warRound?.byePlayerIds.includes(player.id));
 
-  const isCompactTen = game.players.length >= 8 && variant === 'sidebar';
-
   return (
     <div
       key={player.id}
@@ -53,9 +79,7 @@ export const renderPlayerCardItem = (
       className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
         variant === 'mobile'
           ? 'shrink-0 w-[148px] sm:w-[164px] snap-start p-1.5'
-          : isCompactTen
-          ? 'px-2.5 py-1.5'
-          : 'px-2.5 py-2'
+          : 'px-2.5 py-1.5'
       } ${
         isElim
           ? 'border-stone-800/80 bg-stone-950/50 opacity-50 grayscale'
@@ -83,17 +107,7 @@ export const renderPlayerCardItem = (
                 <Bot className="h-2.5 w-2.5 text-stone-950 stroke-[2.5]" />
               ) : (
                 <span className="text-[9px] leading-none">
-                  {player.avatar === 'av_stefan'
-                    ? '👑'
-                    : player.avatar === 'av_vlad'
-                    ? '🧛'
-                    : player.avatar === 'av_mihai'
-                    ? '⚔️'
-                    : player.avatar === 'av_ecaterina'
-                    ? '🛡️'
-                    : player.avatar && !player.avatar.startsWith('av_')
-                    ? player.avatar
-                    : '🗡️'}
+                  {getAvatarSymbol(player.avatar)}
                 </span>
               )}
             </span>
@@ -176,41 +190,182 @@ export const PlayerSidebar: React.FC<{
   game: GameState;
   currentUserId: string;
 }> = ({ game, currentUserId }) => {
-  const sortedByScore = [...game.players].sort((a, b) => b.score - a.score);
-  const leaderId = sortedByScore[0]?.id;
+  // Stable sort descending by score with tie-breaker by original entry order
+  const rankedPlayers = [...game.players]
+    .map((p, originalIdx) => ({ player: p, originalIdx }))
+    .sort((a, b) => b.player.score - a.player.score || a.originalIdx - b.originalIdx);
+
+  const occupiedTerritoriesCount = Object.values(game.territories).filter((t) => t.ownerId !== null).length;
+  const totalTerritoriesCount = Object.keys(game.territories).length;
+  const activeCount = game.players.filter((p) => !p.isEliminated).length;
 
   return (
     <aside
       data-testid="desktop-player-sidebar"
-      className="hidden lg:flex lg:flex-col w-[248px] xl:w-[276px] shrink-0 h-full min-h-0 rounded-2xl border border-stone-800/90 bg-stone-950/90 p-2 shadow-2xl backdrop-blur-xl"
+      className="hidden xl:flex xl:flex-col w-[256px] xl:w-[276px] shrink-0 h-full min-h-0 rounded-2xl border border-stone-800/90 bg-stone-950/95 p-2 shadow-2xl backdrop-blur-xl"
     >
-      <div className="flex items-center justify-between border-b border-stone-800/80 px-1.5 pb-1.5 mb-1.5 shrink-0">
+      {/* Compact Scoreboard Header */}
+      <div className="flex items-center justify-between border-b border-stone-800/80 px-1 pb-1.5 mb-1.5 shrink-0">
         <div className="flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5 text-amber-400" />
           <span className="font-serif text-xs font-bold tracking-wider text-amber-200 uppercase">
-            Comandanți ({game.players.length})
+            Comandanți ({activeCount}/{game.players.length})
           </span>
         </div>
         <span className="text-[10px] font-mono text-stone-400">
-          {Object.values(game.territories).filter((t) => t.ownerId !== null).length}/
-          {Object.keys(game.territories).length} zone
+          {occupiedTerritoriesCount}/{totalTerritoriesCount} zone
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 flex flex-col gap-1.5">
-        {game.players.map((player, idx) =>
-          renderPlayerCardItem(player, game, currentUserId, idx, 'sidebar')
-        )}
-      </div>
+      {/* Scoreboard Rows: Ultra-compact, readable, all computed strictly by player.id */}
+      <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 flex flex-col gap-1 no-scrollbar">
+        {rankedPlayers.map(({ player }, rankIdx) => {
+          const rank = rankIdx + 1;
+          const isTurn =
+            game.players[game.activePlayerIndex]?.id === player.id &&
+            game.phase !== 'finished' &&
+            game.phase !== 'war';
+          const isMe = player.id === currentUserId;
+          const isElim = player.isEliminated;
 
-      {leaderId && (
-        <div className="mt-1.5 shrink-0 border-t border-stone-800/80 pt-1.5 px-1 flex items-center justify-between text-[10px] text-stone-400">
-          <span>Lider actual:</span>
-          <span className="font-bold text-amber-300 truncate max-w-[140px]">
-            👑 {sortedByScore[0]?.username}
-          </span>
-        </div>
-      )}
+          const isWarAttacker =
+            game.phase === 'war' && Boolean(game.warRound?.attackerIds.includes(player.id));
+          const isWarDefender =
+            game.phase === 'war' && Boolean(game.warRound?.defenderIds.includes(player.id));
+          const isWarBye =
+            game.phase === 'war' && Boolean(game.warRound?.byePlayerIds.includes(player.id));
+
+          return (
+            <div
+              key={player.id}
+              data-testid={`player-row-${player.id}`}
+              className={`relative flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg border transition-all text-xs ${
+                isElim
+                  ? 'border-stone-800/60 bg-stone-950/40 opacity-45 grayscale'
+                  : isTurn || isWarAttacker
+                  ? 'border-amber-400/80 bg-amber-950/30 shadow-[0_0_8px_rgba(245,158,11,0.18)] ring-1 ring-amber-400/40'
+                  : isWarDefender
+                  ? 'border-sky-400/70 bg-sky-950/25 ring-1 ring-sky-400/30'
+                  : isMe
+                  ? 'border-stone-700 bg-stone-900/90'
+                  : 'border-stone-800/80 bg-stone-950/75 hover:border-stone-700'
+              }`}
+            >
+              {/* Left: Rank + Color Indicator Badge + Name */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`w-3.5 text-[10px] font-mono font-bold shrink-0 text-center ${
+                    rank === 1
+                      ? 'text-amber-300 font-black'
+                      : rank === 2
+                      ? 'text-stone-300'
+                      : rank === 3
+                      ? 'text-amber-600'
+                      : 'text-stone-500'
+                  }`}
+                >
+                  #{rank}
+                </span>
+
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] shadow-sm ring-1 ring-white/20"
+                  style={{ backgroundColor: player.color }}
+                >
+                  {player.isAi ? (
+                    <Bot className="h-3 w-3 text-stone-950 stroke-[2.5]" />
+                  ) : (
+                    <span className="text-[10px] leading-none">
+                      {getAvatarSymbol(player.avatar)}
+                    </span>
+                  )}
+                </span>
+
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span
+                      className={`truncate font-bold text-[11px] leading-tight ${
+                        isMe ? 'text-amber-300' : 'text-stone-100'
+                      }`}
+                      title={player.username}
+                    >
+                      {player.username}
+                    </span>
+                    {isMe && (
+                      <span className="rounded bg-amber-500/25 px-1 py-0 text-[8px] font-black text-amber-300 shrink-0">
+                        TU
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Status subtitle if active or war */}
+                  <div className="flex items-center gap-1 text-[9px] text-stone-400 leading-none mt-0.5">
+                    {game.phase === 'war' && !isElim && (
+                      <span
+                        className={`font-bold ${
+                          isWarAttacker
+                            ? 'text-amber-400'
+                            : isWarDefender
+                            ? 'text-sky-400'
+                            : 'text-stone-500'
+                        }`}
+                      >
+                        {isWarAttacker
+                          ? '⚔️ ATAC'
+                          : isWarDefender
+                          ? '🛡️ APĂRĂ'
+                          : isWarBye
+                          ? 'BYE'
+                          : ''}
+                      </span>
+                    )}
+                    {isTurn && (
+                      <span className="text-amber-300 font-bold flex items-center gap-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                        Mută
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Territories, Towers, Score */}
+              <div className="flex items-center gap-2 shrink-0 text-right">
+                {/* Territories */}
+                <div
+                  className="flex items-center gap-0.5 text-[10px] text-stone-300 font-mono tabular-nums"
+                  title={`${player.territoriesCount} teritorii`}
+                >
+                  <Flag className="h-2.5 w-2.5 text-emerald-400 shrink-0" />
+                  <span>{player.territoriesCount}</span>
+                </div>
+
+                {/* Castle Towers */}
+                {isElim ? (
+                  <span
+                    className="text-[9px] font-bold text-red-400 flex items-center gap-0.5"
+                    title="Eliminat"
+                  >
+                    <Skull className="h-2.5 w-2.5" />
+                  </span>
+                ) : (
+                  <div
+                    className="flex items-center gap-0.5 text-[10px] text-amber-400/90 font-mono tabular-nums"
+                    title={`${player.castleTowers}/3 turnuri cetate`}
+                  >
+                    <Castle className="h-2.5 w-2.5 text-rose-400 shrink-0" />
+                    <span>{player.castleTowers}</span>
+                  </div>
+                )}
+
+                {/* Score */}
+                <div className="font-mono font-black text-amber-400 tabular-nums text-xs min-w-[36px] text-right">
+                  {player.score} <span className="text-[8px] font-normal text-stone-400">pct</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </aside>
   );
 };
@@ -239,32 +394,82 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
   const [timeLeft, setTimeLeft] = useState<number>(15);
   const [showLogDrawer, setShowLogDrawer] = useState(false);
 
+  const timerBarRef = React.useRef<HTMLDivElement>(null);
+  const rafIdRef = React.useRef<number | null>(null);
+  const lastSecondsRef = React.useRef<number>(-1);
+
   const toggleMute = () => {
     const next = sound.toggleMute();
     setMuted(next);
   };
 
   useEffect(() => {
+    const deadline = game.turnTimerExpiresAt;
+    const totalDurationMs = (game.turnTimeLimit || 15) * 1000;
+
     if (
       game.phase === 'finished' ||
+      game.phase === 'waiting' ||
       game.currentQuestion ||
-      !game.turnTimerExpiresAt
+      !deadline ||
+      deadline <= 0
     ) {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       return;
     }
 
-    const updateTimer = () => {
-      const remaining = Math.max(
-        0,
-        Math.ceil((game.turnTimerExpiresAt - Date.now()) / 1000)
-      );
-      setTimeLeft(remaining);
+    const update = () => {
+      const now = Date.now();
+      const remainingMs = Math.max(0, deadline - now);
+      const ratio = Math.max(0, Math.min(1, remainingMs / totalDurationMs));
+
+      if (timerBarRef.current) {
+        timerBarRef.current.style.transform = `scaleX(${ratio})`;
+        const remSec = Math.ceil(remainingMs / 1000);
+        if (remSec <= 4) {
+          timerBarRef.current.style.backgroundColor = '#ef4444';
+        } else if (remSec <= 8) {
+          timerBarRef.current.style.backgroundColor = '#f59e0b';
+        } else {
+          timerBarRef.current.style.backgroundColor = '#10b981';
+        }
+      }
+
+      const currentSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      if (currentSeconds !== lastSecondsRef.current) {
+        lastSecondsRef.current = currentSeconds;
+        setTimeLeft(currentSeconds);
+      }
+
+      if (remainingMs > 0) {
+        rafIdRef.current = requestAnimationFrame(update);
+      } else {
+        rafIdRef.current = null;
+      }
     };
 
-    updateTimer();
-    const interval = setInterval(updateTimer, 250);
-    return () => clearInterval(interval);
-  }, [game.turnTimerExpiresAt, game.phase, game.currentQuestion]);
+    update();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && deadline > Date.now()) {
+        if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+        update();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [game.turnTimerExpiresAt, game.turnTimeLimit, game.phase, game.currentQuestion]);
 
   const showSelectionTimer =
     game.phase !== 'finished' &&
@@ -272,8 +477,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
     !game.currentQuestion &&
     game.turnTimerExpiresAt > 0;
 
-  const timerLimit = game.turnTimeLimit || 15;
-  const timerPercent = Math.min(100, Math.max(0, (timeLeft / timerLimit) * 100));
 
   const trackerModel = buildRoundDisplayItems(game);
 
@@ -378,7 +581,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
           {renderUtilityButtons()}
         </div>
 
-        {/* Sleek Integrated Selection Timer Bar */}
+        {/* Sleek Integrated Selection Timer Bar (Smooth RAF Animation) */}
         {showSelectionTimer && (
           <div className="flex items-center gap-2 pt-0.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 whitespace-nowrap">
@@ -390,21 +593,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
                 ? 'Revendică zonă (300 pct)'
                 : 'Alege ținta de atac (400 pct)'}
             </span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-900">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">
               <div
-                className={`h-full transition-all duration-300 ${
-                  timeLeft <= 4
-                    ? 'bg-red-500'
-                    : timeLeft <= 8
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                }`}
-                style={{ width: `${timerPercent}%` }}
+                ref={timerBarRef}
+                className="h-full w-full origin-left will-change-transform bg-emerald-500"
+                style={{ transform: 'scaleX(1)' }}
               />
             </div>
             <span
               className={`font-mono text-[11px] font-black tabular-nums ${
-                timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-amber-300'
+                timeLeft <= 4 ? 'text-red-400 animate-pulse' : 'text-amber-300'
               }`}
             >
               {timeLeft}s
@@ -413,13 +611,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
         )}
       </div>
 
-      {/* MOBILE / TABLET (< 1024px) HORIZONTAL PLAYER STRIP */}
+      {/* MOBILE / TABLET (< 1280px) HORIZONTAL PLAYER STRIP */}
       <div
         data-testid="mobile-player-strip"
-        className="flex lg:hidden gap-1.5 overflow-x-auto pb-0.5 snap-x snap-mandatory no-scrollbar"
+        className="flex xl:hidden gap-1.5 overflow-x-auto pb-0.5 snap-x snap-mandatory no-scrollbar"
       >
-        {game.players.map((player, idx) =>
-          renderPlayerCardItem(player, game, currentUserId, idx, 'mobile')
+        {game.players.map((player) =>
+          renderPlayerCardItem(player, game, currentUserId, 'mobile')
         )}
       </div>
 
