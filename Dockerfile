@@ -7,7 +7,13 @@ FROM oven/bun:1.4.0 AS builder
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN for attempt in 1 2 3; do \
+      bun install --frozen-lockfile && break; \
+      status=$?; \
+      if [ "$attempt" -eq 3 ]; then exit "$status"; fi; \
+      echo "Dependency install failed; retrying ($attempt/3)"; \
+      sleep 5; \
+    done
 
 COPY . .
 RUN bun run build
