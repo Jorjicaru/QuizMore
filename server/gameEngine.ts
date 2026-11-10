@@ -143,7 +143,7 @@ export class GameManager {
       .filter(
         (question) =>
           !question.isDisabled &&
-          (!question.reviewStatus || question.reviewStatus === 'approved') &&
+          question.reviewStatus === 'approved' &&
           (!type || question.type === type) &&
           !usedIds.has(question.id) &&
           (!question.factKey || !usedFacts.has(question.factKey))
@@ -558,7 +558,7 @@ export class GameManager {
       .filter(
         (q) =>
           !q.isDisabled &&
-          (!q.reviewStatus || q.reviewStatus === 'approved') &&
+          q.reviewStatus === 'approved' &&
           (!game.selectedCategories?.length || game.selectedCategories.includes(q.category))
       );
     const availableChoice = roomQuestions.filter((q) => q.type === 'choice').length;
@@ -2402,6 +2402,54 @@ export class GameManager {
 
   public getAllActiveGames(): GameState[] {
     return Array.from(this.games.values()).filter((g) => g.phase !== 'finished');
+  }
+
+  /**
+   * Restaurează camerele active salvate în `active_game_snapshots` (PostgreSQL) înainte de oprirea serverului.
+   */
+  public restoreGamesFromSnapshots(snapshots: GameState[]): number {
+    let restoredCount = 0;
+    for (const raw of snapshots) {
+      if (!raw || !raw.roomId || raw.phase === 'finished') continue;
+      const snapshot: GameState = JSON.parse(JSON.stringify(raw));
+      if (Array.isArray(snapshot.players)) {
+        for (const p of snapshot.players) {
+          if (!p.isAi) {
+            p.isConnected = false;
+          }
+        }
+      }
+      snapshot.gameLog = Array.isArray(snapshot.gameLog) ? snapshot.gameLog : [];
+      snapshot.gameLog.push({
+        id: this.makeLogId(),
+        text: '🔄 Partida a fost restaurată din snapshot-ul PostgreSQL după repornirea serverului.',
+        timestamp: Date.now(),
+        type: 'info',
+      });
+      this.games.set(snapshot.roomId, snapshot);
+      restoredCount++;
+
+      // Re-arm active timers if the match is in an interactive phase
+      if (snapshot.currentQuestion && !snapshot.currentQuestion.resolved) {
+        snapshot.currentQuestion.startTime = Date.now();
+        const durationMs = (snapshot.currentQuestion.durationSeconds || 12) * 1000;
+        const timer = setTimeout(() => {
+          this.resolveCurrentQuestion(snapshot.roomId);
+        }, durationMs);
+        this.questionTimers.set(snapshot.roomId, timer);
+        this.scheduleAiAnswers(snapshot);
+      } else if (
+        snapshot.phase === 'base_selection' ||
+        (snapshot.phase === 'conquest' && (snapshot.conquestPickerId || snapshot.allocationPickReady))
+      ) {
+        this.startSelectionTimer(snapshot.roomId);
+        this.checkAiTurn(snapshot.roomId);
+      } else if (snapshot.phase === 'war' && snapshot.warRound?.status === 'selecting_targets') {
+        this.startSelectionTimer(snapshot.roomId);
+        this.checkAiTurn(snapshot.roomId);
+      }
+    }
+    return restoredCount;
   }
 
   public shutdownAllRooms(): void {

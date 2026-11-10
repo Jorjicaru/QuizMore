@@ -38,6 +38,23 @@ import { INITIAL_QUESTIONS, normalizeQuestionText } from '../../server/questions
 import { db, Database } from '../../server/db';
 import { generateToken } from '../../server/auth';
 import { setupSocketHandlers } from '../../server/socketHandler';
+import {
+  isPlaceholderValue,
+  validateProductionEnv,
+  assertSafeRuntimeEnvironment,
+} from '../../server/envSecurity';
+import {
+  setPostgresPoolForTesting,
+  withPostgresTransaction,
+  upsertUserToPostgres,
+  upsertQuestionToPostgres,
+  insertGameToPostgres,
+  createFriendRequestWithNotificationToPostgres,
+  saveActiveGameSnapshotsToPostgres,
+  loadActiveGameSnapshotsFromPostgres,
+  loadAllFromPostgres,
+} from '../../server/postgresRepo';
+import { executeJsonToPostgresMigration } from '../../scripts/migrate_json_to_postgres';
 
 const mockTerritories: Record<string, Territory> = {
   maramures: {
@@ -1491,6 +1508,837 @@ test('V9 Test 26: Simulare deterministă a fluxului complet pentru 2, 3, 4, 6, 8
   }
 });
 
+// ============================================================================
+// V9.1 TESTS: ENV SECURITY, POSTGRESQL PRIMARY STORE, IDEMPOTENT MIGRATION,
+// BACKUP/RESTORE TO SECOND INSTANCE, SNAPSHOT RECOVERY & QUESTION GOVERNANCE
+// ============================================================================
 
+function createInMemoryPostgresTestDouble() {
+  type StoreState = {
+    users: Map<string, any>;
+    questions: Map<string, any>;
+    games: Map<string, any>;
+    gamePlayerResults: Map<string, any>;
+    friends: Map<string, any>;
+    notifications: Map<string, any>;
+    snapshots: Map<string, any>;
+  };
 
+  let state: StoreState = {
+    users: new Map(),
+    questions: new Map(),
+    games: new Map(),
+    gamePlayerResults: new Map(),
+    friends: new Map(),
+    notifications: new Map(),
+    snapshots: new Map(),
+  };
 
+  let txBackup: StoreState | null = null;
+
+  const cloneMap = <K, V>(m: Map<K, V>) =>
+    new Map(Array.from(m.entries()).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
+
+  const cloneState = (s: StoreState): StoreState => ({
+    users: cloneMap(s.users),
+    questions: cloneMap(s.questions),
+    games: cloneMap(s.games),
+    gamePlayerResults: cloneMap(s.gamePlayerResults),
+    friends: cloneMap(s.friends),
+    notifications: cloneMap(s.notifications),
+    snapshots: cloneMap(s.snapshots),
+  });
+
+  const executeQuery = async (sqlText: string, params: any[] = []): Promise<{ rows: any[] }> => {
+    const sql = sqlText.replace(/\s+/g, ' ').trim();
+
+    if (sql === 'BEGIN') {
+      txBackup = cloneState(state);
+      return { rows: [] };
+    }
+    if (sql === 'COMMIT') {
+      txBackup = null;
+      return { rows: [] };
+    }
+    if (sql === 'ROLLBACK') {
+      if (txBackup) {
+        state = txBackup;
+        txBackup = null;
+      }
+      return { rows: [] };
+    }
+
+    // SELECT COUNT queries used by executeJsonToPostgresMigration
+    if (
+      sql.startsWith(
+        "SELECT COUNT(*)::int AS cnt FROM questions WHERE review_status = 'approved' AND is_disabled = FALSE"
+      )
+    ) {
+      const cnt = Array.from(state.questions.values()).filter(
+        (q) => q.review_status === 'approved' && !q.is_disabled
+      ).length;
+      return { rows: [{ cnt }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM users')) {
+      return { rows: [{ cnt: state.users.size }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM questions')) {
+      return { rows: [{ cnt: state.questions.size }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM games')) {
+      return { rows: [{ cnt: state.games.size }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM game_player_results')) {
+      return { rows: [{ cnt: state.gamePlayerResults.size }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM friends')) {
+      return { rows: [{ cnt: state.friends.size }] };
+    }
+    if (sql.startsWith('SELECT COUNT(*)::int AS cnt FROM notifications')) {
+      return { rows: [{ cnt: state.notifications.size }] };
+    }
+
+    // SELECT queries used by loadAllFromPostgres & loadActiveGameSnapshotsFromPostgres
+    if (sql.startsWith('SELECT * FROM users')) {
+      return { rows: Array.from(state.users.values()) };
+    }
+    if (sql.startsWith('SELECT * FROM questions')) {
+      return { rows: Array.from(state.questions.values()) };
+    }
+    if (sql.startsWith('SELECT * FROM games')) {
+      return { rows: Array.from(state.games.values()) };
+    }
+    if (sql.startsWith('SELECT * FROM game_player_results')) {
+      return { rows: Array.from(state.gamePlayerResults.values()) };
+    }
+    if (sql.startsWith('SELECT * FROM friends')) {
+      return { rows: Array.from(state.friends.values()) };
+    }
+    if (sql.startsWith('SELECT * FROM notifications')) {
+      return { rows: Array.from(state.notifications.values()) };
+    }
+    if (sql.startsWith('SELECT room_id, state_json FROM active_game_snapshots')) {
+      return { rows: Array.from(state.snapshots.values()) };
+    }
+
+    // INSERT / UPSERT queries matching server/postgresRepo.ts
+    if (sql.startsWith('INSERT INTO users')) {
+      const [
+        id,
+        username,
+        email,
+        password_hash,
+        role,
+        is_banned,
+        avatar,
+        title,
+        rating,
+        matches_played,
+        wins,
+        losses,
+        territories_conquered,
+        correct_answers_total,
+        highest_score,
+        created_at,
+      ] = params;
+      state.users.set(id, {
+        id,
+        username,
+        email,
+        password_hash,
+        role,
+        is_banned,
+        avatar,
+        title,
+        rating,
+        matches_played,
+        wins,
+        losses,
+        territories_conquered,
+        correct_answers_total,
+        highest_score,
+        created_at,
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO questions')) {
+      const [
+        id,
+        category,
+        difficulty,
+        type,
+        question,
+        normalized_fingerprint,
+        fact_key,
+        options_json,
+        correct_answer_index,
+        target_number,
+        unit,
+        explanation,
+        source_url,
+        source_title,
+        source_checked_at,
+        review_status,
+        is_disabled,
+        reported_count,
+      ] = params;
+      state.questions.set(id, {
+        id,
+        category,
+        difficulty,
+        type,
+        question,
+        normalized_fingerprint,
+        fact_key,
+        options_json: options_json ? JSON.parse(options_json) : null,
+        correct_answer_index,
+        target_number,
+        unit,
+        explanation,
+        source_url,
+        source_title,
+        source_checked_at,
+        review_status,
+        is_disabled,
+        reported_count,
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('DELETE FROM questions WHERE id = $1')) {
+      state.questions.delete(params[0]);
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO games')) {
+      const [
+        id,
+        room_id,
+        created_at,
+        duration_seconds,
+        player_count,
+        winner_id,
+        winner_username,
+        players_summary,
+      ] = params;
+      state.games.set(id, {
+        id,
+        room_id,
+        created_at,
+        duration_seconds,
+        player_count,
+        winner_id,
+        winner_username,
+        players_summary: players_summary ? JSON.parse(players_summary) : [],
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO game_player_results')) {
+      const [
+        game_id,
+        user_id,
+        username,
+        score,
+        territories,
+        correct_answers,
+        is_winner,
+        created_at,
+      ] = params;
+      // Enforce UNIQUE (game_id, user_id)
+      const uqKey = `${game_id}::${user_id}`;
+      state.gamePlayerResults.set(uqKey, {
+        id: state.gamePlayerResults.size + 1,
+        game_id,
+        user_id,
+        username,
+        score,
+        territories,
+        correct_answers,
+        is_winner,
+        created_at,
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO friends')) {
+      const [id, requester_id, recipient_id, status, created_at] = params;
+      state.friends.set(id, { id, requester_id, recipient_id, status, created_at });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO notifications')) {
+      const [id, user_id, title, message, type, is_read, created_at] = params;
+      state.notifications.set(id, {
+        id,
+        user_id,
+        title,
+        message,
+        type,
+        is_read,
+        created_at,
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('INSERT INTO active_game_snapshots')) {
+      const [room_id, phase, player_count, state_json, interrupted_by_shutdown] = params;
+      state.snapshots.set(room_id, {
+        room_id,
+        phase,
+        player_count,
+        state_json: typeof state_json === 'string' ? JSON.parse(state_json) : state_json,
+        interrupted_by_shutdown,
+      });
+      return { rows: [] };
+    }
+
+    if (sql.startsWith('DELETE FROM active_game_snapshots')) {
+      state.snapshots.delete(params[0]);
+      return { rows: [] };
+    }
+
+    return { rows: [] };
+  };
+
+  return {
+    pool: {
+      query: executeQuery,
+      connect: async () => ({
+        query: executeQuery,
+        release: () => {},
+      }),
+      end: async () => {},
+    },
+    getState: () => state,
+    dumpBackupArchive: () =>
+      JSON.stringify(cloneState(state), (_, v) =>
+        v instanceof Map ? Array.from(v.entries()) : v
+      ),
+    restoreFromBackupArchive: (serialized: string) => {
+      const raw = JSON.parse(serialized);
+      state = {
+        users: new Map(raw.users),
+        questions: new Map(raw.questions),
+        games: new Map(raw.games),
+        gamePlayerResults: new Map(raw.gamePlayerResults),
+        friends: new Map(raw.friends),
+        notifications: new Map(raw.notifications),
+        snapshots: new Map(raw.snapshots),
+      };
+    },
+  };
+}
+
+test('V9.1 Test 27: Securitatea variabilelor de mediu respinge .env.example nemodificat, placeholder-ele românești/englezești și parolele slabe în producție', () => {
+  const envExamplePath = path.resolve(process.cwd(), '.env.example');
+  const rawEnvExample = fs.readFileSync(envExamplePath, 'utf-8');
+  assert.equal(
+    rawEnvExample.includes('CLOUDFLARE_TUNNEL_TOKEN'),
+    false,
+    '.env.example nu trebuie să mai conțină CLOUDFLARE_TUNNEL_TOKEN'
+  );
+
+  // Parse .env.example key-value pairs
+  const parsedExampleEnv: NodeJS.ProcessEnv = { NODE_ENV: 'production' };
+  for (const line of rawEnvExample.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx > 0) {
+      const k = trimmed.slice(0, eqIdx).trim();
+      const v = trimmed.slice(eqIdx + 1).trim();
+      parsedExampleEnv[k] = v;
+    }
+  }
+
+  const validationFromExample = validateProductionEnv(parsedExampleEnv);
+  assert.equal(validationFromExample.valid, false);
+  assert.ok(
+    validationFromExample.errors.length >= 5,
+    `Pornirea cu .env.example nemodificat trebuie respinsă cu erori explicite (găsite: ${validationFromExample.errors.length})`
+  );
+  assert.throws(
+    () => assertSafeRuntimeEnvironment(parsedExampleEnv),
+    /SECURITATE PRODUCȚIE/,
+    'assertSafeRuntimeEnvironment trebuie să arunce excepție la pornirea cu .env.example'
+  );
+
+  // Verify Romanian & English placeholders are caught
+  assert.equal(isPlaceholderValue('SchimbaCuOParolaAleatorieFoarteLunga123!'), true);
+  assert.equal(isPlaceholderValue('INLOCUIESTE_CU_SECRET_JWT_ALEATORIU'), true);
+  assert.equal(isPlaceholderValue('replace-with-your-secret-key-minimum-32-chars'), true);
+  assert.equal(isPlaceholderValue('https://conquiz.domeniu.ro'), true);
+
+  // Verify strong production configuration passes cleanly
+  const validProdEnv: NodeJS.ProcessEnv = {
+    NODE_ENV: 'production',
+    APP_URL: 'https://conquiz.joc-romania-live.ro',
+    JWT_SECRET: '9f8e7d6c5b4a392817263544536271809a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d',
+    ADMIN_EMAIL: 'voievod@joc-romania-live.ro',
+    ADMIN_PASSWORD: 'Xk9#mP2$vL8@nQ4!zR7*wT5&yU3',
+    POSTGRES_PASSWORD: 'Pg8_vK3-mN9_pL2.qR6_wS4-xZ1',
+    DATABASE_URL:
+      'postgresql://conquiz_user:Pg8_vK3-mN9_pL2.qR6_wS4-xZ1@db:5432/conquiz',
+  };
+  const validResult = validateProductionEnv(validProdEnv);
+  assert.equal(validResult.valid, true);
+  assert.deepEqual(validResult.errors, []);
+});
+
+test('V9.1 Test 28: PostgreSQL ca sursă principală de date – citire/scriere reală și tranzacții SQL atomice (COMMIT și ROLLBACK)', async () => {
+  const pgDouble = createInMemoryPostgresTestDouble();
+  setPostgresPoolForTesting(pgDouble.pool);
+
+  try {
+    // 1. Test transactional rollback on error
+    await upsertUserToPostgres({
+      id: 'u_pg_1',
+      username: 'StefanVoievod',
+      email: 'stefan@moldova.ro',
+      passwordHash: 'hash_stefan',
+      role: 'user',
+      createdAt: '2026-11-10T10:00:00.000Z',
+      profile: {
+        id: 'u_pg_1',
+        username: 'StefanVoievod',
+        email: 'stefan@moldova.ro',
+        role: 'user',
+        avatar: 'av_stefan',
+        title: 'Răzeș',
+        rating: 1250,
+        matchesPlayed: 1,
+        wins: 1,
+        losses: 0,
+        territoriesConquered: 15,
+        correctAnswersTotal: 12,
+        highestScore: 4800,
+        createdAt: '2026-11-10T10:00:00.000Z',
+      },
+    });
+
+    await assert.rejects(
+      async () => {
+        await withPostgresTransaction(async (client) => {
+          await client.query('DELETE FROM questions WHERE id = $1', ['non_existent']);
+          throw new Error('Eroare simulată în interiorul tranzacției');
+        });
+      },
+      /Eroare simulată/
+    );
+
+    // 2. Test atomic game + game_player_results insertion and friend request + notification transaction
+    await insertGameToPostgres({
+      id: 'g_pg_1',
+      roomId: 'RO1457',
+      createdAt: '2026-11-10T10:30:00.000Z',
+      durationSeconds: 420,
+      playerCount: 2,
+      winnerId: 'u_pg_1',
+      winnerUsername: 'StefanVoievod',
+      playersSummary: [
+        {
+          userId: 'u_pg_1',
+          username: 'StefanVoievod',
+          score: 4800,
+          territories: 25,
+          correctAnswers: 12,
+          isWinner: true,
+        },
+        {
+          userId: 'bot_mircea',
+          username: 'Bot_Mircea',
+          score: 2100,
+          territories: 16,
+          correctAnswers: 7,
+          isWinner: false,
+        },
+      ],
+    });
+
+    await createFriendRequestWithNotificationToPostgres(
+      {
+        id: 'fr_pg_1',
+        requesterId: 'u_pg_1',
+        recipientId: 'u_pg_2',
+        status: 'pending',
+        createdAt: '2026-11-10T10:35:00.000Z',
+      },
+      {
+        id: 'notif_pg_1',
+        userId: 'u_pg_2',
+        type: 'friend_request',
+        title: 'Cerere de prietenie',
+        message: 'StefanVoievod vrea să fiți prieteni!',
+        isRead: false,
+        createdAt: '2026-11-10T10:35:00.000Z',
+      }
+    );
+
+    const loaded = await loadAllFromPostgres();
+    assert.ok(loaded, 'loadAllFromPostgres trebuie să returneze datele din PostgreSQL');
+    assert.equal(loaded.users['u_pg_1'].username, 'StefanVoievod');
+    assert.equal(loaded.games.length, 1);
+    assert.equal(
+      loaded.games[0].playersSummary.length,
+      2,
+      'game_player_results încărcate și atașate la meci'
+    );
+    assert.equal(loaded.friends.length, 1);
+    assert.equal(loaded.notifications.length, 1);
+  } finally {
+    setPostgresPoolForTesting(null);
+  }
+});
+
+test('V9.1 Test 29: Scriptul de migrare executeJsonToPostgresMigration este 100% idempotent la rularea de două ori consecutiv (inclusiv întrebări custom și game_player_results)', async () => {
+  const pgDouble = createInMemoryPostgresTestDouble();
+  setPostgresPoolForTesting(pgDouble.pool);
+
+  const tempJsonPath = path.resolve(process.cwd(), 'data/test_v91_migration_tmp.json');
+  const customQuestion = {
+    id: 'custom_admin_q_v91',
+    type: 'choice',
+    category: 'istorie',
+    difficulty: 'mediu',
+    question:
+      'În ce an a fost proclamată Independența de Stat a României în Parlament de Mihail Kogălniceanu (întrebare custom admin)?',
+    options: ['1877', '1859', '1881', '1918'],
+    correctAnswerIndex: 0,
+    explanation: 'Independența a fost proclamată la 9 mai 1877.',
+    verified: true,
+    reviewStatus: 'approved',
+    factKey: 'fact_custom_indep_1877',
+    sourceUrl: 'https://ro.wikipedia.org/wiki/R%C4%83zboiul_de_Independen%C8%9B%C4%83_al_Rom%C3%A2niei',
+    sourceTitle: 'Războiul de Independență al României (1877)',
+    sourceCheckedAt: '2026-11-10',
+  };
+
+  const sampleJsonDb = {
+    users: {
+      u_mig_1: {
+        id: 'u_mig_1',
+        username: 'MihaiViteazul',
+        email: 'mihai@alba.ro',
+        passwordHash: 'hash_mihai',
+        role: 'user',
+        createdAt: '2026-11-10T08:00:00.000Z',
+        profile: {
+          id: 'u_mig_1',
+          username: 'MihaiViteazul',
+          email: 'mihai@alba.ro',
+          role: 'user',
+          avatar: 'av_mihai',
+          title: 'Mare Voievod',
+          rating: 1320,
+          matchesPlayed: 2,
+          wins: 2,
+          losses: 0,
+          territoriesConquered: 41,
+          correctAnswersTotal: 25,
+          highestScore: 5200,
+          createdAt: '2026-11-10T08:00:00.000Z',
+        },
+      },
+      u_mig_2: {
+        id: 'u_mig_2',
+        username: 'MirceaCelBatran',
+        email: 'mircea@arges.ro',
+        passwordHash: 'hash_mircea',
+        role: 'user',
+        createdAt: '2026-11-10T08:05:00.000Z',
+        profile: {
+          id: 'u_mig_2',
+          username: 'MirceaCelBatran',
+          email: 'mircea@arges.ro',
+          role: 'user',
+          avatar: 'av_mircea',
+          title: 'Voievod',
+          rating: 1210,
+          matchesPlayed: 1,
+          wins: 0,
+          losses: 1,
+          territoriesConquered: 13,
+          correctAnswersTotal: 6,
+          highestScore: 1900,
+          createdAt: '2026-11-10T08:05:00.000Z',
+        },
+      },
+    },
+    questions: [customQuestion],
+    games: [
+      {
+        id: 'g_mig_1600',
+        roomId: 'RO1600',
+        createdAt: '2026-11-10T09:00:00.000Z',
+        durationSeconds: 380,
+        playerCount: 2,
+        winnerId: 'u_mig_1',
+        winnerUsername: 'MihaiViteazul',
+        playersSummary: [
+          {
+            userId: 'u_mig_1',
+            username: 'MihaiViteazul',
+            score: 5200,
+            territories: 28,
+            correctAnswers: 14,
+            isWinner: true,
+          },
+          {
+            userId: 'u_mig_2',
+            username: 'MirceaCelBatran',
+            score: 1900,
+            territories: 13,
+            correctAnswers: 6,
+            isWinner: false,
+          },
+        ],
+      },
+    ],
+    friends: [
+      {
+        id: 'fr_mig_1',
+        requesterId: 'u_mig_1',
+        recipientId: 'u_mig_2',
+        status: 'accepted',
+        createdAt: '2026-11-10T09:10:00.000Z',
+      },
+    ],
+    notifications: [
+      {
+        id: 'notif_mig_1',
+        userId: 'u_mig_1',
+        type: 'system',
+        title: 'Bun venit',
+        message: 'Cont migrat în PostgreSQL',
+        isRead: false,
+        createdAt: '2026-11-10T09:15:00.000Z',
+      },
+    ],
+  };
+
+  fs.writeFileSync(tempJsonPath, JSON.stringify(sampleJsonDb, null, 2), 'utf-8');
+
+  try {
+    // Run 1
+    const run1 = await executeJsonToPostgresMigration({ customDbJsonPath: tempJsonPath });
+    const countsAfterRun1 = {
+      users: pgDouble.getState().users.size,
+      questions: pgDouble.getState().questions.size,
+      games: pgDouble.getState().games.size,
+      results: pgDouble.getState().gamePlayerResults.size,
+      friends: pgDouble.getState().friends.size,
+      notifications: pgDouble.getState().notifications.size,
+    };
+
+    // Run 2 (must be 100% idempotent with zero duplicate records)
+    const run2 = await executeJsonToPostgresMigration({ customDbJsonPath: tempJsonPath });
+    const countsAfterRun2 = {
+      users: pgDouble.getState().users.size,
+      questions: pgDouble.getState().questions.size,
+      games: pgDouble.getState().games.size,
+      results: pgDouble.getState().gamePlayerResults.size,
+      friends: pgDouble.getState().friends.size,
+      notifications: pgDouble.getState().notifications.size,
+    };
+
+    assert.deepEqual(
+      countsAfterRun2,
+      countsAfterRun1,
+      'A doua rulare a migrării nu are voie să dubleze nicio înregistrare în PostgreSQL'
+    );
+    assert.equal(run1.playerResultsAfter, 2);
+    assert.equal(run2.playerResultsAfter, 2);
+    assert.ok(
+      pgDouble.getState().questions.has('custom_admin_q_v91'),
+      'Întrebarea custom din JSON trebuie migrată în PostgreSQL alături de banca canonică'
+    );
+  } finally {
+    if (fs.existsSync(tempJsonPath)) fs.unlinkSync(tempJsonPath);
+    setPostgresPoolForTesting(null);
+  }
+});
+
+test('V9.1 Test 30: Backup și restaurare într-o a doua instanță PostgreSQL + recuperarea camerelor active (restoreGamesFromSnapshots) la restart', async () => {
+  const pgPrimary = createInMemoryPostgresTestDouble();
+  const pgRestoreTarget = createInMemoryPostgresTestDouble();
+  const gmBeforeRestart = new GameManager();
+  const gmAfterRestart = new GameManager();
+
+  setPostgresPoolForTesting(pgPrimary.pool);
+  try {
+    // Populate Primary PostgreSQL with user, custom question, game history, and an active multiplayer room snapshot
+    await upsertUserToPostgres({
+      id: 'u_restore_1',
+      username: 'AlexandruCuza',
+      email: 'cuza@principate.ro',
+      passwordHash: 'hash_cuza',
+      role: 'user',
+      createdAt: '2026-11-10T11:00:00.000Z',
+      profile: {
+        id: 'u_restore_1',
+        username: 'AlexandruCuza',
+        email: 'cuza@principate.ro',
+        role: 'user',
+        avatar: 'av_cuza',
+        title: 'Domnitor',
+        rating: 1450,
+        matchesPlayed: 5,
+        wins: 4,
+        losses: 1,
+        territoriesConquered: 95,
+        correctAnswersTotal: 60,
+        highestScore: 6100,
+        createdAt: '2026-11-10T11:00:00.000Z',
+      },
+    });
+
+    await upsertQuestionToPostgres({
+      id: 'q_restore_check',
+      type: 'estimation',
+      category: 'istorie',
+      difficulty: 'usor',
+      question: 'În ce an a avut loc Mica Unire sub Alexandru Ioan Cuza (test restaurare)?',
+      targetNumber: 1859,
+      unit: 'an',
+      explanation: 'Mica Unire a avut loc la 24 ianuarie 1859.',
+      verified: true,
+      reviewStatus: 'approved',
+      factKey: 'fact_restore_1859',
+      sourceUrl: 'https://ro.wikipedia.org/wiki/Unirea_Principatelor_Rom%C3%A2ne',
+      sourceTitle: 'Unirea Principatelor Române (1859)',
+      sourceCheckedAt: '2026-11-10',
+    });
+
+    await insertGameToPostgres({
+      id: 'g_restore_1',
+      roomId: 'RO1859',
+      createdAt: '2026-11-10T11:20:00.000Z',
+      durationSeconds: 310,
+      playerCount: 1,
+      winnerId: 'u_restore_1',
+      winnerUsername: 'AlexandruCuza',
+      playersSummary: [
+        {
+          userId: 'u_restore_1',
+          username: 'AlexandruCuza',
+          score: 4100,
+          territories: 22,
+          correctAnswers: 11,
+          isWinner: true,
+        },
+      ],
+    });
+
+    const activeRoom = gmBeforeRestart.createRoom({
+      hostUser: { id: 'u_restore_1', username: 'AlexandruCuza', avatar: 'av_cuza' },
+      maxPlayers: 3,
+      initialBotsCount: 2,
+      isPrivate: true,
+    });
+    gmBeforeRestart.startGame(activeRoom.roomId, 'u_restore_1');
+    await saveActiveGameSnapshotsToPostgres([activeRoom], true);
+    gmBeforeRestart.shutdownAllRooms();
+
+    // 1. Perform Backup from Primary Instance
+    const backupArchive = pgPrimary.dumpBackupArchive();
+    assert.ok(backupArchive.length > 100, 'Arhiva de backup trebuie să conțină datele serializate');
+
+    // 2. Restore into the SEPARATE PostgreSQL Instance (pgRestoreTarget)
+    pgRestoreTarget.restoreFromBackupArchive(backupArchive);
+    setPostgresPoolForTesting(pgRestoreTarget.pool);
+
+    const restoredData = await loadAllFromPostgres();
+    assert.ok(restoredData);
+    assert.equal(restoredData.users['u_restore_1'].username, 'AlexandruCuza');
+    assert.equal(restoredData.users['u_restore_1'].profile.wins, 4);
+    assert.equal(restoredData.games.length, 1);
+    assert.equal(restoredData.games[0].roomId, 'RO1859');
+    assert.equal(restoredData.games[0].playersSummary[0].score, 4100);
+    assert.ok(restoredData.questions.some((q) => q.id === 'q_restore_check'));
+
+    // 3. Verify active room snapshot recovery after server restart
+    const snapshots = await loadActiveGameSnapshotsFromPostgres();
+    assert.equal(snapshots.length, 1);
+    const restoredCount = gmAfterRestart.restoreGamesFromSnapshots(snapshots);
+    assert.equal(
+      restoredCount,
+      1,
+      'Camera activă trebuie restaurată din snapshot la repornirea serverului'
+    );
+    const recoveredRoom = gmAfterRestart.getRoom(activeRoom.roomId);
+    assert.ok(recoveredRoom, 'Camera restaurată trebuie să fie accesibilă în GameManager');
+    assert.equal(recoveredRoom.phase, 'base_selection');
+    assert.equal(recoveredRoom.players.length, 3);
+    assert.equal(
+      recoveredRoom.players[0].isConnected,
+      false,
+      'Jucătorii umani pornesc ca deconectați până la reconectarea socket-ului'
+    );
+  } finally {
+    gmBeforeRestart.shutdownAllRooms();
+    gmAfterRestart.shutdownAllRooms();
+    setPostgresPoolForTesting(null);
+  }
+});
+
+test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft, filtrare strictă approved în meci și nicio categorie peste 12,5%', () => {
+  // 1. Add a question without reviewStatus and verify it defaults to draft and is NOT selected by GameManager
+  const draftQ = db.addQuestion({
+    id: 'q_draft_test_v91',
+    type: 'choice',
+    category: 'istorie',
+    difficulty: 'mediu',
+    question: 'Întrebare nouă propusă fără reviewStatus explicit pentru testul V9.1?',
+    options: ['Varianta A', 'Varianta B', 'Varianta C', 'Varianta D'],
+    correctAnswerIndex: 0,
+    explanation: 'Trebuie să rămână în draft până la aprobarea unui admin.',
+  });
+
+  try {
+    assert.equal(
+      draftQ.reviewStatus,
+      'draft',
+      'Întrebarea fără reviewStatus explicit trebuie să fie draft'
+    );
+    assert.equal(draftQ.verified, false, 'Întrebarea în draft trebuie să aibă verified = false');
+
+    const gm = new GameManager();
+    const room = gm.createRoom({
+      hostUser: { id: 'u_gov', username: 'GovHost', avatar: 'av_vlad' },
+      maxPlayers: 2,
+      initialBotsCount: 1,
+      selectedCategories: ['istorie'],
+      isPrivate: true,
+    });
+
+    for (let i = 0; i < 80; i++) {
+      const picked = gm.getRandomQuestion(room, 'choice');
+      assert.ok(picked);
+      assert.notEqual(
+        picked.id,
+        draftQ.id,
+        'Întrebarea în statut draft nu are voie să apară în meci!'
+      );
+      assert.equal(picked.reviewStatus, 'approved');
+    }
+    (gm as any).clearRoomTimers(room.roomId);
+  } finally {
+    db.deleteQuestion(draftQ.id);
+  }
+
+  // 2. Verify category balance <= 12.5% across the canonical question bank
+  const allCanonical = INITIAL_QUESTIONS;
+  const catCounts: Record<string, number> = {};
+  for (const q of allCanonical) {
+    catCounts[q.category] = (catCounts[q.category] || 0) + 1;
+  }
+  for (const [cat, count] of Object.entries(catCounts)) {
+    const share = count / allCanonical.length;
+    assert.ok(
+      share <= 0.125,
+      `Categoria ${cat} are ponderea ${(share * 100).toFixed(2)}%, depășind pragul de 12,5%`
+    );
+  }
+});

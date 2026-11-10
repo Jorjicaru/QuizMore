@@ -1,46 +1,46 @@
-# 🏗️ CONQUIZ – Arhitectura Tehnică a Sistemului (V9.0)
+# Arhitectura Sistemului CONQUIZ V9.1
 
-Acest document descrie arhitectura full-stack a aplicației **CONQUIZ**, fluxul de date în timp real și mecanismele de reziliență în producție.
-
----
-
-## 1. Vedere de Ansamblu
-
-```
-[ Browser / PWA Client (React 19 + Tailwind CSS + Socket.IO Client) ]
-                         │
-                         ▼  HTTPS + WSS (WebSocket)
-        [ Cloudflare Edge / Cloudflare Tunnel (cloudflared) ]
-                         │
-                         ▼  Rețea Internă Docker (http://app:3000)
-[ Node.js / Express + Socket.IO Server (server.ts + server/gameEngine.ts) ]
-           │                                         │
-           ▼                                         ▼
-[ PostgreSQL 16 (server/postgresRepo.ts) ]   [ JSON Snapshot (data/conquiz_db.json) ]
-```
+Acest document descrie arhitectura tehnică, fluxul de date, persistența în PostgreSQL și topologia de producție pentru **CONQUIZ V9.1 – Cucerește România prin Cunoaștere**.
 
 ---
 
-## 2. Componente Backend (`server/`)
+## 1. Vedere de Ansamblu (Stack Tehnologic)
 
-1. **`server.ts` (Entrypoint HTTP & WebSocket)**:
-   - Inițializează Express, rutele REST (`/api/*`), endpoint-urile de sănătate (`GET /healthz`, `GET /readyz`), limitarea ratei de cereri pe `/api/auth/login` și `/api/auth/register`, și serverul Socket.IO.
-   - Gestionează oprirea grațioasă (`SIGTERM` / `SIGINT`), salvând starea bazei de date și închizând conexiunile PostgreSQL și camerele active.
-2. **`server/gameEngine.ts` (`GameManager`)**:
-   - Motor autoritativ în memorie pentru toate camerele de joc active (`rooms`).
-   - Gestionează timer-ele pe server, selecția echilibrată a întrebărilor fără repetare de `id` sau `factKey`, logica boților AI și aplicarea atomică a bătăliilor din faza de Război Simultan.
-3. **`server/socketHandler.ts`**:
-   - Autentifică conexiunile WebSocket prin JWT (`socket.handshake.auth.token`).
-   - Răspunde la `time_sync_request` pentru calibrarea ceasului client-server.
-   - Validează `questionInstanceId` la `submit_answer` pentru a preveni răspunsurile întârziate de la întrebări anterioare (`STALE_INSTANCE`).
-4. **`server/db.ts` & `server/postgresRepo.ts`**:
-   - Strat de persistență hibrid: citește/actualizează rapid în memorie, salvează atomic pe disc în `data/conquiz_db.json` și sincronizează asincron (write-behind) în tabelele relaționale PostgreSQL (`users`, `friendships`, `friend_requests`, `match_history`, `questions`, `question_reports`) când `DATABASE_URL` este configurat.
+- **Runtime & Package Manager**: **Bun 1.2+** (`bun.lock` cu `bun install --frozen-lockfile`) și compatibilitate completă Node.js 22+.
+- **Frontend**: React 19, TypeScript, Tailwind CSS 4, Motion, Lucide React, Socket.IO Client, Web Audio API sintetizat nativ, PWA (`manifest.webmanifest` + Service Worker `sw.js`).
+- **Backend**: Express + HTTP Server + Socket.IO (WebSocket + fallback polling), securizat cu Helmet, CORS strict pe `APP_URL`, Rate Limiting și validare strictă a variabilelor de mediu la pornire (`server/envSecurity.ts`).
+- **Persistență Principală (Producție)**: **PostgreSQL 16** (`server/postgresRepo.ts` + `db/migrations/001_init.sql`) ca sursă unică de adevăr (cu fallback local pe `data/conquiz_db.json` exclusiv în dezvoltare când `DATABASE_URL` nu este setat).
+- **Publicare & Reverse Proxy**: **Porkbun DNS** (înregistrare `A` pe IPv4 public) + **Nginx Proxy Manager** (terminare TLS Let's Encrypt și suport WebSocket activat).
 
 ---
 
-## 3. Componente Frontend (`src/`)
+## 2. Schema Bazei de Date PostgreSQL (`db/migrations/001_init.sql`)
 
-- **`src/App.tsx`**: Gestionează sesiunea JWT, navigarea între vizualizări și garda strictă de autentificare (când utilizatorul nu este autentificat, doar fluxul de autentificare și controlul sunetului sunt accesibile).
-- **`src/views/GameView.tsx`**: Layout adaptiv fără scroll pe desktop (`100dvh`) și stivuit ergonomic pe mobil, coordonând `GameHUD`, `RoundTracker`, `PlayerSidebar`, `RomaniaMap` și `QuestionModal`.
-- **`src/components/RomaniaMap.tsx`**: Randare SVG vectorială a celor 9 preseturi dizolvate ale României cu zoom/pan (`Fit to Screen` implicit), medalioane de cetate cu turnuri și indicatori vizuali pentru țintele legale de atac.
-- **`src/services/socket.ts`**: Client Socket.IO cu calibrare automată a offsetului de ceas (`computeClockOffsetSample` / `selectBestClockOffset`) pe baza celui mai mic RTT din 3 probe.
+Toate tabelele din PostgreSQL sunt create și migrate automat la inițializare și corespund 1:1 cu metodele din `server/postgresRepo.ts`:
+
+| Tabel SQL | Rol și Coloane Principale |
+| :--- | :--- |
+| `users` | Conturi jucători și administratori (`id`, `username`, `email`, `password_hash`, `role`, `is_banned`, `avatar`, `bio`, `titles`, `active_title`, `favorite_county`, `stats` JSONB, `achievements` JSONB, `match_history` JSONB, `created_at`). |
+| `questions` | Banca de întrebări canonică și întrebările create din panoul Admin (`id`, `type`, `category`, `difficulty`, `question`, `options` JSONB, `correct_answer_index`, `target_number`, `unit`, `explanation`, `tags` JSONB, `verified`, `review_status` cu `DEFAULT 'draft'`, `fact_key`, `source_url`, `source_title`, `source_checked_at`, `author_id`, `updated_at`). |
+| `games` | Meciurile finalizate (`id`, `room_code`, `mode`, `winner_id`, `winner_name`, `duration_seconds`, `total_rounds`, `created_at`). |
+| `game_player_results` | Rezultatele individuale ale participanților din fiecare meci (`id`, `game_id`, `user_id`, `username`, `is_bot`, `final_rank`, `final_score`, `counties_count`, `correct_answers`, `total_answers`) cu constrângere de unicitate `CONSTRAINT uq_game_player_result UNIQUE (game_id, user_id)`. |
+| `friends` | Relațiile de prietenie și cererile în așteptare (`id`, `sender_id`, `receiver_id`, `status`, `created_at`) cu `UNIQUE (sender_id, receiver_id)`. |
+| `notifications` | Notificări în timp real și persistente pentru jucători (`id`, `user_id`, `type`, `title`, `message`, `data` JSONB, `read`, `created_at`). |
+| `admin_audit_logs` | Jurnalul de audit al acțiunilor administrative (`id`, `admin_id`, `admin_username`, `action`, `target_id`, `details` JSONB, `created_at`). |
+| `active_game_snapshots` | Snapshot-urile camerelor multiplayer active (`room_code`, `phase`, `state` JSONB, `updated_at`) utilizate pentru restaurarea camerelor la repornirea serverului (`restoreGamesFromSnapshots`). |
+
+---
+
+## 3. Tranzacții SQL și Integritatea Datelor
+
+- **Salvare Meci Finalizat (`insertGameToPostgres`)**: Rulează într-o tranzacție SQL (`BEGIN` ... `COMMIT` / `ROLLBACK` prin `withPostgresTransaction`) care inserează înregistrarea în `games` și toate rândurile aferente în `game_player_results` folosind `ON CONFLICT (game_id, user_id) DO UPDATE`.
+- **Cereri de Prietenie + Notificări (`createFriendRequestWithNotificationToPostgres`)**: Rulează atomic într-o singură tranzacție SQL astfel încât cererea din `friends` și notificarea din `notifications` sunt persistate împreună.
+- **Migrare Idempotentă (`scripts/migrate_json_to_postgres.ts`)**: Importă utilizatorii, toate întrebările (inclusiv întrebările custom din JSON), meciurile, `game_player_results`, prietenii și notificările fără a crea duplicate la rulări repetate.
+
+---
+
+## 4. Recuperarea Camerelor Active la Restart (`active_game_snapshots`)
+
+- La fiecare schimbare de stare a unei camere multiplayer, `saveGameSnapshot` salvează starea serializată în tabelul PostgreSQL `active_game_snapshots`.
+- La oprirea unei camere sau la finalizarea meciului (`gameover`), snapshot-ul este șters din `active_game_snapshots`.
+- La pornirea serverului (`server.ts`), după `await db.init()`, se apelează `restoreGamesFromSnapshots(io, snapshots)`, care reconstruiește camerele active, reconectează jucătorii prin tokenul de sesiune și repornește timerele pentru faza curentă.

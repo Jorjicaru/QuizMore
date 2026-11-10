@@ -1,13 +1,36 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from './db';
+import { isPlaceholderValue, hasSufficientEntropy, isAiStudioPreviewEnv } from './envSecurity';
 
-const developmentSecret = 'CONQUIZ-LOCAL-DEVELOPMENT-ONLY-CHANGE-ME-32-CHARS';
-const configuredJwtSecret = process.env.JWT_SECRET || '';
-if (process.env.NODE_ENV === 'production' && (configuredJwtSecret.length < 32 || /replace|example|change-me|inlocuieste/i.test(configuredJwtSecret))) {
-  throw new Error('JWT_SECRET trebuie să fie o valoare aleatorie proprie, de minimum 32 de caractere; nu folosi placeholderul din .env.example.');
+const developmentSecret = 'CONQUIZ-LOCAL-DEVELOPMENT-ONLY-FALLBACK-SECRET-KEY-91';
+
+export function resolveJwtSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = String(env.JWT_SECRET || '').trim();
+  const isStrictProd =
+    env.STRICT_ENV_VALIDATION === 'true' ||
+    (env.NODE_ENV === 'production' && !isAiStudioPreviewEnv(env));
+
+  if (isStrictProd) {
+    if (
+      configured.length < 32 ||
+      isPlaceholderValue(configured) ||
+      !hasSufficientEntropy(configured, 8)
+    ) {
+      throw new Error(
+        'JWT_SECRET trebuie să fie o valoare aleatorie proprie, de minimum 32 de caractere; nu folosi placeholderul din .env.example.'
+      );
+    }
+    return configured;
+  }
+
+  if (configured.length >= 32 && !isPlaceholderValue(configured)) {
+    return configured;
+  }
+  return developmentSecret;
 }
-const JWT_SECRET = configuredJwtSecret || developmentSecret;
+
+const JWT_SECRET = resolveJwtSecret();
 
 export interface AuthRequest extends Request {
   userId?: string;

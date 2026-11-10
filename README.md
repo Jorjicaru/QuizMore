@@ -1,72 +1,79 @@
-# 👑 CONQUIZ – România Multiplayer (Trivia & Strategie)
+# CONQUIZ V9.1 – Cucerește România prin Cunoaștere
 
-**CONQUIZ** este o aplicație web multiplayer în timp real (2–10 jucători) de strategie teritorială și cultură generală pe harta istorică și administrativă a României, inspirată de mecanica clasică *Triviador / ConQUIZtador*.
-
----
-
-## ✨ Caracteristici Principale (V9.0 Production Release)
-
-- **Multiplayer în Timp Real (2–10 Jucători + Boți AI)**:
-  - Camere publice și private, matchmaking Elo, invitații între prieteni și boți cu 4 niveluri de dificultate (`începător`, `intermediar`, `avansat`, `maestru`).
-  - Sincronizare autoritativă de ceas client-server prin RTT ping/pong (`time_sync_request`) și timer continuu (`requestAnimationFrame` + `transform: scaleX`).
-- **9 Preseturi Geografice Dedicate și Dizolvate ale Hărții României**:
-  - Toate cele 42 de județe ale României sunt grupate în teritorii contigue cu granițe interioare dizolvate (`@turf/turf`) și graf de vecinătate conex simetric:
-    - `2p → 10 teritorii`, `3p → 15`, `4p → 20`, `5p → 23`, `6p → 26`, `7p → 29`, `8p → 32`, `9p → 35`, `10p → 38 teritorii`.
-- **Cele 3 Faze Canonice ale Jocului**:
-  1. **Alegerea Bazei (`base_selection`)**: Fiecare jucător își alege cetatea de bază (`1000 pct`, `3 turnuri`), fără ca două baze să fie direct învecinate.
-  2. **Expansiune / Cucerire (`conquest`)**: Întrebări grilă (`choice`) și de departajare numerică (`estimation`) la care toți jucătorii răspund simultan pentru ocuparea teritoriilor neutre adiacente (`300 pct`).
-  3. **Război Simultan (`war`)**: Până la `floor(N/2)` dueluri simultane pe rundă între vecini direcți, cu întrebare grilă comună și departajare numerică (`tiebreak`), apărare fortificată (`+100 pct`), asediu asupra cetăților (`+400 pct` pe turn dărâmat) și cucerire integrală la căderea ultimului turn.
-- **Bancă Canonică Auditată Editorial (`6.216` Întrebări Aprobate)**:
-  - `3.269` întrebări cu 4 variante (`choice`) și `2.947` întrebări numerice (`estimation`) în limba română.
-  - 14 categorii echilibrate (nicio categorie nu depășește `12.5%` din bancă).
-  - Fiecare întrebare are `reviewStatus: 'approved'`, `factKey` unic per concept factual (`5.673` chei distincte), `sourceUrl` specific verificabil și `sourceTitle`.
-  - Non-repetiție garantată atât după `question.id`, cât și după `factKey` pe întreaga durată a unui meci.
-- **Arhitectură Ready for Production (PostgreSQL + Docker + Proxmox + Cloudflare Tunnel + PWA)**:
-  - Persistență hibridă: PostgreSQL 16 în producție (`DATABASE_URL`) cu fallback automat pe JSON atomic (`data/conquiz_db.json`) în development.
-  - Health checks dedicate (`GET /healthz` și `GET /readyz`), oprire grațioasă (`SIGTERM`/`SIGINT`), PWA instalabil și stivă completă `docker-compose.yml` cu `cloudflared`.
+Joc de strategie și cultură generală multiplayer în timp real pe harta celor 41 de județe ale României.
 
 ---
 
-## 🚀 Pornire Rapidă (Development Local)
+## 1. Noutăți și Arhitectură V9.1 (Producție & Dezvoltare)
 
-### 1. Cerințe
-- **Node.js 22+** sau **Bun 1.2+**
+- **Securitate Strictă a Variabilelor de Mediu (`server/envSecurity.ts`)**: În producție (`NODE_ENV=production`), aplicația refuză pornirea dacă `JWT_SECRET`, `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `DATABASE_URL` sau `APP_URL` lipsesc, sunt prea scurte sau conțin valori demonstrative/placeholder (inclusiv pornirea directă cu `.env.example` nemodificat).
+- **Pornire Automată în Development / Google AI Studio Preview**: Când `DATABASE_URL` nu este definit sau aplicația rulează în modul development / Google AI Studio Preview, serverul pornește direct folosind fallback-ul JSON local (`data/conquiz_db.json`), fără a necesita o conexiune activă la PostgreSQL.
+- **PostgreSQL ca Sursă Principală a Datelor în Producție (`server/postgresRepo.ts`, `server/db.ts`)**: În producție pe Proxmox Docker Compose (serviciul `db` în rețeaua izolată `conquiz_internal`), toate citirile și scrierile pentru utilizatori, întrebări, meciuri, rezultate pe jucător (`game_player_results`), prieteni, notificări și snapshot-uri ale camerelor active se execută direct în PostgreSQL, folosind tranzacții SQL atomice.
+- **Recuperarea Camerelor Multiplayer Active (`restoreGamesFromSnapshots`)**: La repornirea serverului în producție, camerele active salvate în `active_game_snapshots` sunt restaurate automat în memorie împreună cu timerele aferente fazei curente.
+- **Docker Multi-Stage Standardizat pe Bun (`Dockerfile`)**: Imagine de producție bazată pe `oven/bun:1.2-alpine` și `bun.lock` (`bun install --frozen-lockfile`), rulată sub utilizator non-root (`bun`), pe portul intern `PORT=3000`.
+- **Integrare cu Nginx Proxy Manager prin Rețeaua Externă `mediastack_default` (`docker-compose.yml`)**:
+  - Fără Cloudflare Tunnel (`cloudflared`) și fără `CLOUDFLARE_TUNNEL_TOKEN`.
+  - Portul `3000` al aplicației **nu** este publicat pe host.
+  - Serviciul `app` (`hostname: conquiz-app`) este conectat la rețeaua internă `conquiz_internal` și la rețeaua externă existentă `mediastack_default` (unde rulează containerul `nginx-proxy-manager`).
+  - Serviciul PostgreSQL (`db`) este conectat **exclusiv** la `conquiz_internal`, fără acces din `mediastack_default` și fără porturi expuse pe host.
+  - În Nginx Proxy Manager, Proxy Host-ul direcționează traficul către `http://conquiz-app:3000` cu **Websockets Support** activat și certificat TLS **Let's Encrypt**.
+- **Bancă de Întrebări V9.1 (`6.241` întrebări aprobate)**:
+  - `3.324` întrebări grilă (`choice`) și `2.917` întrebări de estimare (`estimation`).
+  - `14` categorii echilibrate (nicio categorie nu depășește `12,5%`; cea mai mare categorie are `11,34%`).
+  - `5.064` chei `factKey` unice, cu `660` perechi `choice`/`estimation` care împart același `factKey` pentru a preveni scurgerea răspunsurilor în același meci.
+  - Orice întrebare nouă fără statut explicit intră ca `draft` și nu poate apărea în meciurile oficiale până la aprobarea explicită cu sursă specifică.
 
-### 2. Instalare și Rulare
+---
+
+## 2. Configurare Rapidă și Variabile de Mediu (`.env`)
+
+1. Copiază șablonul `.env.example` în `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Editează fișierul `.env` și setează parolele și secretele tale:
+   - `PORT=3000` (portul intern al containerului `conquiz-app`)
+   - `APP_URL`: URL-ul public HTTPS al subdomeniului (ex. `https://conquiz.domeniul-tau.ro`)
+   - `JWT_SECRET`: cheie aleatorie de minimum 32 de caractere (`openssl rand -hex 32`)
+   - `ADMIN_EMAIL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`: credențialele contului de administrator (minimum 16 caractere pentru parolă în producție)
+   - `POSTGRES_PASSWORD` și `DATABASE_URL`: parola și conexiunea către serviciul PostgreSQL `db` (`postgresql://conquiz_user:<PAROLA>@db:5432/conquiz`)
+
+---
+
+## 3. Comenzi Principale (Bun / NPM / Docker)
+
 ```bash
-# Instalare dependențe
-npm install
-# (sau: bun install)
+# Instalare dependențe cu lockfile înghețat
+bun install --frozen-lockfile
 
-# Copiere variabile de mediu
-cp .env.example .env
+# Pornire server în modul dezvoltare (folosește JSON fallback dacă DATABASE_URL lipsește)
+bun run dev
 
-# Pornire server development (Express + Socket.IO + Vite pe portul 3000)
-npm run dev
+# Validare bancă de întrebări canonică (6.241 întrebări)
+bun run validate:questions
+
+# Verificare tipuri TypeScript
+bun run lint
+
+# Rulare suită completă de teste (unitare, PostgreSQL, migrare, backup/restore, Socket.IO)
+bun test
+
+# Build frontend pentru producție
+bun run build
+
+# Validare configurație Docker Compose
+docker compose config
+
+# Pornire stivă de producție Docker (doar conquiz-postgres și conquiz-app, fără a atinge restul homelab-ului)
+docker compose up -d --build
 ```
-Aplicația va fi disponibilă la `http://localhost:3000`.
 
 ---
 
-## 🧪 Comenzi Utile & Verificare Calitate
+## 4. Documentație Tehnică Detaliată
 
-| Comandă | Descriere |
-| :--- | :--- |
-| `npm run dev` | Pornește serverul full-stack pe portul `3000` |
-| `npm run build` | Construiește aplicația frontend de producție în `dist/` |
-| `npm run lint` | Verifică tipurile TypeScript (`tsc --noEmit`) |
-| `npm run build:questions` | Regenerează și echilibrează banca canonică de întrebări V9.0 |
-| `npm run validate:questions` | Execută auditul strict V9.0 asupra băncii de întrebări și `conquiz_db.example.json` |
-| `npm test` | Rulează suita completă de teste unitare și de integrare (`src/game/rules.test.ts`) |
-| `npm run migrate:postgres` | Migrează idempotent datele și întrebările în PostgreSQL (`DATABASE_URL`) |
-
----
-
-## 📚 Documentație Detaliată
-
-- 📖 [Regulile Complete ale Jocului (`docs/GAME_RULES.md`)](./docs/GAME_RULES.md)
-- 🧠 [Arhitectura & Standardul Băncii de Întrebări (`docs/QUESTION_BANK.md`)](./docs/QUESTION_BANK.md)
-- 🏗️ [Arhitectura Tehnică & Fluxul Multiplayer (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)
-- ☁️ [Ghid de Deployment pe Proxmox + Docker + Cloudflare Tunnel (`docs/DEPLOY_PROXMOX_CLOUDFLARE.md`)](./docs/DEPLOY_PROXMOX_CLOUDFLARE.md)
-- 💾 [Proceduri de Backup și Restaurare (`docs/BACKUP_RESTORE.md`)](./docs/BACKUP_RESTORE.md)
-- 📝 [Jurnalul Versiunilor (`CHANGELOG.md`)](./CHANGELOG.md)
+- [Ghid Deployment Proxmox + Porkbun DNS + Nginx Proxy Manager (`mediastack_default`)](docs/DEPLOY_PROXMOX_NPM_PORKBUN.md)
+- [Arhitectura Sistemului și Schema PostgreSQL](docs/ARCHITECTURE.md)
+- [Banca de Întrebări și Guvernanță Editorială](docs/QUESTION_BANK.md)
+- [Procedura de Backup și Restaurare PostgreSQL](docs/BACKUP_RESTORE.md)
+- [Regulile Jocului și Punctajul Oficial](docs/GAME_RULES.md)

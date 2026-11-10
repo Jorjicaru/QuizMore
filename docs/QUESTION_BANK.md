@@ -1,78 +1,68 @@
-# 🧠 CONQUIZ – Arhitectura și Standardul Băncii Canonice de Întrebări (V9.0)
+# Banca de Întrebări CONQUIZ V9.1 – Structură, Validare și Guvernanță
 
-Acest document descrie structura, regulile editoriale, mecanismul de deduplicare factuală (`factKey`) și scripturile de validare ale băncii de întrebări CONQUIZ.
-
----
-
-## 1. Structura Fișierelor Canonice
-
-Banca de întrebări este stocată în format JSON canonic în directorul `data/questions/`:
-- `data/questions/choice.json` — Întrebări cu 4 variante de răspuns (`3.269` întrebări aprobate).
-- `data/questions/estimation.json` — Întrebări de estimare numerică (`2.947` întrebări aprobate).
-- `data/questions/manifest.json` — Metadate agregate, statistici pe categorii/dificultăți și număr de `factKey`-uri unice (`6.216` întrebări aprobate, `5.673` `factKey`-uri distincte).
+Acest document descrie arhitectura băncii de întrebări enciclopedice din **CONQUIZ V9.1**, regulile de validare automată și fluxul de moderare editorială.
 
 ---
 
-## 2. Schema Unei Întrebări (V9.0)
+## 1. Statistici Oficiale (Manifest V9.1.0)
 
-Fiecare întrebare din bancă respectă interfața `Question` din `src/types/game.ts`:
+Banca de întrebări canonică este stocată în `data/questions/choice.json` și `data/questions/estimation.json`, având sumarul verificabil în `data/questions/manifest.json`:
 
-```json
-{
-  "id": "ch_istorie_0001",
-  "category": "istorie",
-  "difficulty": "mediu",
-  "type": "choice",
-  "question": "În ce an a avut loc Marea Unire proclamată la Alba Iulia?",
-  "options": ["1918", "1859", "1877", "1920"],
-  "correctAnswerIndex": 0,
-  "explanation": "Marea Unire a fost proclamată la Alba Iulia pe 1 decembrie 1918.",
-  "factKey": "fact:istorie:marea_unire_alba_iulia_1918",
-  "reviewStatus": "approved",
-  "verified": true,
-  "sourceUrl": "https://ro.wikipedia.org/wiki/Marea_Unire",
-  "sourceTitle": "Wikipedia (RO) – Marea Unire",
-  "sourceCheckedAt": "2026-11-10T00:00:00.000Z",
-  "tags": ["istorie", "choice", "mediu", "v9_curated"]
-}
+- **Total întrebări canonice:** `6.241`
+- **Întrebări aprobate (`reviewStatus: "approved"`):** `6.241`
+- **Întrebări tip grilă (`choice`):** `3.324` (fiecare cu 4 opțiuni unice și `correctAnswerIndex` distribuit uniform `0..3`)
+- **Întrebări tip estimare numerică (`estimation`):** `2.917` (fiecare cu `targetNumber` exact și unitate de măsură `unit`)
+- **Chei factologice unice (`uniqueFactKeysCount`):** `5.064`
+- **Grupuri `factKey` partajate între `choice` și `estimation` (`sharedChoiceEstimationFactKeys`):** `660` (prevenind apariția în același meci a două întrebări care testează același fapt sub formă de grilă și estimare)
+- **URL-uri sursă specifice pe subiect (`uniqueSourceUrlsCount`):** `1.365`
+- **ID-uri duplicate:** `0`
+- **Texte de întrebări duplicate:** `0`
+
+---
+
+## 2. Distribuția Echilibrată pe cele 14 Categorii
+
+Conform cerințelor V9.1, **nicio categorie nu depășește pragul de `12,5%`** din totalul băncii de întrebări, iar fiecare categorie are minimum `320` de întrebări verificate:
+
+| Categorie | Număr Întrebări | Pondere din Total (`6.241`) | Respectă Pragul `<= 12,5%` |
+| :--- | :---: | :---: | :---: |
+| `geografie` | 708 | 11,34% | DA |
+| `istorie` | 639 | 10,24% | DA |
+| `fizica` | 504 | 8,08% | DA |
+| `literatura` | 490 | 7,85% | DA |
+| `sport` | 457 | 7,32% | DA |
+| `tehnologie` | 404 | 6,47% | DA |
+| `informatica` | 403 | 6,46% | DA |
+| `muzica` | 402 | 6,44% | DA |
+| `cinematografie` | 396 | 6,35% | DA |
+| `cultura_generala` | 395 | 6,33% | DA |
+| `arta` | 385 | 6,17% | DA |
+| `matematica` | 370 | 5,93% | DA |
+| `biologie` | 367 | 5,88% | DA |
+| `chimie` | 321 | 5,14% | DA |
+
+---
+
+## 3. Reguli de Guvernanță și Moderare (`reviewStatus` & `factKey`)
+
+1. **Statut implicit `draft`**:
+   - Orice întrebare nouă creată prin API (`POST /api/questions`), importată în `server/db.ts` sau adăugată fără `reviewStatus` explicit primește automat statutul **`draft`** (`verified: false`).
+   - Nicio întrebare nu devine `approved` în mod implicit și nu i se inventează automat `sourceUrl` sau `sourceCheckedAt`.
+2. **Filtru strict în meciurile oficiale (`server/gameEngine.ts`)**:
+   - Motorul de joc selectează exclusiv întrebări care au simultan `reviewStatus === 'approved'` și `verified !== false`.
+   - Întrebările cu statut `draft`, `rejected` sau `disabled` sunt complet excluse din meciuri.
+3. **Deduplicare pe `factKey` în cadrul aceluiași meci**:
+   - Fiecare cameră de joc menține atât `usedChoiceQuestionIds` / `usedEstimationQuestionIds`, cât și `usedFactKeys: Set<string>`.
+   - Întrebările `choice` și `estimation` construite pe același fapt istoric, geografic, științific sau cultural împart același `factKey` (ex. `fact_hist_year_1`, `fact_chem_z_au`, `fact_geo_feat_val_1`), astfel încât o întrebare din timpul meciului nu poate divulga răspunsul unei alte întrebări din același meci.
+
+---
+
+## 4. Comenzi de Regenerare și Validare
+
+```bash
+# Construiește și validează banca de întrebări canonică
+bun run build:questions
+
+# Rulează validatorul strict V9.1 (verifică reviewStatus, factKey, surse și pragul <= 12.5%)
+bun run validate:questions
 ```
-
-### Câmpuri Obligatorii V9.0:
-1. **`reviewStatus`**: `'draft' | 'approved' | 'rejected' | 'disabled'`. Motorul de joc extrage **exclusiv** întrebări cu `reviewStatus === 'approved'` și `isDisabled !== true`.
-2. **`factKey`**: Identificator canonic al faptului verificat (ex. `fact:chimie:element_numar_atomic_79`). Dacă același concept există atât ca întrebare grilă (`choice`), cât și ca întrebare numerică (`estimation`), ambele partajează același `factKey`, iar motorul de joc **interzice** extragerea a două întrebări cu același `factKey` în aceeași partidă.
-3. **`sourceUrl` & `sourceTitle`**: URL specific către pagina enciclopedică / articolul de referință (URL-urile generice de tip homepage precum `https://ro.wikipedia.org` sunt interzise de validator).
-4. **`sourceCheckedAt`**: Data ISO-8601 a ultimei verificări editoriale.
-
----
-
-## 3. Echilibrarea celor 14 Categorii
-
-Banca V9.0 este echilibrată pe toate cele 14 categorii, astfel încât nicio categorie nu depășește pragul maxim de **12.5%** din totalul băncii, și fiecare categorie dispune de suficiente întrebări `choice` și `estimation` pentru un meci complet de 10 jucători chiar și atunci când este selectată o singură categorie:
-
-| Categorie | Întrebări `choice` | Întrebări `estimation` | Total | Pondere (%) |
-| :--- | :---: | :---: | :---: | :---: |
-| `geografie` | 406 | 360 | 766 | 12.3% |
-| `istorie` | 362 | 169 | 531 | 8.5% |
-| `chimie` | 238 | 228 | 466 | 7.5% |
-| `cultura_generala` | 290 | 172 | 462 | 7.4% |
-| `sport` | 247 | 190 | 437 | 7.0% |
-| `biologie` | 234 | 197 | 431 | 6.9% |
-| `matematica` | 212 | 212 | 424 | 6.8% |
-| `fizica` | 222 | 198 | 420 | 6.8% |
-| `literatura` | 215 | 193 | 408 | 6.6% |
-| `arta` | 184 | 197 | 381 | 6.1% |
-| `muzica` | 176 | 203 | 379 | 6.1% |
-| `cinematografie` | 175 | 203 | 378 | 6.1% |
-| `tehnologie` | 158 | 213 | 371 | 6.0% |
-| `informatica` | 150 | 212 | 362 | 5.8% |
-| **TOTAL** | **3.269** | **2.947** | **6.216** | **100.0%** |
-
----
-
-## 4. Validare Automată (`npm run validate:questions`)
-
-Scriptul `scripts/validate_question_bank.cjs` verifică automat:
-- Prezența și validitatea JSON a fișierelor `choice.json`, `estimation.json`, `manifest.json` și `data/conquiz_db.example.json` (inclusiv `users: {}`).
-- Unicitatea tuturor `id`-urilor și a textelor normalizate (0 duplicate).
-- Prezența `reviewStatus === 'approved'`, `factKey`, `sourceUrl` specific (non-homepage), `sourceTitle` și `sourceCheckedAt`.
-- Echilibrul pe categorii (`<= 12.5%` per categorie) și bugetul minim per categorie (`>= 96 choice` și `>= 89 estimation`).

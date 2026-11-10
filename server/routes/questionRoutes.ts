@@ -83,15 +83,52 @@ router.get('/stats', authenticate, requireAdmin, (req: AuthRequest, res: Respons
   });
 });
 
-// Admin: Add new question
+// Admin: Add new question (defaults to reviewStatus = 'draft' unless explicitly approved with verified source)
 router.post('/', authenticate, requireAdmin, (req: AuthRequest, res: Response): void => {
-  const { type, category, difficulty, question, options, correctAnswerIndex, targetNumber, unit, explanation, sourceUrl } = req.body;
+  const {
+    type,
+    category,
+    difficulty,
+    question,
+    options,
+    correctAnswerIndex,
+    targetNumber,
+    unit,
+    explanation,
+    sourceUrl,
+    sourceTitle,
+    sourceCheckedAt,
+    factKey,
+    reviewStatus,
+  } = req.body;
 
-  const validationError = validateQuestionPayload({ type, category, difficulty, question, options, correctAnswerIndex, targetNumber, unit, explanation, sourceUrl });
-  if (validationError) { res.status(400).json({ error: validationError }); return; }
-  if (isDuplicateQuestion({ type, category, question })) { res.status(409).json({ error: 'Există deja o întrebare identică în aceeași categorie.' }); return; }
+  const validationError = validateQuestionPayload({
+    type,
+    category,
+    difficulty,
+    question,
+    options,
+    correctAnswerIndex,
+    targetNumber,
+    unit,
+    explanation,
+    sourceUrl,
+  });
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+  if (isDuplicateQuestion({ type, category, question })) {
+    res.status(409).json({ error: 'Există deja o întrebare identică în aceeași categorie.' });
+    return;
+  }
 
-  const id = `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const resolvedStatus =
+    reviewStatus === 'approved' && sourceUrl && sourceTitle && sourceCheckedAt
+      ? 'approved'
+      : 'draft';
+
+  const id = `q_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const newQ: Question = {
     id,
     type,
@@ -104,25 +141,57 @@ router.post('/', authenticate, requireAdmin, (req: AuthRequest, res: Response): 
     unit: type === 'estimation' ? unit : undefined,
     explanation,
     sourceUrl,
+    sourceTitle,
+    sourceCheckedAt: resolvedStatus === 'approved' ? sourceCheckedAt : undefined,
+    factKey: factKey || `fact_${category}_${id}`,
+    reviewStatus: resolvedStatus,
+    verified: resolvedStatus === 'approved',
   };
 
-  db.addQuestion(newQ);
+  const saved = db.addQuestion(newQ);
   gameManager.reloadQuestions();
-  res.json({ success: true, question: newQ });
+  res.json({ success: true, question: saved });
 });
 
 // Admin: Edit question
 router.put('/:id', authenticate, requireAdmin, (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const patch = req.body;
-  const existing = db.getAllQuestions().find(q => q.id === id);
-  if (!existing) { res.status(404).json({ error: 'Întrebarea nu a fost găsită.' }); return; }
+  const existing = db.getAllQuestions().find((q) => q.id === id);
+  if (!existing) {
+    res.status(404).json({ error: 'Întrebarea nu a fost găsită.' });
+    return;
+  }
   const merged = { ...existing, ...patch };
   const validationError = validateQuestionPayload(merged);
-  if (validationError) { res.status(400).json({ error: validationError }); return; }
-  const allowedFields = ['type', 'category', 'difficulty', 'question', 'options', 'correctAnswerIndex', 'targetNumber', 'unit', 'explanation', 'sourceUrl'];
-  const safePatch = Object.fromEntries(Object.entries(patch || {}).filter(([key]) => allowedFields.includes(key)));
-  if (isDuplicateQuestion(merged, id)) { res.status(409).json({ error: 'Există deja o întrebare identică în aceeași categorie.' }); return; }
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+  const allowedFields = [
+    'type',
+    'category',
+    'difficulty',
+    'question',
+    'options',
+    'correctAnswerIndex',
+    'targetNumber',
+    'unit',
+    'explanation',
+    'sourceUrl',
+    'sourceTitle',
+    'sourceCheckedAt',
+    'factKey',
+    'reviewStatus',
+    'isDisabled',
+  ];
+  const safePatch = Object.fromEntries(
+    Object.entries(patch || {}).filter(([key]) => allowedFields.includes(key))
+  );
+  if (isDuplicateQuestion(merged, id)) {
+    res.status(409).json({ error: 'Există deja o întrebare identică în aceeași categorie.' });
+    return;
+  }
   const updated = db.updateQuestion(id, safePatch);
   if (!updated) {
     res.status(404).json({ error: 'Întrebarea nu a fost găsită.' });
@@ -157,8 +226,16 @@ router.post('/import', authenticate, requireAdmin, (req: AuthRequest, res: Respo
   const errors: string[] = [];
   for (let index = 0; index < questions.length; index++) {
     const raw = questions[index];
-    const candidate = {
-      id: typeof raw?.id === 'string' && raw.id.length <= 100 ? raw.id : `q_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
+    const id =
+      typeof raw?.id === 'string' && raw.id.length <= 100
+        ? raw.id
+        : `q_custom_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`;
+    const resolvedStatus =
+      raw?.reviewStatus === 'approved' && raw?.sourceUrl && raw?.sourceTitle && raw?.sourceCheckedAt
+        ? 'approved'
+        : 'draft';
+    const candidate: Question = {
+      id,
       type: raw?.type,
       category: raw?.category,
       difficulty: raw?.difficulty || 'mediu',
@@ -169,15 +246,33 @@ router.post('/import', authenticate, requireAdmin, (req: AuthRequest, res: Respo
       unit: raw?.unit,
       explanation: typeof raw?.explanation === 'string' ? raw.explanation.slice(0, 1000) : undefined,
       sourceUrl: raw?.sourceUrl,
+      sourceTitle: raw?.sourceTitle,
+      sourceCheckedAt: resolvedStatus === 'approved' ? raw?.sourceCheckedAt : undefined,
+      factKey: raw?.factKey || `fact_${raw?.category || 'cg'}_${id}`,
+      reviewStatus: resolvedStatus,
+      verified: resolvedStatus === 'approved',
     };
     const validationError = validateQuestionPayload(candidate);
-    if (validationError) { skipped++; if (errors.length < 10) errors.push(`Rândul ${index + 1}: ${validationError}`); continue; }
-    if (isDuplicateQuestion(candidate)) { skipped++; continue; }
-    db.addQuestion(candidate as Question);
+    if (validationError) {
+      skipped++;
+      if (errors.length < 10) errors.push(`Rândul ${index + 1}: ${validationError}`);
+      continue;
+    }
+    if (isDuplicateQuestion(candidate)) {
+      skipped++;
+      continue;
+    }
+    db.addQuestion(candidate);
     imported++;
   }
   if (imported > 0) gameManager.reloadQuestions();
-  res.json({ success: true, imported, skipped, errors, message: `Importate ${imported} întrebări; ${skipped} ignorate (invalide sau duplicate).` });
+  res.json({
+    success: true,
+    imported,
+    skipped,
+    errors,
+    message: `Importate ${imported} întrebări; ${skipped} ignorate (invalide sau duplicate).`,
+  });
 });
 
 export default router;

@@ -1,4 +1,13 @@
--- CONQUIZ V9.0 – PostgreSQL Production Schema Migration (001_init.sql)
+-- CONQUIZ V9.1 – PostgreSQL Production Schema Migration (001_init.sql)
+-- Sursa principală de date în producție. Tabele:
+--   1. users
+--   2. questions
+--   3. games
+--   4. game_player_results (cu constrângere unică pe (game_id, user_id))
+--   5. friends (stochează cererile 'pending' și prieteniile 'accepted')
+--   6. notifications
+--   7. admin_audit_logs
+--   8. active_game_snapshots
 
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(128) PRIMARY KEY,
@@ -35,17 +44,17 @@ CREATE TABLE IF NOT EXISTS questions (
   target_number DOUBLE PRECISION,
   unit VARCHAR(64),
   explanation TEXT NOT NULL,
-  source_url TEXT NOT NULL,
-  source_title TEXT NOT NULL,
-  source_checked_at VARCHAR(32) NOT NULL,
-  review_status VARCHAR(32) NOT NULL DEFAULT 'approved' CHECK (review_status IN ('draft', 'approved', 'rejected', 'disabled')),
+  source_url TEXT,
+  source_title TEXT,
+  source_checked_at VARCHAR(32),
+  review_status VARCHAR(32) NOT NULL DEFAULT 'draft' CHECK (review_status IN ('draft', 'approved', 'rejected', 'disabled')),
   is_disabled BOOLEAN NOT NULL DEFAULT FALSE,
   reported_count INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_questions_Selection ON questions (review_status, is_disabled, type, category);
+CREATE INDEX IF NOT EXISTS idx_questions_selection ON questions (review_status, is_disabled, type, category);
 CREATE INDEX IF NOT EXISTS idx_questions_fact_key ON questions (fact_key);
 
 CREATE TABLE IF NOT EXISTS games (
@@ -70,9 +79,11 @@ CREATE TABLE IF NOT EXISTS game_player_results (
   territories INTEGER NOT NULL DEFAULT 0,
   correct_answers INTEGER NOT NULL DEFAULT 0,
   is_winner BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_game_player_result UNIQUE (game_id, user_id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_game_player_results_game_user ON game_player_results (game_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_game_player_results_user ON game_player_results (user_id);
 
 CREATE TABLE IF NOT EXISTS friends (
@@ -83,6 +94,9 @@ CREATE TABLE IF NOT EXISTS friends (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_friends_pair UNIQUE (requester_id, recipient_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_friends_requester ON friends (requester_id);
+CREATE INDEX IF NOT EXISTS idx_friends_recipient ON friends (recipient_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id VARCHAR(128) PRIMARY KEY,

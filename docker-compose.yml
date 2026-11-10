@@ -1,14 +1,20 @@
 # ==============================================================================
-# CONQUIZ V9.0 – PRODUCTION DOCKER COMPOSE (PROXMOX + POSTGRESQL + CLOUDFLARED)
+# CONQUIZ V9.1 – PRODUCTION DOCKER COMPOSE (PROXMOX + POSTGRESQL + NGINX PROXY MANAGER)
 # ==============================================================================
-# Notă de securitate: Niciun port (3000 sau 5432) nu este expus public pe host.
-# Tot traficul extern intră exclusiv prin Cloudflare Tunnel (HTTPS + WSS) către
-# serviciul intern http://app:3000.
+# Arhitectură de rețea și securitate:
+# 1. PostgreSQL (serviciul `db`) rulează EXCLUSIV în rețeaua internă izolată
+#    `conquiz_internal`, fără niciun port expus pe host și fără acces din rețeaua NPM.
+# 2. Aplicația (`app`, hostname `conquiz-app`, port intern `3000`) este conectată la:
+#    - `conquiz_internal` (pentru comunicarea privată cu baza de date `db:5432`)
+#    - `mediastack_default` (rețeaua Docker externă existentă în care rulează `nginx-proxy-manager`)
+# 3. Portul 3000 al aplicației NU este publicat pe host. Nginx Proxy Manager accesează
+#    aplicația direct prin rețeaua Docker `mediastack_default` la `http://conquiz-app:3000`.
 
 services:
   db:
     image: postgres:16-alpine
     container_name: conquiz-postgres
+    hostname: db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-conquiz}
@@ -31,6 +37,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: conquiz-app
+    hostname: conquiz-app
     restart: unless-stopped
     depends_on:
       db:
@@ -38,34 +45,24 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      APP_URL: ${APP_URL:-https://conquiz.domeniu.ro}
+      APP_URL: ${APP_URL:?Seteaza APP_URL cu subdomeniul tau real Porkbun in .env}
       JWT_SECRET: ${JWT_SECRET:?Seteaza JWT_SECRET in .env}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@conquiz.ro}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Seteaza ADMIN_EMAIL in .env}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-MareleVoievod}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Seteaza ADMIN_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Seteaza POSTGRES_PASSWORD in .env}
       DATABASE_URL: postgresql://${POSTGRES_USER:-conquiz_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-conquiz}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
       - conquiz_appdata:/app/data
     networks:
       - conquiz_internal
+      - mediastack_default
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/readyz || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 3
       start_period: 15s
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: conquiz-cloudflared
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?Seteaza CLOUDFLARE_TUNNEL_TOKEN in .env}
-    networks:
-      - conquiz_internal
 
 volumes:
   conquiz_pgdata:
@@ -76,3 +73,7 @@ volumes:
 networks:
   conquiz_internal:
     driver: bridge
+    internal: true
+  mediastack_default:
+    external: true
+    name: mediastack_default

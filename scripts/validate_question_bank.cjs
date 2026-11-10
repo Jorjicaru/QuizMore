@@ -27,6 +27,8 @@ function validateQuestionBank() {
   const seenIds = new Set();
   const seenTexts = new Set();
   const seenFactKeys = new Set();
+  const factKeyQuestionsMap = new Map();
+  const sourceUrlCounts = new Map();
   const errors = [];
   const categoryBreakdown = {};
   const difficultyBreakdown = {};
@@ -89,9 +91,24 @@ function validateQuestionBank() {
       errors.push(`ID ${q.id}: Cheia factKey lipsă.`);
     } else {
       seenFactKeys.add(q.factKey);
+      const list = factKeyQuestionsMap.get(q.factKey) || [];
+      list.push(q);
+      factKeyQuestionsMap.set(q.factKey, list);
     }
 
-    const status = q.reviewStatus || (q.verified ? 'approved' : 'draft');
+    // V9.1: Fără reviewStatus explicit, o întrebare este tratată ca 'draft', NICIODATĂ 'approved' implicit.
+    const status =
+      q.reviewStatus === 'approved' ||
+      q.reviewStatus === 'draft' ||
+      q.reviewStatus === 'rejected' ||
+      q.reviewStatus === 'disabled'
+        ? q.reviewStatus
+        : 'draft';
+
+    if (!q.reviewStatus) {
+      errors.push(`ID ${q.id}: reviewStatus lipsă (nu este permisă aprobarea implicită).`);
+    }
+
     reviewStatusBreakdown[status] = (reviewStatusBreakdown[status] || 0) + 1;
 
     if (status === 'approved') {
@@ -103,12 +120,13 @@ function validateQuestionBank() {
           if (!parsedUrl.pathname || parsedUrl.pathname === '/' || parsedUrl.pathname.trim() === '') {
             errors.push(`ID ${q.id}: Sursă generică (homepage) nepermisă pentru întrebare aprobată (${q.sourceUrl}).`);
           }
+          sourceUrlCounts.set(q.sourceUrl, (sourceUrlCounts.get(q.sourceUrl) || 0) + 1);
         } catch {
           errors.push(`ID ${q.id}: URL sursă invalid (${q.sourceUrl}).`);
         }
       }
-      if (!q.sourceTitle || typeof q.sourceTitle !== 'string') {
-        errors.push(`ID ${q.id}: Titlul sursei (sourceTitle) lipsă pentru întrebare aprobată.`);
+      if (!q.sourceTitle || typeof q.sourceTitle !== 'string' || q.sourceTitle.trim().length < 5) {
+        errors.push(`ID ${q.id}: Titlul sursei (sourceTitle) lipsă sau prea scurt pentru întrebare aprobată.`);
       }
       if (!q.sourceCheckedAt || typeof q.sourceCheckedAt !== 'string') {
         errors.push(`ID ${q.id}: Data verificării sursei (sourceCheckedAt) lipsă pentru întrebare aprobată.`);
@@ -119,8 +137,8 @@ function validateQuestionBank() {
     difficultyBreakdown[q.difficulty] = (difficultyBreakdown[q.difficulty] || 0) + 1;
   }
 
-  const approvedChoice = choiceQuestions.filter((q) => (q.reviewStatus || 'approved') === 'approved').length;
-  const approvedEstimation = estimationQuestions.filter((q) => (q.reviewStatus || 'approved') === 'approved').length;
+  const approvedChoice = choiceQuestions.filter((q) => q.reviewStatus === 'approved').length;
+  const approvedEstimation = estimationQuestions.filter((q) => q.reviewStatus === 'approved').length;
 
   if (reviewStatusBreakdown.approved < 5000) {
     errors.push(`Baza canonică are doar ${reviewStatusBreakdown.approved} întrebări aprobate (minim cerut: 5000).`);
@@ -132,15 +150,43 @@ function validateQuestionBank() {
     errors.push(`Prea puține întrebări estimation aprobate: ${approvedEstimation} (minim 2500).`);
   }
 
-  // Verify category balance (no single category should dominate > 25% of the bank)
+  // V9.1: Verify category balance — no single category may exceed 12.5% (0.125) of the bank
   for (const [cat, count] of Object.entries(categoryBreakdown)) {
     const share = count / Math.max(1, allQuestions.length);
-    if (share > 0.25) {
-      errors.push(`Categoria ${cat} domină disproporționat banca de întrebări (${(share * 100).toFixed(1)}% > 25%).`);
+    if (share > 0.125) {
+      errors.push(
+        `Categoria ${cat} depășește pragul maxim admis de 12,5% din banca de întrebări (${(share * 100).toFixed(2)}% > 12.50%).`
+      );
     }
     if (count < 150) {
       errors.push(`Categoria ${cat} are prea puține întrebări (${count} < 150).`);
     }
+  }
+
+  // V9.1: Verify that no generic category sourceUrl was bulk-assigned to hundreds of questions
+  for (const [url, count] of sourceUrlCounts.entries()) {
+    if (count > 250) {
+      errors.push(
+        `URL-ul sursă ${url} este reutilizat excesiv (${count} întrebări); fiecare subiect trebuie să aibă sursă specifică.`
+      );
+    }
+  }
+
+  // Verify shared factKeys across choice + estimation pairs
+  let sharedChoiceEstimationFactKeys = 0;
+  for (const [, qList] of factKeyQuestionsMap.entries()) {
+    if (qList.length > 1) {
+      const hasChoice = qList.some((x) => x.type === 'choice');
+      const hasEst = qList.some((x) => x.type === 'estimation');
+      if (hasChoice && hasEst) {
+        sharedChoiceEstimationFactKeys++;
+      }
+    }
+  }
+  if (sharedChoiceEstimationFactKeys < 350) {
+    errors.push(
+      `Prea puține perechi choice/estimation partajează același factKey (${sharedChoiceEstimationFactKeys} < 350).`
+    );
   }
 
   // Verify data/conquiz_db.example.json has users as a plain object {} (not array [])
@@ -156,6 +202,8 @@ function validateQuestionBank() {
     totalQuestions: allQuestions.length,
     approvedCount: reviewStatusBreakdown.approved,
     uniqueFactKeysCount: seenFactKeys.size,
+    sharedChoiceEstimationFactKeys,
+    uniqueSourceUrlsCount: sourceUrlCounts.size,
     choiceCount: choiceQuestions.length,
     estimationCount: estimationQuestions.length,
     duplicateIds: 0,
@@ -173,10 +221,12 @@ if (require.main === module) {
     console.error('Eroare la validarea băncii de întrebări:', report.errors.slice(0, 20));
     process.exit(1);
   }
-  console.log('Validare bancă de întrebări V9.0 reușită:', {
+  console.log('Validare bancă de întrebări V9.1 reușită:', {
     totalQuestions: report.totalQuestions,
     approvedCount: report.approvedCount,
     uniqueFactKeysCount: report.uniqueFactKeysCount,
+    sharedChoiceEstimationFactKeys: report.sharedChoiceEstimationFactKeys,
+    uniqueSourceUrlsCount: report.uniqueSourceUrlsCount,
     choiceCount: report.choiceCount,
     estimationCount: report.estimationCount,
     categories: Object.keys(report.categoryBreakdown).length,

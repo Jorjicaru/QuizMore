@@ -3,6 +3,27 @@ import path from 'path';
 import bcrypt from 'bcryptjs';
 import { Question, UserProfile } from '../src/types/game';
 import { INITIAL_QUESTIONS, normalizeQuestionText } from './questionsData';
+import {
+  isPlaceholderValue,
+  hasSufficientEntropy,
+  isAiStudioPreviewEnv,
+} from './envSecurity';
+import {
+  isPostgresConfigured,
+  isPostgresReady,
+  initPostgresSchema,
+  loadAllFromPostgres,
+  seedQuestionsBatchToPostgres,
+  upsertUserToPostgres,
+  deleteUserFromPostgres,
+  upsertQuestionToPostgres,
+  deleteQuestionFromPostgres,
+  insertGameToPostgres,
+  createFriendRequestWithNotificationToPostgres,
+  upsertFriendToPostgres,
+  deleteFriendFromPostgres,
+  upsertNotificationToPostgres,
+} from './postgresRepo';
 
 export interface UserRecord {
   id: string;
@@ -68,30 +89,67 @@ function atomicWriteJson(filePath: string, data: unknown): void {
   fs.renameSync(tmpFile, filePath);
 }
 
-import {
-  isPostgresConfigured,
-  isPostgresReady,
-  initPostgresSchema,
-  upsertUserToPostgres,
-  deleteUserFromPostgres,
-  upsertQuestionToPostgres,
-  deleteQuestionFromPostgres,
-  insertGameToPostgres,
-  upsertFriendToPostgres,
-  deleteFriendFromPostgres,
-  upsertNotificationToPostgres,
-} from './postgresRepo';
-
 export class Database {
   private data: DatabaseSchema;
+  private postgresAuthoritative = false;
 
   constructor() {
-    this.data = this.loadDatabase();
-    if (isPostgresConfigured()) {
-      initPostgresSchema().catch((err) => {
-        console.error('Failed to initialize PostgreSQL schema:', err);
-      });
+    this.data = this.loadDatabaseFromJsonFallback();
+  }
+
+  /**
+   * Inițializează conexiunea și încarcă datele direct din PostgreSQL atunci când
+   * DATABASE_URL este configurat. În producție, PostgreSQL devine sursa unică de adevăr.
+   */
+  public async init(): Promise<void> {
+    if (!isPostgresConfigured()) {
+      this.postgresAuthoritative = false;
+      return;
     }
+
+    const ok = await initPostgresSchema();
+    if (!ok) {
+      if (process.env.NODE_ENV === 'production' && !isAiStudioPreviewEnv(process.env)) {
+        throw new Error('Nu s-a putut inițializa schema PostgreSQL.');
+      }
+      // In development / preview, keep the JSON-backed app available if an optional DB is unreachable.
+      this.postgresAuthoritative = false;
+      return;
+    }
+
+    let pgData = await loadAllFromPostgres();
+    if (!pgData) {
+      throw new Error('Nu s-au putut încărca datele din PostgreSQL.');
+    }
+
+    if (pgData.questions.length === 0 && INITIAL_QUESTIONS.length > 0) {
+      await seedQuestionsBatchToPostgres(INITIAL_QUESTIONS);
+      pgData = (await loadAllFromPostgres()) || pgData;
+    }
+
+    const adminResult = this.addConfiguredAdmin(pgData);
+    if (adminResult.adminUser) {
+      await upsertUserToPostgres(adminResult.adminUser);
+    }
+
+    this.data = pgData;
+    this.postgresAuthoritative = true;
+  }
+
+  /**
+   * Reîncarcă explicit toate tabelele din PostgreSQL în memoria activă.
+   */
+  public async reloadFromPostgres(): Promise<boolean> {
+    if (!isPostgresConfigured()) return false;
+    const pgData = await loadAllFromPostgres();
+    if (!pgData) return false;
+    this.data = pgData;
+    this.postgresAuthoritative = true;
+    return true;
+  }
+
+  public isPostgresPrimary(): boolean {
+    return this.postgresAuthoritative;
   }
 
   /**
@@ -130,7 +188,7 @@ export class Database {
   } {
     const allQ = this.data.questions || [];
     const approvedQ = allQ.filter(
-      (q) => !q.isDisabled && (!q.reviewStatus || q.reviewStatus === 'approved')
+      (q) => !q.isDisabled && q.reviewStatus === 'approved'
     );
     return {
       storageMode: isPostgresConfigured() ? 'postgres' : 'json',
@@ -141,46 +199,134 @@ export class Database {
     };
   }
 
-  private addConfiguredAdmin(data: DatabaseSchema): boolean {
-    const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-    const username = String(process.env.ADMIN_USERNAME || 'conquiz-admin').trim();
-    const password = String(process.env.ADMIN_PASSWORD || '');
-    if (!email || !password || Object.values(data.users || {}).some(user => user.role === 'admin')) return false;
-    if (email.endsWith('@example.com') || email.endsWith('@domeniu.ro') || /adresa-ta/i.test(email) || /replace|change-me|your-password|inlocuieste/i.test(password)) {
-      throw new Error('Înlocuiește valorile demonstrative ADMIN_EMAIL și ADMIN_PASSWORD din .env cu propriile date înainte de pornire.');
+  public addConfiguredAdmin(
+    data: DatabaseSchema,
+    env: NodeJS.ProcessEnv = process.env
+  ): { changed: boolean; adminUser?: UserRecord } {
+    const email = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const username = String(env.ADMIN_USERNAME || 'conquiz-admin').trim();
+    const password = String(env.ADMIN_PASSWORD || '');
+
+    const isStrictProd =
+      env.STRICT_ENV_VALIDATION === 'true' ||
+      (env.NODE_ENV === 'production' && !isAiStudioPreviewEnv(env));
+
+    if (!email && !password) {
+      return { changed: false };
     }
-    if (password.length < 20 || password.length > 128) {
-      throw new Error('ADMIN_PASSWORD trebuie să aibă între 20 și 128 de caractere aleatorii.');
+
+    const emailInvalid =
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      isPlaceholderValue(email) ||
+      email.endsWith('@example.com') ||
+      email.endsWith('@exemplu.ro');
+
+    const minLen = isStrictProd ? 16 : 12;
+    const passwordInvalid =
+      !password ||
+      password.length < minLen ||
+      password.length > 128 ||
+      isPlaceholderValue(password) ||
+      (isStrictProd && !hasSufficientEntropy(password, 6));
+
+    if (emailInvalid || passwordInvalid) {
+      if (isStrictProd) {
+        if (emailInvalid || isPlaceholderValue(password)) {
+          throw new Error(
+            'Înlocuiește valorile demonstrative ADMIN_EMAIL și ADMIN_PASSWORD din .env cu propriile date înainte de pornire.'
+          );
+        }
+        throw new Error(
+          'ADMIN_PASSWORD trebuie să aibă între 16 și 128 de caractere aleatorii și entropie suficientă.'
+        );
+      } else {
+        console.warn(
+          '[CONQUIZ Auth] ADMIN_EMAIL sau ADMIN_PASSWORD din mediu este neconfigurat/prea scurt pentru creare automată admin în modul development/preview.'
+        );
+        return { changed: false };
+      }
     }
-    if (Object.values(data.users || {}).some(user => user.email.toLowerCase() === email || user.username.toLowerCase() === username.toLowerCase())) {
-      throw new Error('ADMIN_EMAIL sau ADMIN_USERNAME este deja folosit de un cont existent.');
+
+    const existingAdmin = Object.values(data.users || {}).find((u) => u.role === 'admin');
+    if (existingAdmin) {
+      // Allow updating admin email/username/password when valid credentials are provided
+      const passwordMatches = bcrypt.compareSync(password, existingAdmin.passwordHash);
+      if (
+        existingAdmin.email.toLowerCase() === email &&
+        existingAdmin.username === username &&
+        passwordMatches
+      ) {
+        return { changed: false };
+      }
+      existingAdmin.email = email;
+      existingAdmin.username = username;
+      existingAdmin.passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(12));
+      existingAdmin.profile.email = email;
+      existingAdmin.profile.username = username;
+      return { changed: true, adminUser: existingAdmin };
     }
+
+    if (
+      Object.values(data.users || {}).some(
+        (user) =>
+          user.email.toLowerCase() === email ||
+          user.username.toLowerCase() === username.toLowerCase()
+      )
+    ) {
+      if (isStrictProd) {
+        throw new Error('ADMIN_EMAIL sau ADMIN_USERNAME este deja folosit de un cont existent.');
+      }
+      return { changed: false };
+    }
+
     const id = `usr_admin_${Date.now()}`;
     const createdAt = new Date().toISOString();
     const profile: UserProfile = {
-      id, username, email, role: 'admin', avatar: 'av_razes', title: 'Administrator',
-      rating: 1200, matchesPlayed: 0, wins: 0, losses: 0,
-      territoriesConquered: 0, correctAnswersTotal: 0, highestScore: 0, createdAt,
+      id,
+      username,
+      email,
+      role: 'admin',
+      avatar: 'av_razes',
+      title: 'Administrator',
+      rating: 1200,
+      matchesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      territoriesConquered: 0,
+      correctAnswersTotal: 0,
+      highestScore: 0,
+      createdAt,
     };
-    data.users[id] = {
-      id, username, email, passwordHash: bcrypt.hashSync(password, bcrypt.genSaltSync(12)),
-      role: 'admin', createdAt, profile,
+    const adminUser: UserRecord = {
+      id,
+      username,
+      email,
+      passwordHash: bcrypt.hashSync(password, bcrypt.genSaltSync(12)),
+      role: 'admin',
+      createdAt,
+      profile,
     };
-    return true;
+    data.users[id] = adminUser;
+    return { changed: true, adminUser };
   }
 
-  private loadDatabase(): DatabaseSchema {
+  private loadDatabaseFromJsonFallback(): DatabaseSchema {
     if (!fs.existsSync(DB_DIR)) {
       fs.mkdirSync(DB_DIR, { recursive: true });
     }
 
+    let parsed: DatabaseSchema | null = null;
+    let originalSnapshot = '';
+    let originalQuestionCount = 0;
+
     if (fs.existsSync(DB_FILE)) {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
-        const originalSnapshot = JSON.stringify(parsed);
+        const rawObj = JSON.parse(raw);
+        originalSnapshot = JSON.stringify(rawObj);
+        originalQuestionCount = Array.isArray(rawObj.questions) ? rawObj.questions.length : 0;
 
-        // Always sync metadata (factKey, reviewStatus, sourceUrl, sourceTitle) from canonical INITIAL_QUESTIONS
         const canonicalById = new Map<string, Question>();
         const canonicalByFp = new Map<string, Question>();
         for (const seed of INITIAL_QUESTIONS) {
@@ -188,12 +334,12 @@ export class Database {
           canonicalByFp.set(normalizeQuestionText(seed.question), seed);
         }
 
-        if (!Array.isArray(parsed.questions)) parsed.questions = [];
+        if (!Array.isArray(rawObj.questions)) rawObj.questions = [];
         const deduplicatedExisting: Question[] = [];
         const existingIds = new Set<string>();
         const existingFingerprints = new Set<string>();
 
-        for (const q of parsed.questions as Question[]) {
+        for (const q of rawObj.questions as Question[]) {
           if (!q || !q.id || !q.question) continue;
           const fp = normalizeQuestionText(q.question);
           if (!fp || existingIds.has(q.id) || existingFingerprints.has(fp)) continue;
@@ -204,7 +350,7 @@ export class Database {
               ...canonical,
               reportedCount: q.reportedCount ?? canonical.reportedCount,
               isDisabled: q.isDisabled ?? canonical.isDisabled,
-              reviewStatus: q.reviewStatus || canonical.reviewStatus || 'approved',
+              reviewStatus: q.reviewStatus || canonical.reviewStatus || 'draft',
             };
             existingIds.add(mergedQ.id);
             existingFingerprints.add(fp);
@@ -213,7 +359,7 @@ export class Database {
             const customQ: Question = {
               ...q,
               factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
-              reviewStatus: q.reviewStatus || 'approved',
+              reviewStatus: q.reviewStatus || 'draft',
             };
             existingIds.add(customQ.id);
             existingFingerprints.add(fp);
@@ -221,7 +367,6 @@ export class Database {
           }
         }
 
-        const originalQuestionCount = parsed.questions.length;
         for (const seed of INITIAL_QUESTIONS) {
           const fp = normalizeQuestionText(seed.question);
           if (!existingIds.has(seed.id) && !existingFingerprints.has(fp)) {
@@ -230,52 +375,64 @@ export class Database {
             deduplicatedExisting.push(seed);
           }
         }
-        parsed.questions = deduplicatedExisting;
+        rawObj.questions = deduplicatedExisting;
+        rawObj.users = Database.normalizeUsersMap(rawObj.users);
+        rawObj.games = Array.isArray(rawObj.games) ? rawObj.games : [];
+        rawObj.friends = Array.isArray(rawObj.friends) ? rawObj.friends : [];
+        rawObj.notifications = Array.isArray(rawObj.notifications)
+          ? rawObj.notifications.filter((notification: any) =>
+              ['friend_request', 'game_invite', 'system'].includes(notification.type)
+            )
+          : [];
 
-        parsed.users = Database.normalizeUsersMap(parsed.users);
-        parsed.games = Array.isArray(parsed.games) ? parsed.games : [];
-        parsed.friends = Array.isArray(parsed.friends) ? parsed.friends : [];
-        parsed.notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
-        parsed.notifications = parsed.notifications.filter((notification: any) => ['friend_request', 'game_invite', 'system'].includes(notification.type));
-        // Remove legacy progression/shop data from older database snapshots.
-        delete parsed.achievements;
-        delete parsed.userAchievements;
-        delete parsed.dailyMissions;
-        delete parsed.userMissions;
-        delete parsed.shopItems;
-        delete parsed.userInventory;
-        for (const user of Object.values(parsed.users || {}) as any[]) {
+        delete rawObj.achievements;
+        delete rawObj.userAchievements;
+        delete rawObj.dailyMissions;
+        delete rawObj.userMissions;
+        delete rawObj.shopItems;
+        delete rawObj.userInventory;
+        for (const user of Object.values(rawObj.users || {}) as any[]) {
           if (user.profile) {
             delete user.profile.level;
             delete user.profile.xp;
             delete user.profile.coins;
           }
         }
-        const adminAdded = this.addConfiguredAdmin(parsed as DatabaseSchema);
-        if (adminAdded || parsed.questions.length !== originalQuestionCount || JSON.stringify(parsed) !== originalSnapshot) {
-          atomicWriteJson(DB_FILE, parsed);
-        }
-        return parsed as DatabaseSchema;
+        parsed = rawObj as DatabaseSchema;
       } catch (e) {
-        console.error('Error reading db file, re-initializing', e);
+        console.error('Error reading JSON db file, initializing clean structure:', e);
       }
     }
 
-    // Empty default database. Never ship pre-created public admin/demo credentials.
-    const defaultData: DatabaseSchema = {
-      users: {},
-      questions: [...INITIAL_QUESTIONS],
-      games: [],
-      friends: [],
-      notifications: [],
-    };
+    if (!parsed) {
+      parsed = {
+        users: {},
+        questions: [...INITIAL_QUESTIONS],
+        games: [],
+        friends: [],
+        notifications: [],
+      };
+    }
 
-    this.addConfiguredAdmin(defaultData);
-    atomicWriteJson(DB_FILE, defaultData);
-    return defaultData;
+    // Call addConfiguredAdmin OUTSIDE the JSON parse try/catch block so validation errors are never masked
+    const { changed: adminChanged } = this.addConfiguredAdmin(parsed);
+    if (
+      !isPostgresConfigured() &&
+      (adminChanged ||
+        parsed.questions.length !== originalQuestionCount ||
+        JSON.stringify(parsed) !== originalSnapshot)
+    ) {
+      atomicWriteJson(DB_FILE, parsed);
+    }
+
+    return parsed;
   }
 
   public save(): void {
+    // În producție cu PostgreSQL activ, PostgreSQL este sursa principală, nu JSON-ul local
+    if (this.postgresAuthoritative || isPostgresConfigured()) {
+      return;
+    }
     try {
       atomicWriteJson(DB_FILE, this.data);
     } catch (e) {
@@ -290,13 +447,13 @@ export class Database {
 
   public findUserByUsername(username: string): UserRecord | undefined {
     return Object.values(this.data.users).find(
-      u => u.username.toLowerCase() === username.toLowerCase()
+      (u) => u.username.toLowerCase() === username.toLowerCase()
     );
   }
 
   public findUserByEmail(email: string): UserRecord | undefined {
     return Object.values(this.data.users).find(
-      u => u.email.toLowerCase() === email.toLowerCase()
+      (u) => u.email.toLowerCase() === email.toLowerCase()
     );
   }
 
@@ -356,24 +513,38 @@ export class Database {
   }
 
   public addQuestion(question: Question): Question {
-    this.data.questions.push(question);
+    // V9.1: Întrebările nou create au reviewStatus = 'draft' în mod implicit
+    const normalized: Question = {
+      ...question,
+      reviewStatus: question.reviewStatus || 'draft',
+      verified: question.reviewStatus === 'approved',
+      factKey: question.factKey || `fact_${question.category || 'cg'}_${question.id}`,
+    };
+    this.data.questions.push(normalized);
     this.save();
-    void upsertQuestionToPostgres(question);
-    return question;
+    void upsertQuestionToPostgres(normalized);
+    return normalized;
   }
 
   public updateQuestion(id: string, updates: Partial<Question>): Question | null {
-    const idx = this.data.questions.findIndex(q => q.id === id);
+    const idx = this.data.questions.findIndex((q) => q.id === id);
     if (idx === -1) return null;
-    this.data.questions[idx] = { ...this.data.questions[idx], ...updates };
+    const merged: Question = {
+      ...this.data.questions[idx],
+      ...updates,
+    };
+    if (updates.reviewStatus) {
+      merged.verified = updates.reviewStatus === 'approved';
+    }
+    this.data.questions[idx] = merged;
     this.save();
-    void upsertQuestionToPostgres(this.data.questions[idx]);
-    return this.data.questions[idx];
+    void upsertQuestionToPostgres(merged);
+    return merged;
   }
 
   public deleteQuestion(id: string): boolean {
     const len = this.data.questions.length;
-    this.data.questions = this.data.questions.filter(q => q.id !== id);
+    this.data.questions = this.data.questions.filter((q) => q.id !== id);
     if (this.data.questions.length !== len) {
       this.save();
       void deleteQuestionFromPostgres(id);
@@ -384,10 +555,14 @@ export class Database {
 
   // --- GAMES ---
   public recordGame(game: GameRecord): void {
-    this.data.games.unshift(game);
-    // Keep max 200 game records
-    if (this.data.games.length > 200) {
-      this.data.games.pop();
+    const existingIdx = this.data.games.findIndex((g) => g.id === game.id);
+    if (existingIdx !== -1) {
+      this.data.games[existingIdx] = game;
+    } else {
+      this.data.games.unshift(game);
+      if (this.data.games.length > 200) {
+        this.data.games.pop();
+      }
     }
     this.save();
     void insertGameToPostgres(game);
@@ -398,14 +573,26 @@ export class Database {
   }
 
   public getUserGameHistory(userId: string): GameRecord[] {
-    return this.data.games.filter(g =>
-      g.playersSummary.some(p => p.userId === userId)
+    return this.data.games.filter((g) =>
+      g.playersSummary.some((p) => p.userId === userId)
     );
   }
 
   // --- FRIENDS ---
-  public getFriends(userId: string): Array<{ friend: UserProfile; status: 'pending' | 'accepted'; isRequester: boolean; id: string }> {
-    const list: Array<{ friend: UserProfile; status: 'pending' | 'accepted'; isRequester: boolean; id: string }> = [];
+  public getFriends(
+    userId: string
+  ): Array<{
+    friend: UserProfile;
+    status: 'pending' | 'accepted';
+    isRequester: boolean;
+    id: string;
+  }> {
+    const list: Array<{
+      friend: UserProfile;
+      status: 'pending' | 'accepted';
+      isRequester: boolean;
+      id: string;
+    }> = [];
     for (const f of this.data.friends) {
       if (f.requesterId === userId) {
         const other = this.findUserById(f.recipientId);
@@ -425,35 +612,44 @@ export class Database {
   public sendFriendRequest(requesterId: string, recipientId: string): FriendRecord | null {
     if (requesterId === recipientId) return null;
     const exists = this.data.friends.find(
-      f => (f.requesterId === requesterId && f.recipientId === recipientId) ||
-           (f.requesterId === recipientId && f.recipientId === requesterId)
+      (f) =>
+        (f.requesterId === requesterId && f.recipientId === recipientId) ||
+        (f.requesterId === recipientId && f.recipientId === requesterId)
     );
     if (exists) return null;
 
+    const nowIso = new Date().toISOString();
     const record: FriendRecord = {
       id: `fr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       requesterId,
       recipientId,
       status: 'pending',
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
     };
-    this.data.friends.push(record);
-    void upsertFriendToPostgres(record);
-    this.addNotification({
-      id: `notif_${Date.now()}`,
+    const notif: NotificationRecord = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId: recipientId,
       title: 'Cerere de prietenie nouă',
-      message: `${this.findUserById(requesterId)?.username || 'Un jucător'} ți-a trimis o cerere de prietenie!`,
+      message: `${
+        this.findUserById(requesterId)?.username || 'Un jucător'
+      } ți-a trimis o cerere de prietenie!`,
       type: 'friend_request',
       isRead: false,
-      createdAt: new Date().toISOString(),
-    });
+      createdAt: nowIso,
+    };
+
+    this.data.friends.push(record);
+    this.data.notifications.unshift(notif);
+    if (this.data.notifications.length > 500) {
+      this.data.notifications.pop();
+    }
     this.save();
+    void createFriendRequestWithNotificationToPostgres(record, notif);
     return record;
   }
 
   public respondFriendRequest(requestId: string, accept: boolean): boolean {
-    const idx = this.data.friends.findIndex(f => f.id === requestId);
+    const idx = this.data.friends.findIndex((f) => f.id === requestId);
     if (idx === -1) return false;
     if (accept) {
       this.data.friends[idx].status = 'accepted';
@@ -468,7 +664,7 @@ export class Database {
 
   // --- NOTIFICATIONS ---
   public getNotifications(userId: string): NotificationRecord[] {
-    return this.data.notifications.filter(n => n.userId === userId).slice(0, 30);
+    return this.data.notifications.filter((n) => n.userId === userId).slice(0, 30);
   }
 
   public addNotification(notif: NotificationRecord): void {
@@ -481,7 +677,7 @@ export class Database {
   }
 
   public markNotificationAsRead(id: string, userId: string): boolean {
-    const notif = this.data.notifications.find(n => n.id === id && n.userId === userId);
+    const notif = this.data.notifications.find((n) => n.id === id && n.userId === userId);
     if (notif) {
       notif.isRead = true;
       this.save();

@@ -1,46 +1,55 @@
-# 💾 CONQUIZ – Proceduri de Backup și Restaurare (PostgreSQL & JSON)
+# Procedura de Backup și Restaurare PostgreSQL – CONQUIZ V9.1
 
-Acest document descrie procedurile operaționale pentru salvarea și restaurarea datelor în producție.
+În **CONQUIZ V9.1**, **PostgreSQL** este sursa unică de adevăr în producție pentru utilizatori, întrebări, meciuri, rezultate pe jucător (`game_player_results`), prieteni, notificări, loguri de audit și snapshot-uri ale camerelor active.
 
 ---
 
-## 1. Backup Manual sau Programat (`scripts/backup_postgres.sh`)
+## 1. Realizarea unui Backup PostgreSQL (`scripts/backup_postgres.sh`)
 
-Scriptul `scripts/backup_postgres.sh` creează o arhivă comprimată `.sql.gz` din containerul PostgreSQL (`conquiz-postgres`) și, dacă există, o copie `.json.gz` a fișierului `data/conquiz_db.json`.
+Scriptul `scripts/backup_postgres.sh` extrage un dump SQL complet (`pg_dump --clean --if-exists --no-owner --no-privileges`), îl comprimă cu `gzip -9` și verifică integritatea arhivei rezultate (`gzip -t`).
 
-### Rulare Manuală:
+### Rulare manuală:
 ```bash
-chmod +x scripts/backup_postgres.sh scripts/restore_postgres.sh
 ./scripts/backup_postgres.sh
 ```
-Fișierele sunt salvate în directorul `./backups/` (ex. `backups/conquiz_pg_20261110T014500Z.sql.gz`), iar backup-urile mai vechi de `14` zile (`RETENTION_DAYS=14`) sunt șterse automat.
 
-### Programare Automată prin Cron (Zilnic la 03:30 UTC):
-```bash
-crontab -e
-```
-Adăugați linia:
+Fișierul rezultat este salvat în `./backups/conquiz_pg_<TIMESTAMP>.sql.gz`. Dacă nici containerul `conquiz-postgres` nu este pornit și nici variabila `DATABASE_URL` nu este definită, scriptul se oprește imediat cu cod de eroare (`exit 1`).
+
+### Programare automată (Cron zilnic la 03:30 UTC):
 ```cron
-30 3 * * * cd /home/ubuntu/conquiz && ./scripts/backup_postgres.sh >> /var/log/conquiz_backup.log 2>&1
+30 3 * * * cd /opt/conquiz && ./scripts/backup_postgres.sh >> /var/log/conquiz_backup.log 2>&1
 ```
 
 ---
 
-## 2. Restaurarea Bazei de Date (`scripts/restore_postgres.sh`)
+## 2. Restaurarea unui Backup PostgreSQL (`scripts/restore_postgres.sh`)
 
-Pentru a restaura baza de date PostgreSQL dintr-o arhivă `.sql.gz`:
+Scriptul `scripts/restore_postgres.sh` validează integritatea arhivei `.sql.gz` și o restaurează cu `psql -v ON_ERROR_STOP=1`.
+
+### A. Restaurare într-o bază de date separată de verificare (Recomandat înainte de producție)
+
+Pentru a testa un backup fără a suprascrie baza de date activă:
 
 ```bash
-./scripts/restore_postgres.sh ./backups/conquiz_pg_20261110T014500Z.sql.gz
+# 1. Creează baza de date temporară de verificare în containerul PostgreSQL
+docker exec -i conquiz-postgres psql -U conquiz_user -d postgres -c "DROP DATABASE IF EXISTS conquiz_restore_verify; CREATE DATABASE conquiz_restore_verify;"
+
+# 2. Restaurează arhiva de backup în baza de verificare
+./scripts/restore_postgres.sh ./backups/conquiz_pg_20261110T120000Z.sql.gz conquiz_restore_verify
+
+# 3. Verifică numărul de utilizatori, întrebări și meciuri restaurate
+docker exec -i conquiz-postgres psql -U conquiz_user -d conquiz_restore_verify -c "SELECT (SELECT COUNT(*) FROM users) AS users, (SELECT COUNT(*) FROM questions) AS questions, (SELECT COUNT(*) FROM games) AS games, (SELECT COUNT(*) FROM game_player_results) AS results;"
 ```
 
-După restaurarea bazei de date, reporniți containerul aplicației pentru a reîncărca memoria cache din PostgreSQL:
+### B. Restaurare în baza de date principală de producție
+
 ```bash
-docker compose restart app
+# 1. Oprește temporar containerul aplicației pentru a închide conexiunile active
+docker compose stop app
+
+# 2. Rulează restaurarea în baza principală
+./scripts/restore_postgres.sh ./backups/conquiz_pg_20261110T120000Z.sql.gz
+
+# 3. Repornește aplicația
+docker compose start app
 ```
-
----
-
-## 3. Snapshot-uri la Nivel de VM Proxmox
-
-Pe lângă backup-ul SQL zilnic, se recomandă configurarea **Proxmox Backup Server (PBS)** sau a unui job **VZDUMP** săptămânal pentru VM-ul gazdă în modul `snapshot` cu `qemu-guest-agent` activat.

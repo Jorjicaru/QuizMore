@@ -754,6 +754,7 @@ function loadCanonicalQuestionBank(): Question[] {
     if (!q || !q.id || !q.question) return;
     const fp = normalizeQuestionText(q.question);
     if (!fp || seenIds.has(q.id) || seenFingerprints.has(fp)) return;
+    const status = q.reviewStatus || 'draft';
     const enriched: Question = {
       ...q,
       unit:
@@ -762,15 +763,12 @@ function loadCanonicalQuestionBank(): Question[] {
             ? q.unit.trim()
             : 'valoare'
           : q.unit,
-      reviewStatus: q.reviewStatus || 'approved',
+      reviewStatus: status,
       factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
-      sourceUrl:
-        q.sourceUrl && q.sourceUrl !== 'https://ro.wikipedia.org'
-          ? q.sourceUrl
-          : 'https://ro.wikipedia.org/wiki/Portal:Rom%C3%A2nia',
-      sourceTitle: q.sourceTitle || 'Enciclopedia CONQUIZ – Referință Verificată',
-      sourceCheckedAt: q.sourceCheckedAt || '2026-11-10',
-      verified: (q.reviewStatus || 'approved') === 'approved',
+      sourceUrl: q.sourceUrl || undefined,
+      sourceTitle: q.sourceTitle || undefined,
+      sourceCheckedAt: q.sourceCheckedAt || undefined,
+      verified: status === 'approved',
     };
     seenIds.add(enriched.id);
     seenFingerprints.add(fp);

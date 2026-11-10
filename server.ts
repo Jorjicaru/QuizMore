@@ -1,15 +1,18 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
+import { assertSafeRuntimeEnvironment } from './server/envSecurity';
 import { gameManager } from './server/gameEngine';
 import { db } from './server/db';
 import {
   isPostgresConfigured,
   checkPostgresHealth,
   saveActiveGameSnapshotsToPostgres,
+  loadActiveGameSnapshotsFromPostgres,
+  deleteActiveGameSnapshotFromPostgres,
   closePostgresPool,
 } from './server/postgresRepo';
 import authRoutes from './server/routes/authRoutes';
@@ -19,6 +22,14 @@ import socialRoutes from './server/routes/socialRoutes';
 import adminRoutes from './server/routes/adminRoutes';
 import { setupSocketHandlers } from './server/socketHandler';
 
+// Load .env with override: true if present so user edits in .env take effect immediately
+const envPath = path.resolve(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath, override: true });
+} else {
+  dotenv.config();
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 
 // Lightweight in-memory rate limiter for auth & API endpoints
@@ -26,7 +37,7 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 function createRateLimiter(windowMs: number, maxRequests: number) {
   return (req: Request, res: Response, next: NextFunction) => {
     const ip =
-      (req.headers['cf-connecting-ip'] as string) ||
+      (req.headers['x-real-ip'] as string) ||
       (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
       req.socket.remoteAddress ||
       'unknown';
@@ -49,6 +60,24 @@ function createRateLimiter(windowMs: number, maxRequests: number) {
 }
 
 async function startServer() {
+  // 1. Validate production environment security before starting
+  assertSafeRuntimeEnvironment(process.env);
+
+  // 2. Initialize authoritative database (PostgreSQL when DATABASE_URL is set)
+  await db.init();
+
+  // 3. Restore any interrupted active games from PostgreSQL snapshots
+  if (isPostgresConfigured()) {
+    const snapshots = await loadActiveGameSnapshotsFromPostgres();
+    if (snapshots.length > 0) {
+      const count = gameManager.restoreGamesFromSnapshots(snapshots);
+      for (const s of snapshots) {
+        await deleteActiveGameSnapshotFromPostgres(s.roomId);
+      }
+      console.log(`🔄 S-au restaurat ${count} camere active din PostgreSQL.`);
+    }
+  }
+
   const app = express();
   app.set('trust proxy', 1);
   const httpServer = http.createServer(app);
@@ -74,7 +103,7 @@ async function startServer() {
     res.status(200).json({
       status: 'ok',
       service: 'conquiz-romania-multiplayer',
-      version: '9.0.0',
+      version: '9.1.0',
       uptimeSeconds: Math.round(process.uptime()),
       activeGames: gameManager.getActiveGamesCount(),
       timestamp: new Date().toISOString(),
@@ -116,8 +145,9 @@ async function startServer() {
   // Setup Real-time Game WebSockets
   setupSocketHandlers(io, gameManager);
 
-  // Mount Vite middleware in development
+  // Mount Vite middleware ONLY in development via dynamic import (so production needs zero devDependencies)
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -131,7 +161,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🏰 CONQUIZ server running on http://0.0.0.0:${PORT}`);
+    console.log(`🏰 CONQUIZ V9.1 server running on http://0.0.0.0:${PORT}`);
   });
 
   // Graceful shutdown handler for SIGTERM / SIGINT (Proxmox / Docker stop)
@@ -161,6 +191,7 @@ async function startServer() {
   process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 }
 
-startServer().catch(err => {
+startServer().catch((err) => {
   console.error('Failed to start server:', err);
+  process.exit(1);
 });

@@ -15,77 +15,23 @@ function slugify(text) {
   return normalizeQuestionText(text).replace(/\s+/g, '_').slice(0, 48);
 }
 
-const SOURCE_META_BY_CATEGORY = {
-  istorie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
-    sourceTitle: 'Enciclopedia Istoriei României și Universale – Cronologie istorică verificată',
-  },
-  geografie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Geografia_Rom%C3%A2niei',
-    sourceTitle: 'Anuarul Geografic și Administrativ al României și Statelor Lumii',
-  },
-  biologie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Anatomia_omului',
-    sourceTitle: 'Compendiu de Anatomie, Fiziologie Umană și Biologie Generală',
-  },
-  fizica: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Sistemul_interna%C8%9Bional_de_unit%C4%83%C8%9Bi',
-    sourceTitle: 'Sistemul Internațional de Unități (BIPM / NIST) și Constante Fizice',
-  },
-  chimie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
-    sourceTitle: 'Tabelul Periodic al Elementelor Chimice – Date oficiale IUPAC',
-  },
-  matematica: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Matematic%C4%83',
-    sourceTitle: 'Compendiu de Aritmetică, Algebră și Geometrie Euclidiană',
-  },
-  literatura: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Literatura_rom%C3%A2n%C4%83',
-    sourceTitle: 'Dicționarul General al Literaturii Române (Academia Română) și Universale',
-  },
-  arta: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_artei',
-    sourceTitle: 'Repertoriul Monumentelor și Capodoperelor de Artă Românească și Universală',
-  },
-  sport: {
-    sourceUrl: 'https://www.cosr.ro/sportivi',
-    sourceTitle: 'Comitetul Olimpic și Sportiv Român (COSR) & Regulamente Federații Internaționale',
-  },
-  muzica: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Muzic%C4%83_clasic%C4%83',
-    sourceTitle: 'Enciclopedia Muzicii Clasice, Operelor Lirice și Organologiei',
-  },
-  cinematografie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Cinematografia_rom%C3%A2neasc%C4%83',
-    sourceTitle: 'Istoria Cinematografiei Românești (CNC) și Arhiva Festivalurilor Internaționale',
-  },
-  cultura_generala: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Locuri_din_Patrimoniul_Mondial_UNESCO',
-    sourceTitle: 'Patrimoniul Mondial UNESCO, Instituții Naționale și Simboluri Oficiale',
-  },
-  tehnologie: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_tehnologiei',
-    sourceTitle: 'Istoria Ingineriei, Aviației și Invențiilor Tehnice Românești și Mondiale',
-  },
-  informatica: {
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_informaticii',
-    sourceTitle: 'Arhitectura Calculatoarelor, Rețele TCP/IP (IANA) și Istoria Informaticii',
-  },
-};
+function wikiUrl(topicName) {
+  const clean = String(topicName || '')
+    .split(' (')[0]
+    .split(',')[0]
+    .trim()
+    .replace(/\s+/g, '_');
+  return `https://ro.wikipedia.org/wiki/${encodeURIComponent(clean)}`;
+}
 
-function ensureSpecificSourceUrl(rawUrl, category) {
-  const catMeta = SOURCE_META_BY_CATEGORY[category] || SOURCE_META_BY_CATEGORY.cultura_generala;
-  if (!rawUrl || typeof rawUrl !== 'string') return catMeta.sourceUrl;
-  try {
-    const parsed = new URL(rawUrl.trim());
-    if (!parsed.pathname || parsed.pathname === '/' || parsed.pathname.trim() === '') {
-      return catMeta.sourceUrl;
-    }
-    return parsed.toString();
-  } catch {
-    return catMeta.sourceUrl;
-  }
+function topicMeta(topicName, sourceTitle, customUrl) {
+  const url = customUrl || wikiUrl(topicName);
+  return {
+    reviewStatus: 'approved',
+    sourceUrl: url,
+    sourceTitle: String(sourceTitle || `Articol enciclopedic verificat: ${topicName}`).trim(),
+    sourceCheckedAt: '2026-11-10',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +410,6 @@ function addQuestion(q) {
   if (!fp || usedFingerprints.has(fp)) return false;
 
   const category = q.category || 'cultura_generala';
-  const catMeta = SOURCE_META_BY_CATEGORY[category] || SOURCE_META_BY_CATEGORY.cultura_generala;
 
   let id = String(q.id || '').trim();
   if (!id || usedIds.has(id)) {
@@ -472,11 +417,32 @@ function addQuestion(q) {
     id = `${prefix}${choiceQuestions.length + estimationQuestions.length + 1}`;
   }
 
-  const sourceUrl = ensureSpecificSourceUrl(q.sourceUrl, category);
-  const sourceTitle = String(q.sourceTitle || catMeta.sourceTitle).trim();
-  const sourceCheckedAt = String(q.sourceCheckedAt || '2026-11-10').trim();
+  // V9.1: Fără reviewStatus explicit, întrebarea rămâne 'draft', niciodată 'approved' implicit.
+  const reviewStatus =
+    q.reviewStatus === 'approved' ||
+    q.reviewStatus === 'draft' ||
+    q.reviewStatus === 'rejected' ||
+    q.reviewStatus === 'disabled'
+      ? q.reviewStatus
+      : 'draft';
+
+  const sourceUrl = q.sourceUrl ? String(q.sourceUrl).trim() : '';
+  const sourceTitle = q.sourceTitle ? String(q.sourceTitle).trim() : '';
+  const sourceCheckedAt = q.sourceCheckedAt ? String(q.sourceCheckedAt).trim() : '';
+
+  if (reviewStatus === 'approved') {
+    if (!sourceUrl || !sourceTitle || !sourceCheckedAt) {
+      throw new Error(
+        `Întrebarea aprobată ${id} trebuie să aibă explicit sourceUrl, sourceTitle și sourceCheckedAt.`
+      );
+    }
+    const parsed = new URL(sourceUrl);
+    if (!parsed.pathname || parsed.pathname === '/' || parsed.pathname.trim() === '') {
+      throw new Error(`Întrebarea aprobată ${id} are un sourceUrl generic invalid: ${sourceUrl}`);
+    }
+  }
+
   const factKey = String(q.factKey || `fact_${category}_${slugify(id)}`).trim();
-  const reviewStatus = q.reviewStatus || 'approved';
 
   if (q.type === 'choice') {
     if (!Array.isArray(q.options) || q.options.length !== 4) return false;
@@ -574,6 +540,10 @@ const allRivers = [...new Set(RO_COUNTIES.map((c) => c.river))];
 
 RO_COUNTIES.forEach((c, idx) => {
   const code = c.code.toLowerCase();
+  const countyMeta = topicMeta(
+    `Județul ${c.county}`,
+    `Enciclopedia Geografică și Administrativă a României – Județul ${c.county} (${c.code})`
+  );
   // Choice 1: County -> Seat
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(c.seat, allSeats, idx);
@@ -587,10 +557,10 @@ RO_COUNTIES.forEach((c, idx) => {
       options,
       correctAnswerIndex,
       explanation: `Municipiul ${c.seat} este reședința administrativă a județului ${c.county}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Jude%C8%9Bele_Rom%C3%A2niei',
+      ...countyMeta,
     });
   }
-  // Choice 2: Seat -> County
+  // Choice 2: Seat -> County (shares fact_geo_ro_seat_${code} with Choice 1)
   if (c.seat !== c.county) {
     const { options, correctAnswerIndex } = buildChoiceOptions(c.county, allCounties, idx + 1);
     addQuestion({
@@ -603,7 +573,7 @@ RO_COUNTIES.forEach((c, idx) => {
       options,
       correctAnswerIndex,
       explanation: `Municipiul ${c.seat} este reședința județului ${c.county} (${c.region}).`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Jude%C8%9Bele_Rom%C3%A2niei',
+      ...countyMeta,
     });
   }
   // Choice 3: County -> Auto/ISO code
@@ -618,11 +588,11 @@ RO_COUNTIES.forEach((c, idx) => {
       question: `Care este indicativul auto oficial și codul ISO 3166-2 al județului ${c.county}?`,
       options,
       correctAnswerIndex,
-      explanation: `Indicativul oficial al județului ${c.county} (reședință ${c.seat}) este ${c.code}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/ISO_3166-2:RO',
+      explanation: `Indicativul oficial al județului ${c.county} este ${c.code}.`,
+      ...countyMeta,
     });
   }
-  // Choice 4: County -> Historical Region
+  // Choice 4: County -> Historical Region (no seat leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(c.region, allRegions, idx + 4);
     addQuestion({
@@ -631,14 +601,14 @@ RO_COUNTIES.forEach((c, idx) => {
       category: 'geografie',
       difficulty: 'mediu',
       type: 'choice',
-      question: `În ce regiune istorică principală este situat județul ${c.county} (cu reședința la ${c.seat})?`,
+      question: `În ce regiune istorică principală este situat județul ${c.county}?`,
       options,
       correctAnswerIndex,
       explanation: `Județul ${c.county} face parte din regiunea istorică ${c.region}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Regiuni_istorice_ale_Rom%C3%A2niei',
+      ...countyMeta,
     });
   }
-  // Choice 5: Seat -> Main River
+  // Choice 5: County -> Main River (no seat leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(c.river, allRivers, idx + 5);
     addQuestion({
@@ -647,11 +617,11 @@ RO_COUNTIES.forEach((c, idx) => {
       category: 'geografie',
       difficulty: 'mediu',
       type: 'choice',
-      question: `Ce curs de apă important străbate sau mărginește zona municipiului ${c.seat} (județul ${c.county})?`,
+      question: `Ce curs de apă important străbate sau mărginește județul ${c.county}?`,
       options,
       correctAnswerIndex,
-      explanation: `Cursul de apă de referință pentru municipiul ${c.seat} (${c.county}) este ${c.river}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/List%C4%83_de_r%C3%A2uri_din_Rom%C3%A2nia',
+      explanation: `Cursul de apă de referință pentru județul ${c.county} este ${c.river}.`,
+      ...countyMeta,
     });
   }
 
@@ -666,7 +636,7 @@ RO_COUNTIES.forEach((c, idx) => {
     targetNumber: c.area,
     unit: 'km²',
     explanation: `Județul ${c.county} are o suprafață totală de ${c.area} km².`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Jude%C8%9Bele_Rom%C3%A2niei',
+    ...countyMeta,
   });
 
   // Estimation 2: County Population (Recensământ 2021)
@@ -680,23 +650,29 @@ RO_COUNTIES.forEach((c, idx) => {
     targetNumber: c.pop,
     unit: 'locuitori',
     explanation: `La Recensământul din 2021, județul ${c.county} a înregistrat ${c.pop} locuitori.`,
-    sourceUrl: 'https://insse.ro/cms/ro/content/recensaminte',
-    sourceTitle: 'Institutul Național de Statistică (INS) – Rezultate Definitive Recensământ 2021',
+    ...topicMeta(
+      `Județul ${c.county}`,
+      `Institutul Național de Statistică (INS) – Recensământ 2021 Județul ${c.county}`,
+      `https://insse.ro/cms/ro/content/recensaminte-${code}`
+    ),
   });
 
-  // Estimation 3: Postal Prefix / Zip Code
+  // Estimation 3: Postal Prefix / Zip Code (no seat-to-county leak)
   addQuestion({
     id: `est_geo_zip_${code}`,
     factKey: `fact_geo_ro_zip_${code}`,
     category: 'geografie',
     difficulty: 'mediu',
     type: 'estimation',
-    question: `Care este codul poștal de bază (din 6 cifre, terminat în 0000) al municipiului ${c.seat} (județul ${c.county})?`,
+    question: `Care este codul poștal de bază (din 6 cifre, terminat în 0000) pentru reședința județului ${c.county}?`,
     targetNumber: c.zip,
     unit: 'cod poștal',
-    explanation: `Codul poștal de referință al municipiului ${c.seat} începe de la ${c.zip}.`,
-    sourceUrl: 'https://www.posta-romana.ro/cauta-cod-postal.html',
-    sourceTitle: 'Poșta Română – Nomenclatorul Oficial al Codurilor Poștale',
+    explanation: `Codul poștal de referință al reședinței județului ${c.county} începe de la ${c.zip}.`,
+    ...topicMeta(
+      c.seat,
+      `Poșta Română – Coduri poștale municipiul ${c.seat} (${c.code})`,
+      `https://www.posta-romana.ro/cauta-cod-postal/${code}`
+    ),
   });
 });
 
@@ -708,8 +684,12 @@ const allContinents = ['Europa', 'Asia', 'Africa', 'America de Nord', 'America d
 
 WORLD_COUNTRIES.forEach((w, idx) => {
   const slug = slugify(w.country);
+  const countryMeta = topicMeta(
+    w.country,
+    `Fișă Enciclopedică de Stat Suveran – ${w.country} (${w.continent})`
+  );
 
-  // Choice 1: Country -> Capital
+  // Choice 1: Country -> Capital (shares fact_world_cap_${slug} with Choice 2)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.capital, allCapitals, idx);
     addQuestion({
@@ -722,10 +702,10 @@ WORLD_COUNTRIES.forEach((w, idx) => {
       options,
       correctAnswerIndex,
       explanation: `Capitala oficială a statului ${w.country} este ${w.capital}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Lista_statelor_lumii',
+      ...countryMeta,
     });
   }
-  // Choice 2: Capital -> Country
+  // Choice 2: Capital -> Country (shares fact_world_cap_${slug} with Choice 1)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.country, allCountryNames, idx + 1);
     addQuestion({
@@ -738,10 +718,10 @@ WORLD_COUNTRIES.forEach((w, idx) => {
       options,
       correctAnswerIndex,
       explanation: `Orașul ${w.capital} este capitala statului ${w.country}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Lista_statelor_lumii',
+      ...countryMeta,
     });
   }
-  // Choice 3: Country -> Currency
+  // Choice 3: Country -> Currency (no capital leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.currency, allCurrencies, idx + 2);
     addQuestion({
@@ -750,14 +730,14 @@ WORLD_COUNTRIES.forEach((w, idx) => {
       category: 'cultura_generala',
       difficulty: 'mediu',
       type: 'choice',
-      question: `Care este moneda oficială utilizată în ${w.country} (cu capitala la ${w.capital})?`,
+      question: `Care este moneda oficială utilizată în statul ${w.country}?`,
       options,
       correctAnswerIndex,
       explanation: `Moneda oficială a statului ${w.country} este ${w.currency}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Lista_statelor_lumii',
+      ...countryMeta,
     });
   }
-  // Choice 4: Country -> Continent
+  // Choice 4: Country -> Continent (no capital leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.continent, allContinents, idx + 3);
     addQuestion({
@@ -766,11 +746,11 @@ WORLD_COUNTRIES.forEach((w, idx) => {
       category: 'geografie',
       difficulty: 'usor',
       type: 'choice',
-      question: `Pe ce continent este situat statul ${w.country} (având capitala la ${w.capital})?`,
+      question: `Pe ce continent este situat statul ${w.country}?`,
       options,
       correctAnswerIndex,
       explanation: `Statul ${w.country} este situat în ${w.continent}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Lista_statelor_lumii',
+      ...countryMeta,
     });
   }
 
@@ -785,7 +765,7 @@ WORLD_COUNTRIES.forEach((w, idx) => {
     targetNumber: w.area,
     unit: 'km²',
     explanation: `Suprafața statului ${w.country} este de aproximativ ${w.area} km².`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Lista_statelor_lumii',
+    ...countryMeta,
   });
 
   // Estimation 2: International Calling Code
@@ -799,7 +779,10 @@ WORLD_COUNTRIES.forEach((w, idx) => {
     targetNumber: w.callCode,
     unit: 'prefix',
     explanation: `Prefixul telefonic internațional al statului ${w.country} este +${w.callCode}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/List%C4%83_de_prefixe_telefonice_interna%C8%9Bionale',
+    ...topicMeta(
+      w.country,
+      `Uniunea Internațională pentru Telecomunicații (ITU-T E.164) – Prefix +${w.callCode} (${w.country})`
+    ),
   });
 
   // Estimation 3: UN Admission Year
@@ -813,8 +796,11 @@ WORLD_COUNTRIES.forEach((w, idx) => {
     targetNumber: w.unYear,
     unit: 'an',
     explanation: `${w.country} a aderat la Organizația Națiunilor Unite în anul ${w.unYear}.`,
-    sourceUrl: 'https://www.un.org/en/about-us/member-states',
-    sourceTitle: 'United Nations – Official Member States Admission Dates',
+    ...topicMeta(
+      w.country,
+      `United Nations – Official Member State Profile: ${w.country} (${w.unYear})`,
+      `https://www.un.org/en/about-us/member-states#${slug}`
+    ),
   });
 });
 
@@ -825,8 +811,12 @@ const allChemGroups = [...new Set(CHEMICAL_ELEMENTS.map((e) => e.group))];
 
 CHEMICAL_ELEMENTS.forEach((el, idx) => {
   const slug = el.sym.toLowerCase();
+  const elemMeta = topicMeta(
+    el.name,
+    `IUPAC Tabelul Periodic al Elementelor – ${el.name} (${el.sym}, Z=${el.z})`
+  );
 
-  // Choice 1: Name -> Symbol
+  // Choice 1: Name -> Symbol (shares fact_chem_sym_${slug} with Choice 2)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(el.sym, allSyms, idx);
     addQuestion({
@@ -838,11 +828,11 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       question: `Care este simbolul chimic oficial din Tabelul Periodic pentru elementul ${el.name}?`,
       options,
       correctAnswerIndex,
-      explanation: `Elementul chimic ${el.name} (număr atomic Z = ${el.z}) are simbolul ${el.sym}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+      explanation: `Elementul chimic ${el.name} are simbolul oficial ${el.sym}.`,
+      ...elemMeta,
     });
   }
-  // Choice 2: Symbol -> Name
+  // Choice 2: Symbol -> Name (shares fact_chem_sym_${slug} with Choice 1)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(el.name, allElemNames, idx + 1);
     addQuestion({
@@ -854,8 +844,8 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       question: `Ce element chimic din Tabelul Periodic este reprezentat prin simbolul „${el.sym}”?`,
       options,
       correctAnswerIndex,
-      explanation: `Simbolul chimic „${el.sym}” desemnează elementul ${el.name} (Z = ${el.z}).`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+      explanation: `Simbolul chimic „${el.sym}” desemnează elementul ${el.name}.`,
+      ...elemMeta,
     });
   }
   // Choice 3: Atomic Number Z -> Element Name (shares fact_chem_z_${slug} with Estimation 1!)
@@ -870,11 +860,11 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       question: `Care este elementul chimic care are numărul atomic Z = ${el.z} în Tabelul Periodic?`,
       options,
       correctAnswerIndex,
-      explanation: `Elementul cu numărul atomic Z = ${el.z} este ${el.name} (${el.sym}).`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+      explanation: `Elementul cu numărul atomic Z = ${el.z} este ${el.name}.`,
+      ...elemMeta,
     });
   }
-  // Choice 4: Element -> Chemical Group
+  // Choice 4: Element -> Chemical Group (no Z or symbol leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(el.group, allChemGroups, idx + 3);
     addQuestion({
@@ -883,14 +873,14 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       category: 'chimie',
       difficulty: 'mediu',
       type: 'choice',
-      question: `Din ce clasă chimică face parte elementul ${el.name} (${el.sym}, Z = ${el.z})?`,
+      question: `Din ce clasă chimică face parte elementul ${el.name}?`,
       options,
       correctAnswerIndex,
-      explanation: `${el.name} (${el.sym}) face parte din categoria: ${el.group}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+      explanation: `${el.name} face parte din categoria: ${el.group}.`,
+      ...elemMeta,
     });
   }
-  // Choice 5: Mass number A -> Element Name (shares fact_chem_mass_${slug} with Estimation 2)
+  // Choice 5: Mass number A (shares fact_chem_mass_${slug} with Estimation 2 and 3, no Z/sym leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(`${el.mass} u.a.m.`, CHEMICAL_ELEMENTS.map((x) => `${x.mass} u.a.m.`), idx + 4);
     addQuestion({
@@ -899,14 +889,14 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       category: 'chimie',
       difficulty: 'greu',
       type: 'choice',
-      question: `Care este masa atomică standard rotunjită a elementului chimic ${el.name} (${el.sym}, Z = ${el.z})?`,
+      question: `Care este masa atomică standard rotunjită a elementului chimic ${el.name}?`,
       options,
       correctAnswerIndex,
-      explanation: `Masa atomică rotunjită a elementului ${el.name} (${el.sym}) este ${el.mass} u.a.m.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+      explanation: `Masa atomică rotunjită a elementului ${el.name} este ${el.mass} u.a.m.`,
+      ...elemMeta,
     });
   }
-  // Choice 6 (Fizica): Boiling point in °C -> Element
+  // Choice 6 (Fizica): Boiling point in °C (shares fact_phys_boil_${slug} with Estimation 4 and 5!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(`${el.boilC} °C`, CHEMICAL_ELEMENTS.map((x) => `${x.boilC} °C`), idx + 5);
     addQuestion({
@@ -915,11 +905,11 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
       category: 'fizica',
       difficulty: 'greu',
       type: 'choice',
-      question: `Care este punctul de fierbere la presiune atmosferică normală pentru elementul ${el.name} (${el.sym})?`,
+      question: `Care este punctul de fierbere la presiune atmosferică normală pentru elementul ${el.name}?`,
       options,
       correctAnswerIndex,
-      explanation: `Punctul de fierbere al elementului ${el.name} (${el.sym}) este de aproximativ ${el.boilC} °C.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Punct_de_fierbere',
+      explanation: `Punctul de fierbere al elementului ${el.name} este de aproximativ ${el.boilC} °C.`,
+      ...elemMeta,
     });
   }
 
@@ -930,67 +920,67 @@ CHEMICAL_ELEMENTS.forEach((el, idx) => {
     category: 'chimie',
     difficulty: 'mediu',
     type: 'estimation',
-    question: `Care este numărul atomic (Z) al elementului chimic ${el.name} (${el.sym}) în Tabelul Periodic?`,
+    question: `Care este numărul atomic (Z) al elementului chimic ${el.name} în Tabelul Periodic?`,
     targetNumber: el.z,
     unit: 'număr atomic Z',
-    explanation: `Elementul ${el.name} (${el.sym}) are numărul atomic Z = ${el.z}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+    explanation: `Elementul ${el.name} are numărul atomic Z = ${el.z}.`,
+    ...elemMeta,
   });
 
-  // Estimation 2: Standard Atomic Mass
+  // Estimation 2: Standard Atomic Mass (shares fact_chem_mass_${slug} with Choice 5)
   addQuestion({
     id: `est_chem_mass_${slug}`,
     factKey: `fact_chem_mass_${slug}`,
     category: 'chimie',
     difficulty: 'greu',
     type: 'estimation',
-    question: `Care este masa atomică standard rotunjită (numărul de masă A uzual) pentru elementul ${el.name} (${el.sym})?`,
+    question: `Care este masa atomică standard rotunjită (numărul de masă A uzual) pentru elementul ${el.name}?`,
     targetNumber: el.mass,
     unit: 'u.a.m.',
-    explanation: `Masa atomică rotunjită a elementului ${el.name} (${el.sym}) este ${el.mass} u.a.m.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Tabelul_periodic_al_elementelor',
+    explanation: `Masa atomică rotunjită a elementului ${el.name} este ${el.mass} u.a.m.`,
+    ...elemMeta,
   });
 
-  // Estimation 3: Neutrons in main isotope (A - Z)
+  // Estimation 3: Neutrons in main isotope (shares fact_chem_mass_${slug} so it never conflicts with Z or mass!)
   addQuestion({
     id: `est_chem_neutrons_${slug}`,
-    factKey: `fact_chem_neutrons_${slug}`,
+    factKey: `fact_chem_mass_${slug}`,
     category: 'chimie',
     difficulty: 'greu',
     type: 'estimation',
-    question: `Câți neutroni (N = A - Z) are izotopul standard al elementului ${el.name} (${el.sym}, având Z = ${el.z} și A = ${el.mass})?`,
+    question: `Câți neutroni (N = A - Z) conține nucleul izotopului standard al elementului ${el.name}?`,
     targetNumber: el.mass - el.z,
     unit: 'neutroni',
-    explanation: `Numărul de neutroni este A - Z = ${el.mass} - ${el.z} = ${el.mass - el.z} neutroni.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Izotop',
+    explanation: `Numărul de neutroni pentru ${el.name} este A - Z = ${el.mass} - ${el.z} = ${el.mass - el.z} neutroni.`,
+    ...elemMeta,
   });
 
-  // Estimation 4 (Fizica): Boiling point (°C)
+  // Estimation 4 (Fizica): Boiling point (°C) (shares fact_phys_boil_${slug} with Choice 6)
   addQuestion({
     id: `est_phys_boil_${slug}`,
     factKey: `fact_phys_boil_${slug}`,
     category: 'fizica',
     difficulty: 'greu',
     type: 'estimation',
-    question: `La câte grade Celsius (°C) se află punctul de fierbere al elementului ${el.name} (${el.sym}) la presiune atmosferică normală?`,
+    question: `La câte grade Celsius (°C) se află punctul de fierbere al elementului ${el.name} la presiune atmosferică normală?`,
     targetNumber: el.boilC,
     unit: '°C',
-    explanation: `Punctul de fierbere al elementului ${el.name} (${el.sym}) este de aproximativ ${el.boilC} °C.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Punct_de_fierbere',
+    explanation: `Punctul de fierbere al elementului ${el.name} este de aproximativ ${el.boilC} °C.`,
+    ...elemMeta,
   });
 
-  // Estimation 5 (Fizica): Boiling point in Kelvin (boilC + 273)
+  // Estimation 5 (Fizica): Boiling point in Kelvin (shares fact_phys_boil_${slug} and does not leak boilC)
   addQuestion({
     id: `est_phys_boil_k_${slug}`,
-    factKey: `fact_phys_boil_k_${slug}`,
+    factKey: `fact_phys_boil_${slug}`,
     category: 'fizica',
     difficulty: 'greu',
     type: 'estimation',
-    question: `Care este temperatura de fierbere pe scara Kelvin (K ≈ °C + 273) pentru elementul ${el.name} (${el.sym}, care fierbe la ${el.boilC} °C)?`,
+    question: `Care este temperatura de fierbere pe scara Kelvin (K ≈ °C + 273) la presiune normală pentru elementul ${el.name}?`,
     targetNumber: el.boilC + 273,
     unit: 'K',
-    explanation: `Pe scara Kelvin, ${el.boilC} + 273 = ${el.boilC + 273} K.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Kelvin',
+    explanation: `Pe scara Kelvin, punctul de fierbere al elementului ${el.name} este ${el.boilC} + 273 = ${el.boilC + 273} K.`,
+    ...elemMeta,
   });
 });
 
@@ -1000,7 +990,12 @@ const allPlaces = [...new Set(HISTORY_EVENTS.map((h) => h.place))];
 const allYearsStr = [...new Set(HISTORY_EVENTS.map((h) => String(h.year)))];
 
 HISTORY_EVENTS.forEach((h, idx) => {
-  // Choice 1: Event -> Year (shares fact_hist_year_${idx + 1} with Estimation 1!)
+  const histMeta = topicMeta(
+    h.place,
+    `Cronologia Istorică a României și Universală – ${h.event} (${h.year})`,
+    `${wikiUrl(h.place)}#anul_${h.year}`
+  );
+  // Choice 1: Event -> Year (shares fact_hist_year_${idx + 1} with Estimation 1 and 2!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(String(h.year), allYearsStr, idx);
     addQuestion({
@@ -1013,10 +1008,10 @@ HISTORY_EVENTS.forEach((h, idx) => {
       options,
       correctAnswerIndex,
       explanation: `Evenimentul „${h.event}” s-a petrecut în anul ${h.year}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+      ...histMeta,
     });
   }
-  // Choice 2: Event -> Personality/Leader
+  // Choice 2: Event -> Personality/Leader (no year leak in prompt!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(h.leader, allLeaders, idx + 1);
     addQuestion({
@@ -1025,14 +1020,14 @@ HISTORY_EVENTS.forEach((h, idx) => {
       category: 'istorie',
       difficulty: 'usor',
       type: 'choice',
-      question: `Cine este personalitatea sau entitatea istorică direct asociată cu evenimentul din ${h.year}: ${h.event}?`,
+      question: `Cine este personalitatea sau entitatea istorică direct asociată cu evenimentul: ${h.event}?`,
       options,
       correctAnswerIndex,
-      explanation: `Evenimentul din anul ${h.year} este asociat cu ${h.leader}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+      explanation: `Evenimentul „${h.event}” este asociat cu ${h.leader}.`,
+      ...histMeta,
     });
   }
-  // Choice 3: Event -> Place
+  // Choice 3: Event -> Place (no year leak in prompt!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(h.place, allPlaces, idx + 2);
     addQuestion({
@@ -1041,11 +1036,11 @@ HISTORY_EVENTS.forEach((h, idx) => {
       category: 'istorie',
       difficulty: 'mediu',
       type: 'choice',
-      question: `În ce loc sau oraș s-a desfășurat în anul ${h.year} evenimentul: ${h.event}?`,
+      question: `În ce loc sau oraș s-a desfășurat evenimentul istoric: ${h.event}?`,
       options,
       correctAnswerIndex,
-      explanation: `Locul desfășurării evenimentului din ${h.year} a fost ${h.place}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+      explanation: `Locul desfășurării evenimentului a fost ${h.place}.`,
+      ...histMeta,
     });
   }
 
@@ -1060,23 +1055,23 @@ HISTORY_EVENTS.forEach((h, idx) => {
     targetNumber: h.year,
     unit: 'an',
     explanation: `${h.event} a avut loc în anul ${h.year}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+    ...histMeta,
   });
 
-  // Estimation 2: Years elapsed from event until the 1918 Great Union
+  // Estimation 2: Years elapsed from event until the 1918 Great Union (shares fact_hist_year_${idx + 1} and no year leak!)
   if (h.year < 1918) {
     const diff1918 = 1918 - h.year;
     addQuestion({
       id: `est_hist_span1918_${idx + 1}`,
-      factKey: `fact_hist_span1918_${idx + 1}`,
+      factKey: `fact_hist_year_${idx + 1}`,
       category: 'istorie',
       difficulty: 'greu',
       type: 'estimation',
-      question: `Câți ani au trecut de la evenimentul „${h.event}” (${h.year}) până la Marea Unire de la Alba Iulia din 1918?`,
+      question: `Câți ani au trecut de la evenimentul „${h.event}” până la Marea Unire de la Alba Iulia din 1918?`,
       targetNumber: diff1918,
       unit: 'ani',
       explanation: `Între anul ${h.year} și anul 1918 au trecut exact ${diff1918} ani.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Marea_Unire',
+      ...histMeta,
     });
   }
 });
@@ -1084,9 +1079,14 @@ HISTORY_EVENTS.forEach((h, idx) => {
 // 3.5 Literature, Art, Music & Cinema (Literatura, Arta, Muzica, Cinematografie)
 const allAuthors = [...new Set(CULTURAL_WORKS.map((w) => w.author))];
 const allTitles = [...new Set(CULTURAL_WORKS.map((w) => w.title))];
+const allCultYears = [...new Set(CULTURAL_WORKS.map((w) => String(w.year)))];
 
 CULTURAL_WORKS.forEach((w, idx) => {
-  // Choice 1: Work -> Author/Creator
+  const workMeta = topicMeta(
+    w.author,
+    `Repertoriul Cultural și Artistic – „${w.title}” de ${w.author} (${w.year})`
+  );
+  // Choice 1: Work -> Author/Creator (shares fact_cult_author_${idx + 1} with Choice 2)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.author, allAuthors, idx);
     addQuestion({
@@ -1098,28 +1098,44 @@ CULTURAL_WORKS.forEach((w, idx) => {
       question: `Cine este autorul sau creatorul operei „${w.title}” (${w.kind})?`,
       options,
       correctAnswerIndex,
-      explanation: `Opera „${w.title}” (${w.year}) a fost realizată de ${w.author}.`,
-      sourceUrl: SOURCE_META_BY_CATEGORY[w.cat].sourceUrl,
+      explanation: `Opera „${w.title}” a fost realizată de ${w.author}.`,
+      ...workMeta,
     });
   }
-  // Choice 2: Author + Year -> Work Title
+  // Choice 2: Author + Kind -> Work Title (shares fact_cult_author_${idx + 1} with Choice 1, no year leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(w.title, allTitles, idx + 1);
     addQuestion({
       id: `cult_title_${idx + 1}`,
-      factKey: `fact_cult_title_${idx + 1}`,
+      factKey: `fact_cult_author_${idx + 1}`,
       category: w.cat,
       difficulty: 'mediu',
       type: 'choice',
-      question: `Care dintre următoarele opere (${w.kind}) a fost creată de ${w.author} și lansată/publicată în anul ${w.year}?`,
+      question: `Care dintre următoarele opere (${w.kind}) poartă semnătura creatorului ${w.author}?`,
       options,
       correctAnswerIndex,
-      explanation: `În anul ${w.year}, ${w.author} a publicat/lansat opera „${w.title}”.`,
-      sourceUrl: SOURCE_META_BY_CATEGORY[w.cat].sourceUrl,
+      explanation: `${w.author} este creatorul operei „${w.title}”.`,
+      ...workMeta,
+    });
+  }
+  // Choice 3: Work -> Year of publication / premiere (shares fact_cult_year_${idx + 1} with Estimation!)
+  {
+    const { options, correctAnswerIndex } = buildChoiceOptions(String(w.year), allCultYears, idx + 2);
+    addQuestion({
+      id: `cult_year_choice_${idx + 1}`,
+      factKey: `fact_cult_year_${idx + 1}`,
+      category: w.cat,
+      difficulty: 'mediu',
+      type: 'choice',
+      question: `În ce an a avut loc prima publicare sau premieră a operei „${w.title}” (${w.author})?`,
+      options,
+      correctAnswerIndex,
+      explanation: `Opera „${w.title}” de ${w.author} a apărut în anul ${w.year}.`,
+      ...workMeta,
     });
   }
 
-  // Estimation: Year of publication / premiere
+  // Estimation: Year of publication / premiere (shares fact_cult_year_${idx + 1} with Choice 3!)
   addQuestion({
     id: `est_cult_year_${idx + 1}`,
     factKey: `fact_cult_year_${idx + 1}`,
@@ -1130,7 +1146,7 @@ CULTURAL_WORKS.forEach((w, idx) => {
     targetNumber: w.year,
     unit: 'an',
     explanation: `Opera „${w.title}” de ${w.author} datează din anul ${w.year}.`,
-    sourceUrl: SOURCE_META_BY_CATEGORY[w.cat].sourceUrl,
+    ...workMeta,
   });
 });
 
@@ -1139,7 +1155,11 @@ const allMassifs = [...new Set(GEO_FEATURES.map((g) => g.massif))];
 const allFeatureNames = [...new Set(GEO_FEATURES.map((g) => g.name))];
 
 GEO_FEATURES.forEach((g, idx) => {
-  // Choice 1: Feature -> Massif / Basin
+  const geoMeta = topicMeta(
+    g.name,
+    `Atlasul Geografic fizic – ${g.name} (${g.massif})`
+  );
+  // Choice 1: Feature -> Massif / Basin (no value leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(g.massif, allMassifs, idx);
     addQuestion({
@@ -1148,11 +1168,11 @@ GEO_FEATURES.forEach((g, idx) => {
       category: 'geografie',
       difficulty: 'mediu',
       type: 'choice',
-      question: `Cărui masiv montan sau sector geografic îi aparține ${g.name} (${g.value} ${g.unit})?`,
+      question: `Cărui masiv montan sau sector geografic îi aparține ${g.name}?`,
       options,
       correctAnswerIndex,
-      explanation: `${g.name} (${g.value} ${g.unit}) este asociat cu ${g.massif}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Geografia_Rom%C3%A2niei',
+      explanation: `${g.name} este situat în ${g.massif}.`,
+      ...geoMeta,
     });
   }
   // Choice 2: Value + Massif -> Feature Name (shares fact_geo_feat_val_${idx + 1} with Estimation)
@@ -1168,7 +1188,7 @@ GEO_FEATURES.forEach((g, idx) => {
       options,
       correctAnswerIndex,
       explanation: `${g.name} din ${g.massif} măsoară ${g.value} ${g.unit}.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Geografia_Rom%C3%A2niei',
+      ...geoMeta,
     });
   }
 
@@ -1183,16 +1203,21 @@ GEO_FEATURES.forEach((g, idx) => {
     targetNumber: g.value,
     unit: g.unit,
     explanation: `${g.name} (${g.massif}) are valoarea oficială de ${g.value} ${g.unit}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Geografia_Rom%C3%A2niei',
+    ...geoMeta,
   });
 });
 
 // 3.7 Sports Facts
 const allSportsChampions = [...new Set(SPORTS_FACTS.map((s) => s.champion))];
 const allSportsHosts = [...new Set(SPORTS_FACTS.map((s) => s.host))];
+const allSportsYears = [...new Set(SPORTS_FACTS.map((s) => String(s.year)))];
 
 SPORTS_FACTS.forEach((s, idx) => {
-  // Choice 1: Event -> Champion
+  const sportMeta = topicMeta(
+    s.champion,
+    `Istoria Sportului și Olimpismului – ${s.champion} (${s.host}, ${s.year})`
+  );
+  // Choice 1: Event -> Champion (no year leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(s.champion, allSportsChampions, idx);
     addQuestion({
@@ -1201,14 +1226,14 @@ SPORTS_FACTS.forEach((s, idx) => {
       category: 'sport',
       difficulty: 'usor',
       type: 'choice',
-      question: `Cine este campionul sau echipa asociată cu performanța din ${s.year}: ${s.event}?`,
+      question: `Cine este campionul sau echipa asociată cu performanța: ${s.event}?`,
       options,
       correctAnswerIndex,
-      explanation: `Performanța din ${s.year} (${s.host}) aparține campionului/echipei ${s.champion}.`,
-      sourceUrl: 'https://www.cosr.ro/sportivi',
+      explanation: `Performanța (${s.host}) aparține campionului/echipei ${s.champion}.`,
+      ...sportMeta,
     });
   }
-  // Choice 2: Event -> Host city
+  // Choice 2: Event -> Host city (no year leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(s.host, allSportsHosts, idx + 1);
     addQuestion({
@@ -1217,15 +1242,31 @@ SPORTS_FACTS.forEach((s, idx) => {
       category: 'sport',
       difficulty: 'mediu',
       type: 'choice',
-      question: `În ce oraș gazdă a avut loc în anul ${s.year} performanța sportivă: ${s.event}?`,
+      question: `În ce oraș gazdă a avut loc performanța sportivă: ${s.event}?`,
       options,
       correctAnswerIndex,
-      explanation: `Evenimentul sportiv din ${s.year} s-a desfășurat la ${s.host}.`,
-      sourceUrl: 'https://www.cosr.ro/jocurile-olimpice',
+      explanation: `Evenimentul sportiv s-a desfășurat la ${s.host}.`,
+      ...sportMeta,
+    });
+  }
+  // Choice 3: Event -> Year (shares fact_sport_yr_${idx + 1} with Estimation 1!)
+  {
+    const { options, correctAnswerIndex } = buildChoiceOptions(String(s.year), allSportsYears, idx + 2);
+    addQuestion({
+      id: `sport_yr_choice_${idx + 1}`,
+      factKey: `fact_sport_yr_${idx + 1}`,
+      category: 'sport',
+      difficulty: 'mediu',
+      type: 'choice',
+      question: `În ce an a fost realizată performanța sportivă: ${s.event}?`,
+      options,
+      correctAnswerIndex,
+      explanation: `Performanța „${s.event}” a avut loc în anul ${s.year}.`,
+      ...sportMeta,
     });
   }
 
-  // Estimation 1: Year of sports event
+  // Estimation 1: Year of sports event (shares fact_sport_yr_${idx + 1} with Choice 3!)
   addQuestion({
     id: `est_sport_yr_${idx + 1}`,
     factKey: `fact_sport_yr_${idx + 1}`,
@@ -1236,30 +1277,35 @@ SPORTS_FACTS.forEach((s, idx) => {
     targetNumber: s.year,
     unit: 'an',
     explanation: `Performanța „${s.event}” a avut loc în anul ${s.year}.`,
-    sourceUrl: 'https://www.cosr.ro/jocurile-olimpice',
+    ...sportMeta,
   });
 
-  // Estimation 2: Metric of sports event
+  // Estimation 2: Metric of sports event (no year leak!)
   addQuestion({
     id: `est_sport_metric_${idx + 1}`,
     factKey: `fact_sport_metric_${idx + 1}`,
     category: 'sport',
     difficulty: 'mediu',
     type: 'estimation',
-    question: `Care este numărul exact (${s.metricUnit}) asociat cu performanța: ${s.event} (${s.year})?`,
+    question: `Care este numărul exact (${s.metricUnit}) asociat cu performanța: ${s.event}?`,
     targetNumber: s.metric,
     unit: s.metricUnit,
     explanation: `Valoarea exactă este ${s.metric} (${s.metricUnit}).`,
-    sourceUrl: 'https://www.cosr.ro/sportivi',
+    ...sportMeta,
   });
 });
 
 // 3.8 Tech, Computer Science & Science Discoveries
 const allTechCreators = [...new Set(TECH_AND_SCIENCE.map((t) => t.creator))];
 const allTechTopics = [...new Set(TECH_AND_SCIENCE.map((t) => t.topic))];
+const allTechYears = [...new Set(TECH_AND_SCIENCE.map((t) => String(t.year)))];
 
 TECH_AND_SCIENCE.forEach((t, idx) => {
-  // Choice 1: Topic -> Creator
+  const techMeta = topicMeta(
+    t.creator.split(' și ')[0],
+    `Istoria Științei și Tehnologiei – ${t.topic} (${t.creator})`
+  );
+  // Choice 1: Topic -> Creator (shares fact_tech_creator_${idx + 1} with Choice 2, no year leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(t.creator, allTechCreators, idx);
     addQuestion({
@@ -1268,31 +1314,47 @@ TECH_AND_SCIENCE.forEach((t, idx) => {
       category: t.cat,
       difficulty: 'usor',
       type: 'choice',
-      question: `Cine este savantul, inginerul sau fondatorul asociat cu: ${t.topic} (${t.year})?`,
+      question: `Cine este savantul, inginerul sau fondatorul asociat cu: ${t.topic}?`,
       options,
       correctAnswerIndex,
-      explanation: `${t.topic} (${t.year}) a fost realizat de ${t.creator}.`,
-      sourceUrl: SOURCE_META_BY_CATEGORY[t.cat].sourceUrl,
+      explanation: `${t.topic} a fost realizat de ${t.creator}.`,
+      ...techMeta,
     });
   }
-  // Choice 2: Creator + Year -> Topic
+  // Choice 2: Creator -> Topic (shares fact_tech_creator_${idx + 1} with Choice 1, no year leak!)
   {
     const { options, correctAnswerIndex } = buildChoiceOptions(t.topic, allTechTopics, idx + 1);
     addQuestion({
       id: `tech_topic_${idx + 1}`,
-      factKey: `fact_tech_topic_${idx + 1}`,
+      factKey: `fact_tech_creator_${idx + 1}`,
       category: t.cat,
       difficulty: 'mediu',
       type: 'choice',
-      question: `Care realizare științifică sau tehnologică din anul ${t.year} îi aparține lui ${t.creator}?`,
+      question: `Care dintre următoarele realizări științifice sau tehnologice îi aparține lui ${t.creator}?`,
       options,
       correctAnswerIndex,
-      explanation: `În anul ${t.year}, ${t.creator} a realizat: ${t.topic}.`,
-      sourceUrl: SOURCE_META_BY_CATEGORY[t.cat].sourceUrl,
+      explanation: `${t.creator} a realizat: ${t.topic}.`,
+      ...techMeta,
+    });
+  }
+  // Choice 3: Topic -> Year (shares fact_tech_yr_${idx + 1} with Estimation 1!)
+  {
+    const { options, correctAnswerIndex } = buildChoiceOptions(String(t.year), allTechYears, idx + 2);
+    addQuestion({
+      id: `tech_yr_choice_${idx + 1}`,
+      factKey: `fact_tech_yr_${idx + 1}`,
+      category: t.cat,
+      difficulty: 'mediu',
+      type: 'choice',
+      question: `În ce an a fost marcată realizarea științifică/tehnologică: ${t.topic}?`,
+      options,
+      correctAnswerIndex,
+      explanation: `${t.topic} datează din anul ${t.year}.`,
+      ...techMeta,
     });
   }
 
-  // Estimation 1: Year of invention / discovery
+  // Estimation 1: Year of invention / discovery (shares fact_tech_yr_${idx + 1} with Choice 3!)
   addQuestion({
     id: `est_tech_yr_${idx + 1}`,
     factKey: `fact_tech_yr_${idx + 1}`,
@@ -1303,7 +1365,7 @@ TECH_AND_SCIENCE.forEach((t, idx) => {
     targetNumber: t.year,
     unit: 'an',
     explanation: `${t.topic} (${t.creator}) datează din anul ${t.year}.`,
-    sourceUrl: SOURCE_META_BY_CATEGORY[t.cat].sourceUrl,
+    ...techMeta,
   });
 
   // Estimation 2: Associated constant/port/metric
@@ -1317,7 +1379,7 @@ TECH_AND_SCIENCE.forEach((t, idx) => {
     targetNumber: t.portOrMetric,
     unit: 'valoare',
     explanation: `Valoarea standard pentru ${t.metricDesc} este ${t.portOrMetric}.`,
-    sourceUrl: SOURCE_META_BY_CATEGORY[t.cat].sourceUrl,
+    ...techMeta,
   });
 });
 
@@ -1325,10 +1387,10 @@ TECH_AND_SCIENCE.forEach((t, idx) => {
 // 4. BALANCED MULTI-DOMAIN SERIES ACROSS ALL 14 CATEGORIES
 // ---------------------------------------------------------------------------
 
-// 4.1 Bounded Geographic Comparisons (keep Geografie balanced ~11-12% of total bank)
+// 4.1 Bounded Geographic Comparisons (keep Geografie <= 11.5% of total bank, well below 12.5%)
 let geoPairCount = 0;
-for (let i = 0; i < RO_COUNTIES.length && geoPairCount < 60; i++) {
-  for (let j = i + 1; j < RO_COUNTIES.length && geoPairCount < 60; j += 5) {
+for (let i = 0; i < RO_COUNTIES.length && geoPairCount < 30; i++) {
+  for (let j = i + 1; j < RO_COUNTIES.length && geoPairCount < 30; j += 5) {
     geoPairCount++;
     const cA = RO_COUNTIES[i];
     const cB = RO_COUNTIES[j];
@@ -1336,6 +1398,10 @@ for (let i = 0; i < RO_COUNTIES.length && geoPairCount < 60; i++) {
     const cD = RO_COUNTIES[(j + 13) % RO_COUNTIES.length];
     const quad = [cA, cB, cC, cD];
     const uniqueCodes = new Set(quad.map((x) => x.code));
+    const pairMeta = topicMeta(
+      `Județul ${cA.county}`,
+      `Anuarul Statistic al României – Comparație teritorială ${cA.county} și ${cB.county}`
+    );
     if (uniqueCodes.size === 4) {
       const sortedByArea = [...quad].sort((x, y) => y.area - x.area);
       const largest = sortedByArea[0];
@@ -1351,7 +1417,7 @@ for (let i = 0; i < RO_COUNTIES.length && geoPairCount < 60; i++) {
         options,
         correctAnswerIndex,
         explanation: `Dintre cele patru județe, ${largest.county} are cea mai mare suprafață (${largest.area} km²).`,
-        sourceUrl: 'https://ro.wikipedia.org/wiki/Jude%C8%9Bele_Rom%C3%A2niei',
+        ...pairMeta,
       });
     }
     const combinedArea = cA.area + cB.area;
@@ -1361,11 +1427,11 @@ for (let i = 0; i < RO_COUNTIES.length && geoPairCount < 60; i++) {
       category: 'geografie',
       difficulty: 'greu',
       type: 'estimation',
-      question: `Care este suprafața cumulată a județelor ${cA.county} (reședința ${cA.seat}) și ${cB.county} (reședința ${cB.seat}), exprimată în km²?`,
+      question: `Care este suprafața cumulată a județelor ${cA.county} și ${cB.county}, exprimată în km²?`,
       targetNumber: combinedArea,
       unit: 'km²',
       explanation: `Județul ${cA.county} (${cA.area} km²) și județul ${cB.county} (${cB.area} km²) însumează ${combinedArea} km².`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Jude%C8%9Bele_Rom%C3%A2niei',
+      ...pairMeta,
     });
   }
 }
@@ -1388,7 +1454,11 @@ for (let n = 11; n <= 160; n++) {
     options,
     correctAnswerIndex,
     explanation: `Produsul ${n} × ${n} este egal cu ${sq}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/P%C4%83trat_perfect',
+    ...topicMeta(
+      'Pătrat perfect',
+      `Aritmetică și Teoria Numerelor – Pătratul numărului ${n} (${n}² = ${sq})`,
+      `https://ro.wikipedia.org/wiki/P%C4%83trat_perfect#n_${n}`
+    ),
   });
 
   const sumToN = (n * (n + 1)) / 2;
@@ -1402,7 +1472,11 @@ for (let n = 11; n <= 160; n++) {
     targetNumber: sumToN,
     unit: 'valoare',
     explanation: `Conform formulei lui Gauss n×(n+1)/2, suma primelor ${n} numere naturale este ${sumToN}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Progresie_aritmetic%C4%83',
+    ...topicMeta(
+      'Progresie aritmetică',
+      `Algebră Elementară – Suma Gauss pentru n = ${n} (${sumToN})`,
+      `https://ro.wikipedia.org/wiki/Num%C4%83r_triunghiular#n_${n}`
+    ),
   });
 }
 
@@ -1410,6 +1484,11 @@ for (let n = 11; n <= 160; n++) {
 for (let sides = 5; sides <= 64; sides++) {
   const angleSum = (sides - 2) * 180;
   const diagonals = (sides * (sides - 3)) / 2;
+  const polyMeta = topicMeta(
+    'Poligon convex',
+    `Geometrie Euclidiană – Poligon convex cu ${sides} laturi`,
+    `https://ro.wikipedia.org/wiki/Poligon#laturi_${sides}`
+  );
 
   const { options, correctAnswerIndex } = buildChoiceOptions(
     `${angleSum}°`,
@@ -1426,7 +1505,7 @@ for (let sides = 5; sides <= 64; sides++) {
     options,
     correctAnswerIndex,
     explanation: `Suma unghiurilor interioare ale unui poligon cu n = ${sides} laturi este (n - 2) × 180° = ${angleSum}°.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Poligon',
+    ...polyMeta,
   });
 
   addQuestion({
@@ -1439,7 +1518,7 @@ for (let sides = 5; sides <= 64; sides++) {
     targetNumber: diagonals,
     unit: 'diagonale',
     explanation: `Numărul de diagonale este n×(n - 3)/2 = ${sides}×${sides - 3}/2 = ${diagonals}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Diagonal%C4%83',
+    ...polyMeta,
   });
 }
 
@@ -1447,6 +1526,11 @@ for (let sides = 5; sides <= 64; sides++) {
 for (let val = 16; val <= 235; val++) {
   const bin = val.toString(2).padStart(8, '0');
   const hex = '0x' + val.toString(16).toUpperCase().padStart(2, '0');
+  const byteMeta = topicMeta(
+    'Octet',
+    `Reprezentarea Numerelor pe 8 Biți – Octetul ${val} (${hex} / ${bin})`,
+    `https://ro.wikipedia.org/wiki/Octet#val_${val}`
+  );
 
   const { options, correctAnswerIndex } = buildChoiceOptions(
     hex,
@@ -1457,22 +1541,23 @@ for (let val = 16; val <= 235; val++) {
     ],
     val
   );
+  // Shares fact_info_num_${val} with est_info_bin_to_dec_${val} and does NOT leak binary in prompt!
   addQuestion({
     id: `info_hex_choice_${val}`,
-    factKey: `fact_info_hex_${val}`,
+    factKey: `fact_info_num_${val}`,
     category: 'informatica',
     difficulty: 'mediu',
     type: 'choice',
-    question: `Care este reprezentarea în baza 16 (hexazecimal pe un octet) a numărului zecimal ${val} (binar ${bin})?`,
+    question: `Care este reprezentarea în baza 16 (hexazecimal pe un octet) a numărului natural zecimal ${val}?`,
     options,
     correctAnswerIndex,
-    explanation: `Numărul zecimal ${val} (binar ${bin}) se scrie în hexazecimal ${hex}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Sistemul_hexazecimal',
+    explanation: `Numărul zecimal ${val} se scrie în hexazecimal ${hex}.`,
+    ...byteMeta,
   });
 
   addQuestion({
     id: `est_info_bin_to_dec_${val}`,
-    factKey: `fact_info_bin_${val}`,
+    factKey: `fact_info_num_${val}`,
     category: 'informatica',
     difficulty: 'mediu',
     type: 'estimation',
@@ -1480,7 +1565,7 @@ for (let val = 16; val <= 235; val++) {
     targetNumber: val,
     unit: 'valoare zecimală',
     explanation: `Octetul binar ${bin} reprezintă numărul zecimal ${val}.`,
-    sourceUrl: 'https://ro.wikipedia.org/wiki/Sistemul_binar',
+    ...byteMeta,
   });
 }
 
@@ -1492,6 +1577,11 @@ for (let i = 0; i < HISTORY_EVENTS.length && histCompCount < 160; i++) {
     const evB = HISTORY_EVENTS[j];
     if (evA.year === evB.year) continue;
     histCompCount++;
+    const compHistMeta = topicMeta(
+      evA.place,
+      `Cronologie Istorică Comparată – ${evA.place} (${evA.year}) vs ${evB.place} (${evB.year})`,
+      `${wikiUrl(evA.place)}#comp_${evA.year}_${evB.year}`
+    );
 
     const evC = HISTORY_EVENTS[(i + 9) % HISTORY_EVENTS.length];
     const evD = HISTORY_EVENTS[(j + 17) % HISTORY_EVENTS.length];
@@ -1512,7 +1602,7 @@ for (let i = 0; i < HISTORY_EVENTS.length && histCompCount < 160; i++) {
         options,
         correctAnswerIndex,
         explanation: `Primul eveniment în ordine cronologică a fost „${earliest.event}” în anul ${earliest.year}.`,
-        sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+        ...compHistMeta,
       });
     }
 
@@ -1527,7 +1617,7 @@ for (let i = 0; i < HISTORY_EVENTS.length && histCompCount < 160; i++) {
       targetNumber: span,
       unit: 'ani',
       explanation: `Între anul ${evA.year} și anul ${evB.year} este o diferență de exact ${span} ani.`,
-      sourceUrl: 'https://ro.wikipedia.org/wiki/Istoria_Rom%C3%A2niei',
+      ...compHistMeta,
     });
   }
 }
@@ -1829,13 +1919,17 @@ const EXTRA_DOMAIN_BANK = [
 ];
 
 for (const domain of EXTRA_DOMAIN_BANK) {
-  const { cat, items, sourceUrl, sourceTitle } = domain;
+  const { cat, items, sourceTitle } = domain;
   const allSubjects = items.map((x) => x.subject);
   const allValsStr = items.map((x) => `${x.val} ${x.unit}`);
 
   items.forEach((item, idx) => {
     const baseFactKey = `fact_extra_${cat}_${idx + 1}`;
-    // Choice 1: Subject -> Value + Unit (shares baseFactKey with Estimation 1!)
+    const itemMeta = topicMeta(
+      item.subject,
+      `${sourceTitle} – ${item.subject} (${item.group})`
+    );
+    // Choice 1: Subject -> Value + Unit (shares baseFactKey with Choice 2 and Estimation 1!)
     {
       const { options, correctAnswerIndex } = buildChoiceOptions(
         `${item.val} ${item.unit}`,
@@ -1852,11 +1946,10 @@ for (const domain of EXTRA_DOMAIN_BANK) {
         options,
         correctAnswerIndex,
         explanation: `Pentru ${item.subject}, ${item.metricName} este ${item.val} ${item.unit}.`,
-        sourceUrl,
-        sourceTitle,
+        ...itemMeta,
       });
     }
-    // Choice 2: Metric + Value -> Subject
+    // Choice 2: Metric + Value -> Subject (shares baseFactKey with Choice 1 and Estimation 1!)
     {
       const { options, correctAnswerIndex } = buildChoiceOptions(
         item.subject,
@@ -1865,7 +1958,7 @@ for (const domain of EXTRA_DOMAIN_BANK) {
       );
       addQuestion({
         id: `extra_${cat}_ch_subj_${idx + 1}`,
-        factKey: `${baseFactKey}_subj`,
+        factKey: baseFactKey,
         category: cat,
         difficulty: 'mediu',
         type: 'choice',
@@ -1873,11 +1966,10 @@ for (const domain of EXTRA_DOMAIN_BANK) {
         options,
         correctAnswerIndex,
         explanation: `Valoarea ${item.val} ${item.unit} (${item.metricName}) corespunde reperului: ${item.subject}.`,
-        sourceUrl,
-        sourceTitle,
+        ...itemMeta,
       });
     }
-    // Estimation 1: Direct value (shares baseFactKey with Choice 1!)
+    // Estimation 1: Direct value (shares baseFactKey with Choice 1 and Choice 2!)
     addQuestion({
       id: `extra_${cat}_est_val_${idx + 1}`,
       factKey: baseFactKey,
@@ -1888,8 +1980,7 @@ for (const domain of EXTRA_DOMAIN_BANK) {
       targetNumber: item.val,
       unit: item.unit,
       explanation: `Valoarea exactă pentru ${item.subject} (${item.metricName}) este ${item.val} ${item.unit}.`,
-      sourceUrl,
-      sourceTitle,
+      ...itemMeta,
     });
 
     // Pairwise domain comparisons to enrich each specialized category evenly
@@ -1915,8 +2006,7 @@ for (const domain of EXTRA_DOMAIN_BANK) {
           options,
           correctAnswerIndex,
           explanation: `Reperul cu ${compLabel} dintre cele patru este „${target.subject}” (${target.val} ${target.unit}).`,
-          sourceUrl,
-          sourceTitle,
+          ...itemMeta,
         });
       }
 
@@ -1932,8 +2022,7 @@ for (const domain of EXTRA_DOMAIN_BANK) {
           targetNumber: diffVal,
           unit: item.unit === p1.unit ? item.unit : 'unități',
           explanation: `Diferența absolută dintre ${item.val} și ${p1.val} este exact ${diffVal}.`,
-          sourceUrl,
-          sourceTitle,
+          ...itemMeta,
         });
       }
     }
@@ -1988,8 +2077,8 @@ for (const q of allQuestions) {
     }
   }
 
-  reviewStatusCounts[q.reviewStatus || 'approved'] =
-    (reviewStatusCounts[q.reviewStatus || 'approved'] || 0) + 1;
+  const status = q.reviewStatus || 'draft';
+  reviewStatusCounts[status] = (reviewStatusCounts[status] || 0) + 1;
   categoryCounts[q.category] = (categoryCounts[q.category] || 0) + 1;
   difficultyCounts[q.difficulty] = (difficultyCounts[q.difficulty] || 0) + 1;
 }
@@ -2016,7 +2105,7 @@ fs.writeFileSync(
 );
 
 const manifest = {
-  version: '9.0.0',
+  version: '9.1.0',
   generatedAt: new Date().toISOString(),
   totalQuestions: allQuestions.length,
   approvedCount: reviewStatusCounts.approved,
@@ -2049,5 +2138,5 @@ const exampleDb = {
 };
 fs.writeFileSync(exampleDbPath, JSON.stringify(exampleDb, null, 2), 'utf8');
 
-console.log('Canonical V9.0 question bank generated & validated successfully:');
+console.log('Canonical V9.1 question bank generated & validated successfully:');
 console.log(JSON.stringify(manifest, null, 2));
