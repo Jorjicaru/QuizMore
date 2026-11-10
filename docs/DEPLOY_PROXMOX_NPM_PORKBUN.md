@@ -99,8 +99,38 @@ POSTGRES_USER=conquiz_user
 POSTGRES_PASSWORD=<parola_postgres_minim_16_caractere>
 DATABASE_URL=postgresql://conquiz_user:<parola_postgres_minim_16_caractere>@db:5432/conquiz
 
+# Configurație SMTP pentru Resetarea Parolei ("Am uitat parola")
+SMTP_HOST=smtp.furnizor-email.ro
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<utilizator_smtp>
+SMTP_PASS=<parola_sau_api_key_smtp>
+SMTP_FROM="CONQUIZ România <no-reply@domeniul-tau.ro>"
+PASSWORD_RESET_EXPIRY_MINUTES=30
+
 GEMINI_API_KEY=
 ```
+
+---
+
+## 4.1. Configurarea Furnizorului SMTP și a Înregistrărilor DNS (SPF / DKIM / DMARC) la Porkbun
+
+> **Important:** Simplul fapt că domeniul este înregistrat la **Porkbun** **nu** oferă automat un server SMTP gratuit. Pentru ca funcția „Am uitat parola” să poată trimite emailuri de resetare care ajung în Inbox (fără a fi blocate ca spam de Gmail/Outlook/Yahoo), trebuie să configurezi un serviciu SMTP (ex. **Brevo**, **Resend**, **Mailgun**, **Amazon SES**, **Fastmail** sau **Porkbun Email Hosting** plătit) și să adaugi în panoul DNS Porkbun înregistrările cerute de furnizor:
+
+1. **Înregistrare SPF (`TXT`)**:
+   - **Host:** `@` (sau subdomeniul de expediere, ex. `mail`)
+   - **Type:** `TXT`
+   - **Answer / Value:** valoarea indicată de furnizorul tău SMTP (ex. `v=spf1 include:spf.brevo.com ~all` sau `v=spf1 include:amazonses.com ~all` sau `v=spf1 include:_spf.porkbun.com ~all`)
+2. **Înregistrări DKIM (`TXT` sau `CNAME`)**:
+   - **Host:** `<selector>._domainkey` (ex. `mail._domainkey` sau `resend._domainkey`)
+   - **Type:** `TXT` sau `CNAME` (conform instrucțiunilor din panoul furnizorului SMTP)
+   - **Answer / Value:** cheia publică DKIM furnizată de serviciul de email
+3. **Înregistrare DMARC (`TXT`)**:
+   - **Host:** `_dmarc`
+   - **Type:** `TXT`
+   - **Answer / Value:** `v=DMARC1; p=quarantine; rua=mailto:admin@domeniul-tau.ro; adkim=s; aspf=s;`
+4. **Securitatea Linkului de Resetare (`APP_URL`)**:
+   - Serverul construiește linkul din email **exclusiv** din variabila `APP_URL` din `.env` (`https://conquiz.domeniul-tau.ro/?resetToken=<TOKEN>`), ignorând complet header-ul HTTP `Host` sau `X-Forwarded-Host` pentru a preveni atacurile de tip *Host Header Poisoning*.
 
 ---
 
@@ -117,6 +147,9 @@ docker compose up -d --build
 
 # 3. Verifică starea containerelor conquiz-postgres și conquiz-app
 docker compose ps
+
+# 4. (Opțional) Execută migrarea idempotentă JSON -> PostgreSQL direct cu Bun în containerul de producție
+docker exec conquiz-app bun run migrate:postgres
 ```
 
 ---

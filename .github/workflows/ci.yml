@@ -8,12 +8,44 @@ on:
 
 jobs:
   verify:
-    name: Validate, Lint, Test, Build & Docker Image
+    name: Validate, Lint, Simulated Tests, Real PostgreSQL 16 Tests, Migration, Backup/Restore & Docker
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: conquiz_test
+          POSTGRES_USER: conquiz_user
+          POSTGRES_PASSWORD: ci_postgres_password_secure_991122
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U conquiz_user -d conquiz_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      POSTGRES_ENABLED: "true"
+      DATABASE_URL: postgresql://conquiz_user:ci_postgres_password_secure_991122@127.0.0.1:5432/conquiz_test
+      RESTORE_VERIFY_DB_URL: postgresql://conquiz_user:ci_postgres_password_secure_991122@127.0.0.1:5432/conquiz_restore_target
+      APP_URL: https://conquiz.ci-test.ro
+      JWT_SECRET: ci_jwt_secret_key_for_automated_tests_minimum_32_chars_long_99
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client tools (pg_dump & psql)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify real PostgreSQL 16 service readiness & create restore verification DB
+        run: |
+          pg_isready -h 127.0.0.1 -p 5432 -U conquiz_user -d conquiz_test
+          PGPASSWORD=ci_postgres_password_secure_991122 psql -h 127.0.0.1 -p 5432 -U conquiz_user -d postgres -c "DROP DATABASE IF EXISTS conquiz_restore_target; CREATE DATABASE conquiz_restore_target;"
 
       - name: Setup Bun (pinned version)
         uses: oven-sh/setup-bun@v2
@@ -28,17 +60,36 @@ jobs:
       - name: Install dependencies with frozen lockfile
         run: bun install --frozen-lockfile
 
-      - name: Validate canonical question bank
+      - name: Step 1 - Validate canonical question bank (6,241 approved questions)
         run: bun run validate:questions
 
-      - name: TypeScript typecheck & lint
+      - name: Step 2 - TypeScript typecheck & lint
         run: bun run lint
 
-      - name: Run unit, PostgreSQL & Socket.IO multiplayer integration tests
-        run: bun run test
+      - name: Step 3 - Run unit, simulated DB & Socket.IO multiplayer tests
+        env:
+          POSTGRES_ENABLED: "false"
+          DATABASE_URL: ""
+        run: npm run test
 
-      - name: Production Vite build
+      - name: Step 4 - Run REAL PostgreSQL 16 integration tests (CRUD, COMMIT/ROLLBACK, Password Reset, Snapshots, Backup/Restore)
+        run: npm run test:postgres
+
+      - name: Step 5 - Run Bun JSON -> PostgreSQL migration twice (verify idempotency without tsx)
+        run: |
+          bun run migrate:postgres
+          bun run migrate:postgres
+
+      - name: Step 6 - Verify pg_dump backup & restore into separate PostgreSQL database
+        run: |
+          chmod +x scripts/backup_postgres.sh scripts/restore_postgres.sh
+          ./scripts/backup_postgres.sh ./backups_ci
+          LATEST_DUMP=$(ls -1t ./backups_ci/conquiz_pg_*.sql.gz | head -n 1)
+          DATABASE_URL="$RESTORE_VERIFY_DB_URL" ./scripts/restore_postgres.sh "$LATEST_DUMP" conquiz_restore_target
+
+      - name: Step 7 - Production Vite build
         run: bun run build
 
-      - name: Verify production Docker image build
+      - name: Step 8 - Verify production Docker image build & Bun migration inside production container
         run: docker build -t conquiz:ci-test .
+

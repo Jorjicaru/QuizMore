@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { Question, GameState } from '../src/types/game';
 import { UserRecord, GameRecord, FriendRecord, NotificationRecord, DatabaseSchema } from './db';
 import { normalizeQuestionText } from './questionsData';
@@ -16,9 +16,12 @@ export interface PostgresPoolLike extends QueryableClient {
   end(): Promise<void>;
 }
 
+export type TransactionLifecycleEvent = 'BEGIN' | 'COMMIT' | 'ROLLBACK';
+
 let pool: PostgresPoolLike | null = null;
 let postgresReady = false;
 let injectedTestPool: PostgresPoolLike | null = null;
+let transactionObserver: ((event: TransactionLifecycleEvent) => void) | null = null;
 
 export function setPostgresPoolForTesting(customPool: PostgresPoolLike | null): void {
   injectedTestPool = customPool;
@@ -26,9 +29,16 @@ export function setPostgresPoolForTesting(customPool: PostgresPoolLike | null): 
   postgresReady = Boolean(customPool);
 }
 
+export function setTransactionObserverForTesting(
+  observer: ((event: TransactionLifecycleEvent) => void) | null
+): void {
+  transactionObserver = observer;
+}
+
 export function isPostgresConfigured(): boolean {
   if (injectedTestPool) return true;
-  // In development or Google AI Studio Preview, use local JSON fallback unless POSTGRES_ENABLED=true is explicitly set.
+  // În development sau Google AI Studio Preview, folosim fallback-ul JSON local
+  // dacă POSTGRES_ENABLED=true nu este cerut explicit.
   if (
     (process.env.NODE_ENV !== 'production' || isAiStudioPreviewEnv(process.env)) &&
     process.env.POSTGRES_ENABLED !== 'true'
@@ -60,22 +70,32 @@ export function getPostgresPool(): PostgresPoolLike | null {
   return pool;
 }
 
+/**
+ * Execută o funcție într-o tranzacție SQL atomică (BEGIN -> COMMIT / ROLLBACK).
+ * Aruncă eroarea mai departe dacă conexiunea lipsește sau dacă orice interogare eșuează,
+ * garantând că apelantul nu poate raporta succes înainte de confirmarea COMMIT.
+ */
 export async function withPostgresTransaction<T>(
   fn: (client: QueryableClient) => Promise<T>
-): Promise<T | null> {
+): Promise<T> {
   const pgPool = getPostgresPool();
-  if (!pgPool) return null;
+  if (!pgPool) {
+    throw new Error('Conexiunea PostgreSQL nu este configurată sau disponibilă.');
+  }
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    transactionObserver?.('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
+    transactionObserver?.('COMMIT');
     return result;
   } catch (err) {
     try {
       await client.query('ROLLBACK');
+      transactionObserver?.('ROLLBACK');
     } catch {
-      // ignore rollback error
+      // ignore rollback secondary error
     }
     throw err;
   } finally {
@@ -87,10 +107,16 @@ export async function initPostgresSchema(): Promise<boolean> {
   const pgPool = getPostgresPool();
   if (!pgPool) return false;
   try {
-    const migrationPath = path.resolve(process.cwd(), 'db', 'migrations', '001_init.sql');
-    if (fs.existsSync(migrationPath)) {
-      const sql = fs.readFileSync(migrationPath, 'utf-8');
-      await pgPool.query(sql);
+    const migrationsDir = path.resolve(process.cwd(), 'db', 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const files = fs
+        .readdirSync(migrationsDir)
+        .filter((f) => f.endsWith('.sql'))
+        .sort();
+      for (const file of files) {
+        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+        await pgPool.query(sql);
+      }
     }
     postgresReady = true;
     return true;
@@ -150,6 +176,7 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
       passwordHash: row.password_hash,
       role: row.role === 'admin' ? 'admin' : 'user',
       isBanned: Boolean(row.is_banned),
+      tokenVersion: Number(row.token_version ?? 1),
       createdAt: createdAtIso,
       profile: {
         id: row.id,
@@ -275,16 +302,14 @@ export async function upsertUserToPostgres(
   user: UserRecord,
   client?: QueryableClient
 ): Promise<void> {
-  const executor = client || getPostgresPool();
-  if (!executor) return;
-  try {
+  if (client) {
     const p = user.profile;
-    await executor.query(
+    await client.query(
       `INSERT INTO users (
         id, username, email, password_hash, role, is_banned,
         avatar, title, rating, matches_played, wins, losses,
-        territories_conquered, correct_answers_total, highest_score, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+        territories_conquered, correct_answers_total, highest_score, token_version, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
       ON CONFLICT (id) DO UPDATE SET
         username = EXCLUDED.username,
         email = EXCLUDED.email,
@@ -300,6 +325,7 @@ export async function upsertUserToPostgres(
         territories_conquered = EXCLUDED.territories_conquered,
         correct_answers_total = EXCLUDED.correct_answers_total,
         highest_score = EXCLUDED.highest_score,
+        token_version = EXCLUDED.token_version,
         updated_at = NOW()`,
       [
         user.id,
@@ -317,36 +343,38 @@ export async function upsertUserToPostgres(
         p.territoriesConquered ?? 0,
         p.correctAnswersTotal ?? 0,
         p.highestScore ?? 0,
+        user.tokenVersion ?? 1,
         user.createdAt || new Date().toISOString(),
       ]
     );
-  } catch (err: any) {
-    console.error('[PostgreSQL upsertUser error]:', err.message);
-    if (client) throw err;
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await upsertUserToPostgres(user, tx);
+  });
 }
 
-export async function deleteUserFromPostgres(userId: string): Promise<void> {
-  const pgPool = getPostgresPool();
-  if (!pgPool) return;
-  try {
-    await pgPool.query('DELETE FROM users WHERE id = $1', [userId]);
-  } catch (err: any) {
-    console.error('[PostgreSQL deleteUser error]:', err.message);
+export async function deleteUserFromPostgres(
+  userId: string,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query('DELETE FROM users WHERE id = $1', [userId]);
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await deleteUserFromPostgres(userId, tx);
+  });
 }
 
 export async function upsertQuestionToPostgres(
   q: Question,
   client?: QueryableClient
 ): Promise<void> {
-  const executor = client || getPostgresPool();
-  if (!executor) return;
-  try {
+  if (client) {
     const fp = normalizeQuestionText(q.question);
-    // V9.1: reviewStatus defaults to 'draft', never automatically 'approved'
     const status = q.reviewStatus || (q.isDisabled ? 'disabled' : 'draft');
-    await executor.query(
+    await client.query(
       `INSERT INTO questions (
         id, category, difficulty, type, question, normalized_fingerprint,
         fact_key, options_json, correct_answer_index, target_number, unit,
@@ -393,10 +421,11 @@ export async function upsertQuestionToPostgres(
         q.reportedCount ?? 0,
       ]
     );
-  } catch (err: any) {
-    console.error('[PostgreSQL upsertQuestion error]:', err.message);
-    if (client) throw err;
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await upsertQuestionToPostgres(q, tx);
+  });
 }
 
 export async function seedQuestionsBatchToPostgres(questions: Question[]): Promise<void> {
@@ -408,14 +437,17 @@ export async function seedQuestionsBatchToPostgres(questions: Question[]): Promi
   });
 }
 
-export async function deleteQuestionFromPostgres(id: string): Promise<void> {
-  const pgPool = getPostgresPool();
-  if (!pgPool) return;
-  try {
-    await pgPool.query('DELETE FROM questions WHERE id = $1', [id]);
-  } catch (err: any) {
-    console.error('[PostgreSQL deleteQuestion error]:', err.message);
+export async function deleteQuestionFromPostgres(
+  id: string,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query('DELETE FROM questions WHERE id = $1', [id]);
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await deleteQuestionFromPostgres(id, tx);
+  });
 }
 
 /**
@@ -423,189 +455,319 @@ export async function deleteQuestionFromPostgres(id: string): Promise<void> {
  * Folosește ON CONFLICT (game_id, user_id) DO UPDATE pe game_player_results.
  */
 export async function insertGameToPostgres(game: GameRecord): Promise<void> {
-  if (!isPostgresConfigured()) return;
-  try {
-    await withPostgresTransaction(async (client) => {
+  const anyGame = game as any;
+  const createdAt =
+    game.createdAt || anyGame.finishedAt || new Date().toISOString();
+  const winnerUsername = game.winnerUsername || anyGame.winnerName || null;
+  const rawSummary: Array<{
+    userId: string;
+    username: string;
+    score: number;
+    territories: number;
+    correctAnswers: number;
+    isWinner: boolean;
+  }> = Array.isArray(game.playersSummary) && game.playersSummary.length > 0
+    ? game.playersSummary
+    : Array.isArray(anyGame.players)
+    ? anyGame.players.map((p: any) => ({
+        userId: p.userId || p.id,
+        username: p.username,
+        score: Number(p.score) || 0,
+        territories: Number(p.territories) || 0,
+        correctAnswers: Number(p.correctAnswers) || 0,
+        isWinner: Boolean(p.isWinner ?? (p.userId || p.id) === game.winnerId),
+      }))
+    : [];
+  const durationSeconds = Number(game.durationSeconds ?? (anyGame.roundsPlayed || 6) * 60) || 0;
+  const playerCount = Number(game.playerCount ?? rawSummary.length) || 0;
+
+  await withPostgresTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO games (id, room_id, created_at, duration_seconds, player_count, winner_id, winner_username, players_summary)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO UPDATE SET
+         room_id = EXCLUDED.room_id,
+         duration_seconds = EXCLUDED.duration_seconds,
+         player_count = EXCLUDED.player_count,
+         winner_id = EXCLUDED.winner_id,
+         winner_username = EXCLUDED.winner_username,
+         players_summary = EXCLUDED.players_summary`,
+      [
+        game.id,
+        game.roomId,
+        createdAt,
+        durationSeconds,
+        playerCount,
+        game.winnerId,
+        winnerUsername,
+        JSON.stringify(rawSummary),
+      ]
+    );
+
+    for (const p of rawSummary) {
       await client.query(
-        `INSERT INTO games (id, room_id, created_at, duration_seconds, player_count, winner_id, winner_username, players_summary)
+        `INSERT INTO game_player_results (game_id, user_id, username, score, territories, correct_answers, is_winner, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (id) DO UPDATE SET
-           room_id = EXCLUDED.room_id,
-           duration_seconds = EXCLUDED.duration_seconds,
-           player_count = EXCLUDED.player_count,
-           winner_id = EXCLUDED.winner_id,
-           winner_username = EXCLUDED.winner_username,
-           players_summary = EXCLUDED.players_summary`,
+         ON CONFLICT (game_id, user_id) DO UPDATE SET
+           username = EXCLUDED.username,
+           score = EXCLUDED.score,
+           territories = EXCLUDED.territories,
+           correct_answers = EXCLUDED.correct_answers,
+           is_winner = EXCLUDED.is_winner`,
         [
           game.id,
-          game.roomId,
-          game.createdAt,
-          game.durationSeconds,
-          game.playerCount,
-          game.winnerId,
-          game.winnerUsername || null,
-          JSON.stringify(game.playersSummary || []),
+          p.userId,
+          p.username,
+          p.score,
+          p.territories,
+          p.correctAnswers,
+          p.isWinner,
+          createdAt,
         ]
       );
-
-      for (const p of game.playersSummary || []) {
-        await client.query(
-          `INSERT INTO game_player_results (game_id, user_id, username, score, territories, correct_answers, is_winner, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-           ON CONFLICT (game_id, user_id) DO UPDATE SET
-             username = EXCLUDED.username,
-             score = EXCLUDED.score,
-             territories = EXCLUDED.territories,
-             correct_answers = EXCLUDED.correct_answers,
-             is_winner = EXCLUDED.is_winner`,
-          [
-            game.id,
-            p.userId,
-            p.username,
-            p.score,
-            p.territories,
-            p.correctAnswers,
-            p.isWinner,
-            game.createdAt,
-          ]
-        );
-      }
-    });
-  } catch (err: any) {
-    console.error('[PostgreSQL insertGame error]:', err.message);
-  }
+    }
+  });
 }
 
 export async function createFriendRequestWithNotificationToPostgres(
   f: FriendRecord,
   n: NotificationRecord
 ): Promise<void> {
-  if (!isPostgresConfigured()) return;
-  try {
-    await withPostgresTransaction(async (client) => {
-      await client.query(
-        `INSERT INTO friends (id, requester_id, recipient_id, status, created_at)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-        [f.id, f.requesterId, f.recipientId, f.status, f.createdAt]
-      );
-      await client.query(
-        `INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT (id) DO UPDATE SET is_read = EXCLUDED.is_read`,
-        [n.id, n.userId, n.title, n.message, n.type, n.isRead, n.createdAt]
-      );
-    });
-  } catch (err: any) {
-    console.error('[PostgreSQL createFriendRequestWithNotification error]:', err.message);
-  }
+  await withPostgresTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO friends (id, requester_id, recipient_id, status, created_at)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+      [f.id, f.requesterId, f.recipientId, f.status, f.createdAt]
+    );
+    await client.query(
+      `INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (id) DO UPDATE SET is_read = EXCLUDED.is_read`,
+      [n.id, n.userId, n.title, n.message, n.type, n.isRead, n.createdAt]
+    );
+  });
 }
 
 export async function upsertFriendToPostgres(
   f: FriendRecord,
   client?: QueryableClient
 ): Promise<void> {
-  const executor = client || getPostgresPool();
-  if (!executor) return;
-  try {
-    await executor.query(
+  if (client) {
+    await client.query(
       `INSERT INTO friends (id, requester_id, recipient_id, status, created_at)
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
       [f.id, f.requesterId, f.recipientId, f.status, f.createdAt]
     );
-  } catch (err: any) {
-    console.error('[PostgreSQL upsertFriend error]:', err.message);
-    if (client) throw err;
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await upsertFriendToPostgres(f, tx);
+  });
 }
 
-export async function deleteFriendFromPostgres(id: string): Promise<void> {
-  const pgPool = getPostgresPool();
-  if (!pgPool) return;
-  try {
-    await pgPool.query('DELETE FROM friends WHERE id = $1', [id]);
-  } catch (err: any) {
-    console.error('[PostgreSQL deleteFriend error]:', err.message);
+export async function deleteFriendFromPostgres(
+  id: string,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query('DELETE FROM friends WHERE id = $1', [id]);
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await deleteFriendFromPostgres(id, tx);
+  });
 }
 
 export async function upsertNotificationToPostgres(
   n: NotificationRecord,
   client?: QueryableClient
 ): Promise<void> {
-  const executor = client || getPostgresPool();
-  if (!executor) return;
-  try {
-    await executor.query(
+  if (client) {
+    await client.query(
       `INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (id) DO UPDATE SET is_read = EXCLUDED.is_read`,
       [n.id, n.userId, n.title, n.message, n.type, n.isRead, n.createdAt]
     );
-  } catch (err: any) {
-    console.error('[PostgreSQL upsertNotification error]:', err.message);
-    if (client) throw err;
+    return;
   }
+  await withPostgresTransaction(async (tx) => {
+    await upsertNotificationToPostgres(n, tx);
+  });
+}
+
+/**
+ * Invalidează tokenurile anterioare nefolosite ale utilizatorului și inserează noul hash SHA-256
+ * într-o tranzacție SQL atomică.
+ */
+export async function createPasswordResetTokenToPostgres(params: {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAtIso: string;
+  createdAtIso: string;
+}): Promise<void> {
+  await withPostgresTransaction(async (client) => {
+    await client.query(
+      `UPDATE password_reset_tokens
+       SET invalidated_at = $2
+       WHERE user_id = $1 AND used_at IS NULL AND invalidated_at IS NULL`,
+      [params.userId, params.createdAtIso]
+    );
+    await client.query(
+      `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [params.id, params.userId, params.tokenHash, params.expiresAtIso, params.createdAtIso]
+    );
+  });
+}
+
+export async function invalidatePasswordResetTokenInPostgres(tokenId: string): Promise<void> {
+  await withPostgresTransaction(async (client) => {
+    await client.query(
+      `UPDATE password_reset_tokens
+       SET invalidated_at = NOW()
+       WHERE id = $1 AND used_at IS NULL AND invalidated_at IS NULL`,
+      [tokenId]
+    );
+  });
+}
+
+/**
+ * Consumă atomic tokenul de resetare și actualizează hash-ul parolei + token_version pe utilizator.
+ * Dacă apare o eroare înainte de COMMIT (ex. injectată în teste sau eroare DB), atât consumul
+ * tokenului cât și schimbarea parolei fac ROLLBACK.
+ */
+export async function consumePasswordResetTokenAndUpdatePasswordInPostgres(params: {
+  tokenHash: string;
+  newPasswordHash: string;
+  nowIso: string;
+  beforeCommitHook?: (client: QueryableClient) => Promise<void>;
+}): Promise<{
+  success: boolean;
+  reason?: 'invalid' | 'expired' | 'used';
+  userId?: string;
+  newTokenVersion?: number;
+}> {
+  return await withPostgresTransaction(async (client) => {
+    const res = await client.query(
+      `SELECT id, user_id, token_hash, expires_at, used_at, invalidated_at
+       FROM password_reset_tokens
+       WHERE token_hash = $1
+       FOR UPDATE`,
+      [params.tokenHash]
+    );
+
+    if (!res.rows || res.rows.length === 0) {
+      return { success: false, reason: 'invalid' };
+    }
+
+    const row = res.rows[0];
+    if (row.used_at || row.invalidated_at) {
+      return { success: false, reason: 'used' };
+    }
+
+    const expiresAtMs = new Date(row.expires_at).getTime();
+    const nowMs = new Date(params.nowIso).getTime();
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+      return { success: false, reason: 'expired' };
+    }
+
+    await client.query(
+      `UPDATE password_reset_tokens
+       SET used_at = $2
+       WHERE id = $1`,
+      [row.id, params.nowIso]
+    );
+
+    await client.query(
+      `UPDATE password_reset_tokens
+       SET invalidated_at = $2
+       WHERE user_id = $1 AND id <> $3 AND used_at IS NULL AND invalidated_at IS NULL`,
+      [row.user_id, params.nowIso, row.id]
+    );
+
+    if (params.beforeCommitHook) {
+      await params.beforeCommitHook(client);
+    }
+
+    const userUpdateRes = await client.query(
+      `UPDATE users
+       SET password_hash = $1,
+           token_version = COALESCE(token_version, 1) + 1,
+           updated_at = $3
+       WHERE id = $2
+       RETURNING token_version`,
+      [params.newPasswordHash, row.user_id, params.nowIso]
+    );
+
+    const newTokenVersion = Number(userUpdateRes.rows?.[0]?.token_version ?? 2);
+    return {
+      success: true,
+      userId: row.user_id,
+      newTokenVersion,
+    };
+  });
 }
 
 export async function saveActiveGameSnapshotsToPostgres(
   games: GameState[],
   interrupted = true
 ): Promise<void> {
-  if (!isPostgresConfigured() || !games.length) return;
-  try {
-    await withPostgresTransaction(async (client) => {
-      for (const g of games) {
-        if (g.phase === 'finished') continue;
-        await client.query(
-          `INSERT INTO active_game_snapshots (room_id, phase, player_count, state_json, interrupted_by_shutdown, updated_at)
-           VALUES ($1,$2,$3,$4,$5,NOW())
-           ON CONFLICT (room_id) DO UPDATE SET
-             phase = EXCLUDED.phase,
-             player_count = EXCLUDED.player_count,
-             state_json = EXCLUDED.state_json,
-             interrupted_by_shutdown = EXCLUDED.interrupted_by_shutdown,
-             updated_at = NOW()`,
-          [g.roomId, g.phase, g.players.length, JSON.stringify(g), interrupted]
-        );
-      }
-    });
-  } catch (err: any) {
-    console.error('[PostgreSQL saveActiveGameSnapshots error]:', err.message);
-  }
+  if (!isPostgresConfigured()) return;
+  const activeGames = games.filter((g) => g && g.roomId && g.phase !== 'finished');
+  await withPostgresTransaction(async (client) => {
+    if (activeGames.length === 0) {
+      await client.query('DELETE FROM active_game_snapshots');
+      return;
+    }
+    const nowMs = Date.now();
+    for (const g of activeGames) {
+      const payload = {
+        ...g,
+        snapshotSavedAtMs: nowMs,
+      };
+      await client.query(
+        `INSERT INTO active_game_snapshots (room_id, phase, player_count, state_json, interrupted_by_shutdown, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (room_id) DO UPDATE SET
+           phase = EXCLUDED.phase,
+           player_count = EXCLUDED.player_count,
+           state_json = EXCLUDED.state_json,
+           interrupted_by_shutdown = EXCLUDED.interrupted_by_shutdown,
+           updated_at = NOW()`,
+        [g.roomId, g.phase, g.players.length, JSON.stringify(payload), interrupted]
+      );
+    }
+  });
 }
 
 export async function loadActiveGameSnapshotsFromPostgres(): Promise<GameState[]> {
   const pgPool = getPostgresPool();
   if (!pgPool) return [];
-  try {
-    const res = await pgPool.query(
-      'SELECT room_id, state_json FROM active_game_snapshots ORDER BY updated_at DESC'
-    );
-    const restored: GameState[] = [];
-    for (const row of res.rows) {
-      const state =
-        typeof row.state_json === 'string' ? JSON.parse(row.state_json) : row.state_json;
-      if (state && state.roomId && state.phase !== 'finished') {
-        restored.push(state as GameState);
-      }
+  const res = await pgPool.query(
+    'SELECT room_id, state_json FROM active_game_snapshots ORDER BY updated_at DESC'
+  );
+  const restored: GameState[] = [];
+  const seenRoomIds = new Set<string>();
+  for (const row of res.rows) {
+    const state =
+      typeof row.state_json === 'string' ? JSON.parse(row.state_json) : row.state_json;
+    if (state && state.roomId && state.phase !== 'finished' && !seenRoomIds.has(state.roomId)) {
+      seenRoomIds.add(state.roomId);
+      restored.push(state as GameState);
     }
-    return restored;
-  } catch (err: any) {
-    console.error('[PostgreSQL loadActiveGameSnapshots error]:', err.message);
-    return [];
   }
+  return restored;
 }
 
 export async function deleteActiveGameSnapshotFromPostgres(roomId: string): Promise<void> {
+  if (!isPostgresConfigured()) return;
   const pgPool = getPostgresPool();
   if (!pgPool) return;
-  try {
-    await pgPool.query('DELETE FROM active_game_snapshots WHERE room_id = $1', [roomId]);
-  } catch (err: any) {
-    console.error('[PostgreSQL deleteActiveGameSnapshot error]:', err.message);
-  }
+  await pgPool.query('DELETE FROM active_game_snapshots WHERE room_id = $1', [roomId]);
 }
 
 export async function closePostgresPool(): Promise<void> {

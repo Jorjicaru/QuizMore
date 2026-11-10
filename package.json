@@ -13,8 +13,9 @@
     "generate:map-presets": "node scripts/generate_all_maps.cjs",
     "build:questions": "node scripts/build_and_validate_questions.cjs",
     "validate:questions": "node scripts/validate_question_bank.cjs",
-    "migrate:postgres": "tsx scripts/migrate_json_to_postgres.ts",
-    "test": "tsx --test src/game/rules.test.ts"
+    "migrate:postgres": "bun run scripts/migrate_json_to_postgres.ts",
+    "test": "tsx --test src/game/rules.test.ts",
+    "test:postgres": "tsx --test src/game/postgres.real.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,6 +24,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/canvas-confetti": "^1.9.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
@@ -32,6 +34,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "nodemailer": "^10.5.0",
     "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",

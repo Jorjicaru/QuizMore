@@ -4,7 +4,7 @@
 # ==============================================================================
 set -euo pipefail
 
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
+BACKUP_DIR="${1:-${BACKUP_DIR:-./backups}}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 PG_CONTAINER="${PG_CONTAINER:-conquiz-postgres}"

@@ -23,6 +23,11 @@ import {
   SCORING,
 } from '../src/game/rules';
 import { db } from './db';
+import {
+  deleteActiveGameSnapshotFromPostgres,
+  isPostgresConfigured,
+  saveActiveGameSnapshotsToPostgres,
+} from './postgresRepo';
 
 export const PLAYER_COLORS = [
   '#2563EB', // 1: Albastru Regal
@@ -447,6 +452,9 @@ export class GameManager {
     if (game.players.length === 0) {
       this.clearRoomTimers(roomId);
       this.games.delete(roomId);
+      if (isPostgresConfigured()) {
+        void deleteActiveGameSnapshotFromPostgres(roomId);
+      }
       return;
     }
     if (leavingPlayer.isHost) {
@@ -627,24 +635,25 @@ export class GameManager {
   }
 
   /**
-   * Starts a 15-second selection timer for the current phase.
+   * Starts a selection timer for the current phase (default 15s, or remaining duration after restore).
    */
-  private startSelectionTimer(roomId: string): void {
+  private startSelectionTimer(roomId: string, customDurationMs = 15000): void {
     const existing = this.selectionTimers.get(roomId);
     if (existing) clearTimeout(existing);
 
     const game = this.games.get(roomId);
     if (!game || game.phase === 'finished' || game.currentQuestion) return;
 
+    const clampedMs = Math.max(250, Math.min(15000, Math.round(customDurationMs)));
     game.turnTimeLimit = 15;
-    game.turnTimerExpiresAt = Date.now() + 15000;
+    game.turnTimerExpiresAt = Date.now() + clampedMs;
     if (game.phase === 'war' && game.warRound) {
       game.warRound.selectionDeadline = game.turnTimerExpiresAt;
     }
 
     const timer = setTimeout(() => {
       this.handleSelectionTimeout(roomId);
-    }, 15000);
+    }, clampedMs);
     this.selectionTimers.set(roomId, timer);
   }
 
@@ -2245,8 +2254,36 @@ export class GameManager {
         user.profile.territoriesConquered += p.territoriesCount;
         user.profile.correctAnswersTotal += p.correctAnswers;
         if (p.score > user.profile.highestScore) user.profile.highestScore = p.score;
-        db.updateUserProfile(user.id, user.profile);
+        void db.updateUserProfile(user.id, user.profile).catch((err) => {
+          console.error('[GameEngine] Eroare la actualizarea profilului după meci:', err);
+        });
       }
+    }
+
+    void db
+      .recordGame({
+        id: `game_${game.roomId}_${Date.now()}`,
+        roomId: game.roomId,
+        createdAt: new Date().toISOString(),
+        durationSeconds: Math.max(60, (game.round || 1) * 60),
+        playerCount: game.players.length,
+        winnerId: winner.id,
+        winnerUsername: winner.username,
+        playersSummary: game.players.map((p) => ({
+          userId: p.id,
+          username: p.username,
+          score: p.score,
+          territories: p.territoriesCount,
+          correctAnswers: p.correctAnswers,
+          isWinner: p.id === winner.id,
+        })),
+      })
+      .catch((err) => {
+        console.error('[GameEngine] Eroare la salvarea rezultatului meciului:', err);
+      });
+
+    if (isPostgresConfigured()) {
+      void deleteActiveGameSnapshotFromPostgres(game.roomId);
     }
 
     this.notifyUpdate(game.roomId);
@@ -2405,13 +2442,36 @@ export class GameManager {
   }
 
   /**
+   * Salvează neblocant snapshot-urile camerelor active în PostgreSQL (fără camerele terminate).
+   */
+  public async persistActiveSnapshotsNow(interrupted = false): Promise<void> {
+    if (!isPostgresConfigured()) return;
+    const activeGames = this.getAllActiveGames();
+    await saveActiveGameSnapshotsToPostgres(activeGames, interrupted);
+  }
+
+  /**
    * Restaurează camerele active salvate în `active_game_snapshots` (PostgreSQL) înainte de oprirea serverului.
+   * Evită camerele duplicate și păstrează strict timpul rămas din timere (nu acordă timp suplimentar).
    */
   public restoreGamesFromSnapshots(snapshots: GameState[]): number {
     let restoredCount = 0;
+    const seenRoomIds = new Set<string>();
+
     for (const raw of snapshots) {
       if (!raw || !raw.roomId || raw.phase === 'finished') continue;
+      if (seenRoomIds.has(raw.roomId) || this.games.has(raw.roomId)) continue;
+      seenRoomIds.add(raw.roomId);
+
       const snapshot: GameState = JSON.parse(JSON.stringify(raw));
+      const nowMs = Date.now();
+      const referenceNowMs =
+        typeof (snapshot as any).snapshotSavedAtMs === 'number' &&
+        (snapshot as any).snapshotSavedAtMs > 0
+          ? Number((snapshot as any).snapshotSavedAtMs)
+          : nowMs;
+      delete (snapshot as any).snapshotSavedAtMs;
+
       if (Array.isArray(snapshot.players)) {
         for (const p of snapshot.players) {
           if (!p.isAi) {
@@ -2423,29 +2483,41 @@ export class GameManager {
       snapshot.gameLog.push({
         id: this.makeLogId(),
         text: '🔄 Partida a fost restaurată din snapshot-ul PostgreSQL după repornirea serverului.',
-        timestamp: Date.now(),
+        timestamp: nowMs,
         type: 'info',
       });
       this.games.set(snapshot.roomId, snapshot);
       restoredCount++;
 
-      // Re-arm active timers if the match is in an interactive phase
+      // Re-arm active timers preserving remaining time (never granting extra time on restart)
       if (snapshot.currentQuestion && !snapshot.currentQuestion.resolved) {
-        snapshot.currentQuestion.startTime = Date.now();
-        const durationMs = (snapshot.currentQuestion.durationSeconds || 12) * 1000;
+        const totalDurationMs = (snapshot.currentQuestion.durationSeconds || 12) * 1000;
+        const originalStartMs = Number(snapshot.currentQuestion.startTime) || referenceNowMs;
+        const elapsedBeforeSaveMs = Math.max(0, referenceNowMs - originalStartMs);
+        const remainingMs = Math.max(
+          250,
+          Math.min(totalDurationMs, totalDurationMs - elapsedBeforeSaveMs)
+        );
+        // Set startTime so that client remaining time calculation (startTime + durationSeconds*1000 - now) matches remainingMs
+        snapshot.currentQuestion.startTime = nowMs - (totalDurationMs - remainingMs);
+
         const timer = setTimeout(() => {
           this.resolveCurrentQuestion(snapshot.roomId);
-        }, durationMs);
+        }, remainingMs);
         this.questionTimers.set(snapshot.roomId, timer);
         this.scheduleAiAnswers(snapshot);
       } else if (
         snapshot.phase === 'base_selection' ||
-        (snapshot.phase === 'conquest' && (snapshot.conquestPickerId || snapshot.allocationPickReady))
+        (snapshot.phase === 'conquest' &&
+          (snapshot.conquestPickerId || snapshot.allocationPickReady)) ||
+        (snapshot.phase === 'war' && snapshot.warRound?.status === 'selecting_targets')
       ) {
-        this.startSelectionTimer(snapshot.roomId);
-        this.checkAiTurn(snapshot.roomId);
-      } else if (snapshot.phase === 'war' && snapshot.warRound?.status === 'selecting_targets') {
-        this.startSelectionTimer(snapshot.roomId);
+        const originalExpiresAtMs = Number(snapshot.turnTimerExpiresAt) || referenceNowMs + 15000;
+        const remainingSelectionMs = Math.max(
+          250,
+          Math.min(15000, originalExpiresAtMs - referenceNowMs)
+        );
+        this.startSelectionTimer(snapshot.roomId, remainingSelectionMs);
         this.checkAiTurn(snapshot.roomId);
       }
     }

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   territories_conquered INTEGER NOT NULL DEFAULT 0,
   correct_answers_total INTEGER NOT NULL DEFAULT 0,
   highest_score INTEGER NOT NULL DEFAULT 0,
+  token_version INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

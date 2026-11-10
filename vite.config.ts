@@ -4,6 +4,11 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const isPreviewOrDisabledHmr =
+    process.env.DISABLE_HMR === 'true' ||
+    process.env.AI_STUDIO_PREVIEW === 'true' ||
+    Boolean(process.env.K_SERVICE || process.env.CLOUD_RUN_JOB);
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -12,11 +17,10 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // HMR is disabled in AI Studio via DISABLE_HMR or Cloud Run preview env vars.
+      hmr: !isPreviewOrDisabledHmr,
+      // Disable file watching when HMR is disabled to save CPU during agent edits.
+      watch: isPreviewOrDisabledHmr ? null : {},
     },
   };
 });

@@ -15,10 +15,12 @@ class SocketService {
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
 
   public connect(): Socket {
+    const hasToken =
+      typeof localStorage !== 'undefined' && Boolean(localStorage.getItem(TOKEN_KEY));
     if (!this.socket) {
       this.socket = io({
         transports: ['websocket', 'polling'],
-        autoConnect: true,
+        autoConnect: hasToken,
         auth: (callback) => callback({ token: localStorage.getItem(TOKEN_KEY) }),
       });
 
@@ -36,6 +38,8 @@ class SocketService {
       this.socket.on('disconnect', () => {
         console.log('Deconectat de la server');
       });
+    } else if (hasToken && !this.socket.connected) {
+      this.socket.connect();
     }
     return this.socket;
   }

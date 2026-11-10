@@ -53,3 +53,27 @@ docker compose stop app
 # 3. Repornește aplicația
 docker compose start app
 ```
+
+---
+
+## 3. Comportamentul la Oprire Controlată vs. Oprire Brutală și Ce Permite Backup-ul
+
+### A. Ce se păstrează 100% în timp real (Zero pierderi chiar și la oprire brutală `SIGKILL` / pană de curent):
+Toate mutațiile critice sunt confirmate cu `COMMIT` în PostgreSQL **înainte** ca serverul să trimită răspunsul HTTP de succes către client:
+- **Conturi de utilizatori, parole și `token_version`** (`users`)
+- **Statistici de profil și rating** (`users.profile_json`)
+- **Tokenuri de resetare a parolei consumate/invalidate** (`password_reset_tokens`)
+- **Banca de întrebări și modificările editoriale din panoul Admin** (`questions`)
+- **Meciurile finalizate și rezultatele per jucător** (`games` și `game_player_results`)
+- **Cererile de prietenie și notificările** (`friends` și `notifications`)
+
+### B. Camerele Multiplayer Active în Desfășurare (`active_game_snapshots`):
+1. **La oprire controlată (`SIGTERM` / `SIGINT`, ex. `docker compose stop` sau `docker compose restart`)**:
+   - Handler-ul `gracefulShutdown` din `server.ts` salvează imediat în PostgreSQL (`active_game_snapshots`) starea exactă a tuturor camerelor active (`phase !== 'finished'`), împreună cu marca temporală `snapshotSavedAtMs`.
+   - Nu se pierd mutări din camerele active. La repornire, `restoreGamesFromSnapshots` restaurează camerele fără duplicate și recalculează strict timpul rămas din timerul întrebării sau al selecției de teritoriu (nu acordă secunde suplimentare din cauza restartului).
+2. **La oprire brutală (`SIGKILL` / `kill -9` / cădere de tensiune a hostului)**:
+   - Serverul rulează în fundal un snapshot periodic neblocant în PostgreSQL la fiecare `ACTIVE_ROOM_SNAPSHOT_INTERVAL_MS` (implicit **15 secunde**) exclusiv pentru camerele active (`phase !== 'finished'`). Camerele terminate sunt șterse automat din `active_game_snapshots`.
+   - În cazul unei opriri brutale, camerele active sunt recuperate la starea ultimului snapshot periodic salvat în PostgreSQL: se pot pierde cel mult acțiunile din cameră (răspunsuri la întrebarea în curs sau selecții de teritoriu) efectuate în ultimele **0–15 secunde** de dinaintea căderii brutale.
+3. **Ce permite efectiv arhiva de backup (`pg_dump` / `scripts/backup_postgres.sh`)**:
+   - Un fișier `.sql.gz` generat de `scripts/backup_postgres.sh` reprezintă o imagine consistentă (*point-in-time snapshot*) a întregii baze PostgreSQL din momentul rulării `pg_dump`.
+   - Restaurarea unui backup cu `scripts/restore_postgres.sh` readuce toate tabelele (`users`, `password_reset_tokens`, `questions`, `games`, `game_player_results`, `friends`, `notifications`, `active_game_snapshots`) exact la starea din momentul acelui backup. Orice date scrise după momentul realizării arhivei `.sql.gz` nu sunt incluse în acel fișier de backup.

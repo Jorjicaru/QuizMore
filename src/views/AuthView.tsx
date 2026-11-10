@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { UserProfile } from '../types/game';
 import { sound } from '../services/audio';
 import { socketService } from '../services/socket';
-import { Crown, Lock, Mail, User, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Crown, Lock, Mail, User, KeyRound, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface AuthViewProps {
   onSuccess: (user: UserProfile) => void;
   onCancel?: () => void;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
+  const [tab, setTab] = useState<'login' | 'register' | 'forgot' | 'reset'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   // Form Fields
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -24,9 +25,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
+  // Forgot & Reset Password Fields
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('resetToken');
+      if (urlToken && urlToken.trim().length > 0) {
+        setResetToken(urlToken.trim());
+        setTab('reset');
+      }
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfoMessage(null);
     setLoading(true);
     try {
       sound.playClick();
@@ -43,6 +62,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfoMessage(null);
     setLoading(true);
     try {
       sound.playClick();
@@ -56,9 +76,50 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setInfoMessage(null);
+    setLoading(true);
+    try {
+      sound.playClick();
+      const res = await api.forgotPassword(forgotEmail);
+      setInfoMessage(res.message);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setInfoMessage(null);
+    setLoading(true);
+    try {
+      sound.playClick();
+      const res = await api.resetPassword(resetToken, resetNewPassword, resetConfirmPassword);
+      setInfoMessage(res.message);
+      setResetToken('');
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      if (typeof window !== 'undefined' && window.location.search.includes('resetToken')) {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+      setTab('login');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Quick 1-Click Guest Login (No account needed!)
   const handleGuestLogin = async () => {
     setError(null);
+    setInfoMessage(null);
     setLoading(true);
     try {
       sound.playClick();
@@ -71,7 +132,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
       setLoading(false);
     }
   };
-
 
   return (
     <div className="flex min-h-[75vh] items-center justify-center p-4 animate-fadeIn">
@@ -89,7 +149,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
           </p>
         </div>
 
-        {/* Guest 1-Click Fast Access Button (Requested: "sa ti fie permis utilizator random fara cont dar si cu cont") */}
+        {/* Guest 1-Click Fast Access Button */}
         <div className="mt-5">
           <button
             type="button"
@@ -115,6 +175,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
               sound.playClick();
               setTab('login');
               setError(null);
+              setInfoMessage(null);
             }}
             className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
               tab === 'login'
@@ -130,6 +191,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
               sound.playClick();
               setTab('register');
               setError(null);
+              setInfoMessage(null);
             }}
             className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
               tab === 'register'
@@ -145,6 +207,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
         {error && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
             {error}
+          </div>
+        )}
+
+        {/* Info Alert */}
+        {infoMessage && (
+          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+            {infoMessage}
           </div>
         )}
 
@@ -169,9 +238,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Parolă
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-300">Parolă</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setTab('forgot');
+                    setError(null);
+                    setInfoMessage(null);
+                  }}
+                  className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 transition cursor-pointer"
+                >
+                  Am uitat parola?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
                 <input
@@ -200,7 +281,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
         {tab === 'register' && (
           <form onSubmit={handleRegister} className="mt-5 space-y-3.5">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Nume de Utilizator</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Nume de Utilizator
+              </label>
               <div className="relative">
                 <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
                 <input
@@ -242,7 +325,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Confirmare</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Confirmare
+                </label>
                 <input
                   type="password"
                   required
@@ -265,13 +350,154 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onCancel }) => {
           </form>
         )}
 
+        {/* Forgot Password Request Form */}
+        {tab === 'forgot' && (
+          <form onSubmit={handleForgotPassword} className="mt-5 space-y-3.5">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+              Introdu adresa de email asociată contului tău. Îți vom trimite un link de resetare a
+              parolei valabil 30 de minute.
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Adresa de Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="emailul.tau@exemplu.ro"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3 font-serif text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition"
+            >
+              <span>{loading ? 'Se procesează...' : 'Trimite Link de Resetare'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+
+            <div className="flex items-center justify-between pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playClick();
+                  setTab('login');
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Înapoi la autentificare</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playClick();
+                  setTab('reset');
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className="text-amber-400 hover:text-amber-300 font-semibold transition cursor-pointer"
+              >
+                Am deja un cod/token
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Reset Password Form */}
+        {tab === 'reset' && (
+          <form onSubmit={handleResetPassword} className="mt-5 space-y-3.5">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+              Stabilește o parolă nouă (minim 10 caractere) folosind tokenul primit pe email.
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Token de Resetare
+              </label>
+              <div className="relative">
+                <KeyRound className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  required
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  placeholder="Tokenul din linkul primit pe email"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Parolă Nouă
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  placeholder="minim 10 caractere"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Confirmare
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  placeholder="repetă parola"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3 font-serif text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition"
+            >
+              <span>{loading ? 'Se actualizează...' : 'Salvează Noua Parolă'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+
+            <div className="pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playClick();
+                  setTab('login');
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Înapoi la autentificare</span>
+              </button>
+            </div>
+          </form>
+        )}
+
         {/* Quick Demo 1-Click Buttons */}
         <div className="mt-6 border-t border-slate-800 pt-5">
           <div className="text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
             Autentificare Rapidă pentru Testare
           </div>
-          <div className="grid grid-cols-2 gap-2">
-          </div>
+          <div className="grid grid-cols-2 gap-2"></div>
         </div>
       </div>
     </div>

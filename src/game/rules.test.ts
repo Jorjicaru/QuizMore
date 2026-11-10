@@ -1047,7 +1047,7 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
   const u2Id = `usr_test_s2_${Date.now()}`;
   const nowIso = new Date().toISOString();
 
-  db.createUser({
+  await db.createUser({
     id: u1Id,
     username: 'Voievod_Test1',
     email: `${u1Id}@test.local`,
@@ -1072,7 +1072,7 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
     },
   });
 
-  db.createUser({
+  await db.createUser({
     id: u2Id,
     username: 'Voievod_Test2',
     email: `${u2Id}@test.local`,
@@ -1226,8 +1226,8 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
     client2.disconnect();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    db.deleteUser(u1Id);
-    db.deleteUser(u2Id);
+    await db.deleteUser(u1Id);
+    await db.deleteUser(u2Id);
   }
 });
 
@@ -1639,6 +1639,7 @@ function createInMemoryPostgresTestDouble() {
         territories_conquered,
         correct_answers_total,
         highest_score,
+        token_version,
         created_at,
       ] = params;
       state.users.set(id, {
@@ -1657,6 +1658,7 @@ function createInMemoryPostgresTestDouble() {
         territories_conquered,
         correct_answers_total,
         highest_score,
+        token_version: token_version ?? 1,
         created_at,
       });
       return { rows: [] };
@@ -1887,7 +1889,7 @@ test('V9.1 Test 27: Securitatea variabilelor de mediu respinge .env.example nemo
   assert.deepEqual(validResult.errors, []);
 });
 
-test('V9.1 Test 28: PostgreSQL ca sursă principală de date – citire/scriere reală și tranzacții SQL atomice (COMMIT și ROLLBACK)', async () => {
+test('V9.1 Test 28 [SIMULAT - Dublură în Memorie]: Repository SQL simulat – verificare citire/scriere și tranzacții atomice simulate (COMMIT și ROLLBACK)', async () => {
   const pgDouble = createInMemoryPostgresTestDouble();
   setPostgresPoolForTesting(pgDouble.pool);
 
@@ -1992,7 +1994,7 @@ test('V9.1 Test 28: PostgreSQL ca sursă principală de date – citire/scriere 
   }
 });
 
-test('V9.1 Test 29: Scriptul de migrare executeJsonToPostgresMigration este 100% idempotent la rularea de două ori consecutiv (inclusiv întrebări custom și game_player_results)', async () => {
+test('V9.1 Test 29 [SIMULAT - Dublură în Memorie]: Scriptul de migrare executeJsonToPostgresMigration cu dublură în memorie este idempotent la rularea de două ori', async () => {
   const pgDouble = createInMemoryPostgresTestDouble();
   setPostgresPoolForTesting(pgDouble.pool);
 
@@ -2160,7 +2162,7 @@ test('V9.1 Test 29: Scriptul de migrare executeJsonToPostgresMigration este 100%
   }
 });
 
-test('V9.1 Test 30: Backup și restaurare într-o a doua instanță PostgreSQL + recuperarea camerelor active (restoreGamesFromSnapshots) la restart', async () => {
+test('V9.1 Test 30 [SIMULAT - Dublură în Memorie]: Serializare/restaurare simulată și recuperarea camerelor active (restoreGamesFromSnapshots) la restart', async () => {
   const pgPrimary = createInMemoryPostgresTestDouble();
   const pgRestoreTarget = createInMemoryPostgresTestDouble();
   const gmBeforeRestart = new GameManager();
@@ -2283,9 +2285,9 @@ test('V9.1 Test 30: Backup și restaurare într-o a doua instanță PostgreSQL +
   }
 });
 
-test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft, filtrare strictă approved în meci și nicio categorie peste 12,5%', () => {
+test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft, filtrare strictă approved în meci și nicio categorie peste 12,5%', async () => {
   // 1. Add a question without reviewStatus and verify it defaults to draft and is NOT selected by GameManager
-  const draftQ = db.addQuestion({
+  const draftQ = await db.addQuestion({
     id: 'q_draft_test_v91',
     type: 'choice',
     category: 'istorie',
@@ -2325,7 +2327,7 @@ test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft
     }
     (gm as any).clearRoomTimers(room.roomId);
   } finally {
-    db.deleteQuestion(draftQ.id);
+    await db.deleteQuestion(draftQ.id);
   }
 
   // 2. Verify category balance <= 12.5% across the canonical question bank

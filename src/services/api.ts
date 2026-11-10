@@ -84,6 +84,20 @@ export const api = {
     });
   },
 
+  async forgotPassword(email: string) {
+    return this.request<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async resetPassword(token: string, newPassword: string, confirmPassword: string) {
+    return this.request<{ success: boolean; message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword, confirmPassword }),
+    });
+  },
+
   // Games & Rooms
   async getPublicRooms() {
     return this.request<{ rooms: Array<{ roomId: string; roomName: string; playersCount: number; maxPlayers: number; phase: string }> }>('/api/games/rooms');

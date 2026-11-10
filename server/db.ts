@@ -23,7 +23,12 @@ import {
   upsertFriendToPostgres,
   deleteFriendFromPostgres,
   upsertNotificationToPostgres,
+  createPasswordResetTokenToPostgres,
+  invalidatePasswordResetTokenInPostgres,
+  consumePasswordResetTokenAndUpdatePasswordInPostgres,
+  QueryableClient,
 } from './postgresRepo';
+import { hashResetToken } from './emailService';
 
 export interface UserRecord {
   id: string;
@@ -32,6 +37,7 @@ export interface UserRecord {
   passwordHash: string;
   role: 'user' | 'admin';
   isBanned?: boolean;
+  tokenVersion?: number;
   createdAt: string;
   profile: UserProfile;
 }
@@ -72,6 +78,16 @@ export interface NotificationRecord {
   createdAt: string;
 }
 
+export interface PasswordResetTokenRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  usedAt?: string | null;
+  invalidatedAt?: string | null;
+  createdAt: string;
+}
+
 export interface DatabaseSchema {
   users: Record<string, UserRecord>;
   questions: Question[];
@@ -92,6 +108,7 @@ function atomicWriteJson(filePath: string, data: unknown): void {
 export class Database {
   private data: DatabaseSchema;
   private postgresAuthoritative = false;
+  private memoryResetTokens = new Map<string, PasswordResetTokenRecord>();
 
   constructor() {
     this.data = this.loadDatabaseFromJsonFallback();
@@ -112,7 +129,7 @@ export class Database {
       if (process.env.NODE_ENV === 'production' && !isAiStudioPreviewEnv(process.env)) {
         throw new Error('Nu s-a putut inițializa schema PostgreSQL.');
       }
-      // In development / preview, keep the JSON-backed app available if an optional DB is unreachable.
+      // În development / preview, păstrăm aplicația disponibilă pe JSON dacă o bază opțională nu răspunde.
       this.postgresAuthoritative = false;
       return;
     }
@@ -250,7 +267,6 @@ export class Database {
 
     const existingAdmin = Object.values(data.users || {}).find((u) => u.role === 'admin');
     if (existingAdmin) {
-      // Allow updating admin email/username/password when valid credentials are provided
       const passwordMatches = bcrypt.compareSync(password, existingAdmin.passwordHash);
       if (
         existingAdmin.email.toLowerCase() === email &&
@@ -262,6 +278,7 @@ export class Database {
       existingAdmin.email = email;
       existingAdmin.username = username;
       existingAdmin.passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(12));
+      existingAdmin.tokenVersion = (existingAdmin.tokenVersion ?? 1) + 1;
       existingAdmin.profile.email = email;
       existingAdmin.profile.username = username;
       return { changed: true, adminUser: existingAdmin };
@@ -304,6 +321,7 @@ export class Database {
       email,
       passwordHash: bcrypt.hashSync(password, bcrypt.genSaltSync(12)),
       role: 'admin',
+      tokenVersion: 1,
       createdAt,
       profile,
     };
@@ -414,7 +432,6 @@ export class Database {
       };
     }
 
-    // Call addConfiguredAdmin OUTSIDE the JSON parse try/catch block so validation errors are never masked
     const { changed: adminChanged } = this.addConfiguredAdmin(parsed);
     if (
       !isPostgresConfigured() &&
@@ -457,54 +474,244 @@ export class Database {
     );
   }
 
-  public createUser(user: UserRecord): UserRecord {
-    this.data.users[user.id] = user;
+  public async createUser(user: UserRecord): Promise<UserRecord> {
+    const normalizedUser: UserRecord = {
+      ...user,
+      tokenVersion: user.tokenVersion ?? 1,
+      profile: { ...user.profile },
+    };
+    if (isPostgresConfigured()) {
+      await upsertUserToPostgres(normalizedUser);
+    }
+    this.data.users[normalizedUser.id] = normalizedUser;
     this.save();
-    void upsertUserToPostgres(user);
-    return user;
+    return normalizedUser;
   }
 
-  public updateUserProfile(userId: string, updates: Partial<UserProfile>): UserProfile | null {
+  public async updateUserProfile(
+    userId: string,
+    updates: Partial<UserProfile>
+  ): Promise<UserProfile | null> {
     const user = this.data.users[userId];
     if (!user) return null;
-    user.profile = { ...user.profile, ...updates };
-    if (updates.username) {
-      user.username = updates.username;
+
+    const updatedProfile: UserProfile = {
+      ...user.profile,
+      ...updates,
+    };
+    const updatedUser: UserRecord = {
+      ...user,
+      username: updates.username ? updates.username : user.username,
+      profile: updatedProfile,
+    };
+
+    if (isPostgresConfigured()) {
+      await upsertUserToPostgres(updatedUser);
     }
+    this.data.users[userId] = updatedUser;
     this.save();
-    void upsertUserToPostgres(user);
-    return user.profile;
+    return updatedUser.profile;
+  }
+
+  public async updateUserPassword(
+    userId: string,
+    newPasswordHash: string
+  ): Promise<UserRecord | null> {
+    const user = this.data.users[userId];
+    if (!user) return null;
+
+    const updatedUser: UserRecord = {
+      ...user,
+      passwordHash: newPasswordHash,
+      tokenVersion: (user.tokenVersion ?? 1) + 1,
+      profile: { ...user.profile },
+    };
+
+    if (isPostgresConfigured()) {
+      await upsertUserToPostgres(updatedUser);
+    }
+    this.data.users[userId] = updatedUser;
+    this.save();
+    return updatedUser;
   }
 
   public getAllUsers(): UserRecord[] {
     return Object.values(this.data.users);
   }
 
-  public toggleUserBan(userId: string): boolean {
+  public async toggleUserBan(userId: string): Promise<boolean> {
     const user = this.data.users[userId];
     if (!user) return false;
-    user.isBanned = !user.isBanned;
+
+    const updatedUser: UserRecord = {
+      ...user,
+      isBanned: !user.isBanned,
+      profile: { ...user.profile },
+    };
+
+    if (isPostgresConfigured()) {
+      await upsertUserToPostgres(updatedUser);
+    }
+    this.data.users[userId] = updatedUser;
     this.save();
-    void upsertUserToPostgres(user);
-    return !!user.isBanned;
+    return !!updatedUser.isBanned;
   }
 
-  public deleteUser(userId: string): boolean {
+  public async deleteUser(userId: string): Promise<boolean> {
     if (!this.data.users[userId]) return false;
+    if (isPostgresConfigured()) {
+      await deleteUserFromPostgres(userId);
+    }
     delete this.data.users[userId];
     this.save();
-    void deleteUserFromPostgres(userId);
     return true;
   }
 
-  public setUserRole(userId: string, role: 'user' | 'admin'): boolean {
+  public async setUserRole(userId: string, role: 'user' | 'admin'): Promise<boolean> {
     const user = this.data.users[userId];
     if (!user) return false;
-    user.role = role;
-    user.profile.role = role;
+
+    const updatedUser: UserRecord = {
+      ...user,
+      role,
+      profile: { ...user.profile, role },
+    };
+
+    if (isPostgresConfigured()) {
+      await upsertUserToPostgres(updatedUser);
+    }
+    this.data.users[userId] = updatedUser;
     this.save();
-    void upsertUserToPostgres(user);
     return true;
+  }
+
+  // --- PASSWORD RESET TOKENS ---
+  public async createPasswordResetToken(
+    userId: string,
+    rawToken: string,
+    expiresInMs: number = 30 * 60 * 1000
+  ): Promise<PasswordResetTokenRecord> {
+    const nowMs = Date.now();
+    const createdAtIso = new Date(nowMs).toISOString();
+    const expiresAtIso = new Date(nowMs + expiresInMs).toISOString();
+    const tokenHash = hashResetToken(rawToken);
+    const id = `prt_${nowMs}_${Math.random().toString(36).substring(2, 8)}`;
+
+    if (isPostgresConfigured()) {
+      await createPasswordResetTokenToPostgres({
+        id,
+        userId,
+        tokenHash,
+        expiresAtIso,
+        createdAtIso,
+      });
+    }
+
+    // Invalidate previous unused tokens in memory cache
+    for (const existing of this.memoryResetTokens.values()) {
+      if (existing.userId === userId && !existing.usedAt && !existing.invalidatedAt) {
+        existing.invalidatedAt = createdAtIso;
+      }
+    }
+
+    const record: PasswordResetTokenRecord = {
+      id,
+      userId,
+      tokenHash,
+      expiresAt: expiresAtIso,
+      usedAt: null,
+      invalidatedAt: null,
+      createdAt: createdAtIso,
+    };
+    this.memoryResetTokens.set(tokenHash, record);
+    return record;
+  }
+
+  public async invalidatePasswordResetTokenById(tokenId: string): Promise<void> {
+    if (isPostgresConfigured()) {
+      await invalidatePasswordResetTokenInPostgres(tokenId);
+    }
+    const nowIso = new Date().toISOString();
+    for (const existing of this.memoryResetTokens.values()) {
+      if (existing.id === tokenId && !existing.usedAt && !existing.invalidatedAt) {
+        existing.invalidatedAt = nowIso;
+      }
+    }
+  }
+
+  public async consumePasswordResetToken(
+    rawToken: string,
+    newPasswordPlain: string,
+    options?: {
+      nowIso?: string;
+      beforeCommitHook?: (client: QueryableClient) => Promise<void>;
+    }
+  ): Promise<{
+    success: boolean;
+    reason?: 'invalid' | 'expired' | 'used';
+    userId?: string;
+  }> {
+    const tokenHash = hashResetToken(rawToken);
+    const nowIso = options?.nowIso || new Date().toISOString();
+    const newPasswordHash = bcrypt.hashSync(newPasswordPlain, bcrypt.genSaltSync(10));
+
+    if (isPostgresConfigured()) {
+      const pgResult = await consumePasswordResetTokenAndUpdatePasswordInPostgres({
+        tokenHash,
+        newPasswordHash,
+        nowIso,
+        beforeCommitHook: options?.beforeCommitHook,
+      });
+
+      if (!pgResult.success || !pgResult.userId) {
+        return { success: false, reason: pgResult.reason || 'invalid' };
+      }
+
+      // Only AFTER PostgreSQL COMMIT succeeded do we update in-memory user & token cache
+      const memUser = this.data.users[pgResult.userId];
+      if (memUser) {
+        memUser.passwordHash = newPasswordHash;
+        memUser.tokenVersion = pgResult.newTokenVersion ?? (memUser.tokenVersion ?? 1) + 1;
+      }
+      const memToken = this.memoryResetTokens.get(tokenHash);
+      if (memToken) {
+        memToken.usedAt = nowIso;
+      }
+      return { success: true, userId: pgResult.userId };
+    }
+
+    // Fallback JSON / Memory mode (pentru development & AI Studio Preview)
+    const tokenRec = this.memoryResetTokens.get(tokenHash);
+    if (!tokenRec) {
+      return { success: false, reason: 'invalid' };
+    }
+    if (tokenRec.usedAt || tokenRec.invalidatedAt) {
+      return { success: false, reason: 'used' };
+    }
+    if (new Date(tokenRec.expiresAt).getTime() <= new Date(nowIso).getTime()) {
+      return { success: false, reason: 'expired' };
+    }
+    const user = this.data.users[tokenRec.userId];
+    if (!user) {
+      return { success: false, reason: 'invalid' };
+    }
+
+    if (options?.beforeCommitHook) {
+      await options.beforeCommitHook({
+        query: async () => ({ rows: [] }),
+      });
+    }
+
+    tokenRec.usedAt = nowIso;
+    for (const other of this.memoryResetTokens.values()) {
+      if (other.userId === user.id && other.id !== tokenRec.id && !other.usedAt && !other.invalidatedAt) {
+        other.invalidatedAt = nowIso;
+      }
+    }
+    user.passwordHash = newPasswordHash;
+    user.tokenVersion = (user.tokenVersion ?? 1) + 1;
+    this.save();
+    return { success: true, userId: user.id };
   }
 
   // --- QUESTIONS ---
@@ -512,21 +719,38 @@ export class Database {
     return this.data.questions;
   }
 
-  public addQuestion(question: Question): Question {
-    // V9.1: Întrebările nou create au reviewStatus = 'draft' în mod implicit
+  public async addQuestion(question: Question): Promise<Question> {
+    // V9.1/V9.2: Întrebările nou create au reviewStatus = 'draft' în mod implicit
     const normalized: Question = {
       ...question,
       reviewStatus: question.reviewStatus || 'draft',
       verified: question.reviewStatus === 'approved',
       factKey: question.factKey || `fact_${question.category || 'cg'}_${question.id}`,
     };
+    if (isPostgresConfigured()) {
+      await upsertQuestionToPostgres(normalized);
+    }
     this.data.questions.push(normalized);
     this.save();
-    void upsertQuestionToPostgres(normalized);
     return normalized;
   }
 
-  public updateQuestion(id: string, updates: Partial<Question>): Question | null {
+  public async addQuestionsBatch(questions: Question[]): Promise<Question[]> {
+    const normalizedList: Question[] = questions.map((q) => ({
+      ...q,
+      reviewStatus: q.reviewStatus || 'draft',
+      verified: q.reviewStatus === 'approved',
+      factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
+    }));
+    if (isPostgresConfigured()) {
+      await seedQuestionsBatchToPostgres(normalizedList);
+    }
+    this.data.questions.push(...normalizedList);
+    this.save();
+    return normalizedList;
+  }
+
+  public async updateQuestion(id: string, updates: Partial<Question>): Promise<Question | null> {
     const idx = this.data.questions.findIndex((q) => q.id === id);
     if (idx === -1) return null;
     const merged: Question = {
@@ -536,25 +760,30 @@ export class Database {
     if (updates.reviewStatus) {
       merged.verified = updates.reviewStatus === 'approved';
     }
+    if (isPostgresConfigured()) {
+      await upsertQuestionToPostgres(merged);
+    }
     this.data.questions[idx] = merged;
     this.save();
-    void upsertQuestionToPostgres(merged);
     return merged;
   }
 
-  public deleteQuestion(id: string): boolean {
-    const len = this.data.questions.length;
-    this.data.questions = this.data.questions.filter((q) => q.id !== id);
-    if (this.data.questions.length !== len) {
-      this.save();
-      void deleteQuestionFromPostgres(id);
-      return true;
+  public async deleteQuestion(id: string): Promise<boolean> {
+    const idx = this.data.questions.findIndex((q) => q.id === id);
+    if (idx === -1) return false;
+    if (isPostgresConfigured()) {
+      await deleteQuestionFromPostgres(id);
     }
-    return false;
+    this.data.questions.splice(idx, 1);
+    this.save();
+    return true;
   }
 
   // --- GAMES ---
-  public recordGame(game: GameRecord): void {
+  public async recordGame(game: GameRecord): Promise<void> {
+    if (isPostgresConfigured()) {
+      await insertGameToPostgres(game);
+    }
     const existingIdx = this.data.games.findIndex((g) => g.id === game.id);
     if (existingIdx !== -1) {
       this.data.games[existingIdx] = game;
@@ -565,7 +794,6 @@ export class Database {
       }
     }
     this.save();
-    void insertGameToPostgres(game);
   }
 
   public getGamesHistory(limit: number = 20): GameRecord[] {
@@ -609,8 +837,14 @@ export class Database {
     return list;
   }
 
-  public sendFriendRequest(requesterId: string, recipientId: string): FriendRecord | null {
+  public async sendFriendRequest(
+    requesterId: string,
+    recipientId: string
+  ): Promise<FriendRecord | null> {
     if (requesterId === recipientId) return null;
+    if (!this.findUserById(requesterId) || !this.findUserById(recipientId)) {
+      return null;
+    }
     const exists = this.data.friends.find(
       (f) =>
         (f.requesterId === requesterId && f.recipientId === recipientId) ||
@@ -638,25 +872,36 @@ export class Database {
       createdAt: nowIso,
     };
 
+    if (isPostgresConfigured()) {
+      await createFriendRequestWithNotificationToPostgres(record, notif);
+    }
+
     this.data.friends.push(record);
     this.data.notifications.unshift(notif);
     if (this.data.notifications.length > 500) {
       this.data.notifications.pop();
     }
     this.save();
-    void createFriendRequestWithNotificationToPostgres(record, notif);
     return record;
   }
 
-  public respondFriendRequest(requestId: string, accept: boolean): boolean {
+  public async respondFriendRequest(requestId: string, accept: boolean): Promise<boolean> {
     const idx = this.data.friends.findIndex((f) => f.id === requestId);
     if (idx === -1) return false;
     if (accept) {
-      this.data.friends[idx].status = 'accepted';
-      void upsertFriendToPostgres(this.data.friends[idx]);
+      const updatedFriend: FriendRecord = {
+        ...this.data.friends[idx],
+        status: 'accepted',
+      };
+      if (isPostgresConfigured()) {
+        await upsertFriendToPostgres(updatedFriend);
+      }
+      this.data.friends[idx] = updatedFriend;
     } else {
+      if (isPostgresConfigured()) {
+        await deleteFriendFromPostgres(requestId);
+      }
       this.data.friends.splice(idx, 1);
-      void deleteFriendFromPostgres(requestId);
     }
     this.save();
     return true;
@@ -667,24 +912,30 @@ export class Database {
     return this.data.notifications.filter((n) => n.userId === userId).slice(0, 30);
   }
 
-  public addNotification(notif: NotificationRecord): void {
+  public async addNotification(notif: NotificationRecord): Promise<void> {
+    if (isPostgresConfigured()) {
+      await upsertNotificationToPostgres(notif);
+    }
     this.data.notifications.unshift(notif);
     if (this.data.notifications.length > 500) {
       this.data.notifications.pop();
     }
     this.save();
-    void upsertNotificationToPostgres(notif);
   }
 
-  public markNotificationAsRead(id: string, userId: string): boolean {
+  public async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
     const notif = this.data.notifications.find((n) => n.id === id && n.userId === userId);
-    if (notif) {
-      notif.isRead = true;
-      this.save();
-      void upsertNotificationToPostgres(notif);
-      return true;
+    if (!notif) return false;
+    const updatedNotif: NotificationRecord = {
+      ...notif,
+      isRead: true,
+    };
+    if (isPostgresConfigured()) {
+      await upsertNotificationToPostgres(updatedNotif);
     }
-    return false;
+    notif.isRead = true;
+    this.save();
+    return true;
   }
 }
 

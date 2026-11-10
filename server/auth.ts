@@ -44,17 +44,31 @@ export interface VerifiedIdentity {
   avatar: string;
 }
 
-export function generateToken(userId: string, role: string): string {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: '7d' });
+export function generateToken(userId: string, role: string, tokenVersion?: number): string {
+  const user = db.findUserById(userId);
+  const resolvedVersion = tokenVersion ?? user?.tokenVersion ?? 1;
+  return jwt.sign({ userId, role, tokenVersion: resolvedVersion }, JWT_SECRET, {
+    expiresIn: '7d',
+  });
 }
 
-/** Verifies a bearer token and resolves the current account from the database. */
+/** Verifies a bearer token and resolves the current account + tokenVersion from the database. */
 export function verifyAuthToken(token: string): VerifiedIdentity | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId?: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as {
+      userId?: string;
+      tokenVersion?: number;
+    };
     if (!decoded.userId) return null;
     const user = db.findUserById(decoded.userId);
     if (!user || user.isBanned) return null;
+
+    const currentTokenVersion = user.tokenVersion ?? 1;
+    const decodedTokenVersion = decoded.tokenVersion ?? 1;
+    if (decodedTokenVersion !== currentTokenVersion) {
+      return null;
+    }
+
     return {
       userId: user.id,
       role: user.role,

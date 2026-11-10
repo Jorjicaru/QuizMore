@@ -8,7 +8,7 @@ const router = Router();
 // Get users list
 router.get('/users', authenticate, requireAdmin, (req: AuthRequest, res: Response): void => {
   const search = String(req.query.search || '').toLowerCase();
-  let users = db.getAllUsers().map(u => ({
+  let users = db.getAllUsers().map((u) => ({
     id: u.id,
     username: u.username,
     email: u.email,
@@ -21,9 +21,8 @@ router.get('/users', authenticate, requireAdmin, (req: AuthRequest, res: Respons
   }));
 
   if (search) {
-    users = users.filter(u =>
-      u.username.toLowerCase().includes(search) ||
-      u.email.toLowerCase().includes(search)
+    users = users.filter(
+      (u) => u.username.toLowerCase().includes(search) || u.email.toLowerCase().includes(search)
     );
   }
 
@@ -31,27 +30,59 @@ router.get('/users', authenticate, requireAdmin, (req: AuthRequest, res: Respons
 });
 
 // Ban/unban user
-router.post('/users/:id/ban', authenticate, requireAdmin, (req: AuthRequest, res: Response): void => {
-  const { id } = req.params;
-  if (id === req.userId) {
-    res.status(400).json({ error: 'Nu vă puteți suspenda propriul cont de administrator.' });
-    return;
+router.post(
+  '/users/:id/ban',
+  authenticate,
+  requireAdmin,
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      if (id === req.userId) {
+        res.status(400).json({ error: 'Nu vă puteți suspenda propriul cont de administrator.' });
+        return;
+      }
+      if (!db.findUserById(id)) {
+        res.status(404).json({ error: 'Utilizatorul nu a fost găsit.' });
+        return;
+      }
+      const isBanned = await db.toggleUserBan(id);
+      res.json({
+        success: true,
+        isBanned,
+        message: isBanned ? 'Utilizatorul a fost suspendat.' : 'Utilizatorul a fost reactivat.',
+      });
+    } catch (err) {
+      console.error('[Admin Ban User Error]:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Eroare la actualizarea stării utilizatorului în baza de date.' });
+    }
   }
-  const isBanned = db.toggleUserBan(id);
-  res.json({ success: true, isBanned, message: isBanned ? 'Utilizatorul a fost suspendat.' : 'Utilizatorul a fost reactivat.' });
-});
+);
 
 // Change role
-router.post('/users/:id/role', authenticate, requireAdmin, (req: AuthRequest, res: Response): void => {
-  const { id } = req.params;
-  const { role } = req.body;
-  if (role !== 'user' && role !== 'admin') {
-    res.status(400).json({ error: 'Rol invalid.' });
-    return;
+router.post(
+  '/users/:id/role',
+  authenticate,
+  requireAdmin,
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
+      if (role !== 'user' && role !== 'admin') {
+        res.status(400).json({ error: 'Rol invalid.' });
+        return;
+      }
+      const ok = await db.setUserRole(id, role);
+      if (!ok) {
+        res.status(404).json({ error: 'Utilizatorul nu a fost găsit.' });
+        return;
+      }
+      res.json({ success: true, message: `Rolul a fost schimbat în ${role}.` });
+    } catch (err) {
+      console.error('[Admin Role Change Error]:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Eroare la actualizarea rolului în baza de date.' });
+    }
   }
-  db.setUserRole(id, role);
-  res.json({ success: true, message: `Rolul a fost schimbat în ${role}.` });
-});
+);
 
 // Admin stats
 router.get('/stats', authenticate, requireAdmin, (_req: AuthRequest, res: Response): void => {
@@ -61,7 +92,7 @@ router.get('/stats', authenticate, requireAdmin, (_req: AuthRequest, res: Respon
   const activeRooms = gameManager.getPublicRooms();
 
   const totalUsers = allUsers.length;
-  const bannedUsers = allUsers.filter(u => u.isBanned).length;
+  const bannedUsers = allUsers.filter((u) => u.isBanned).length;
   const totalGames = gamesHistory.length;
   const totalQuestions = allQuestions.length;
 

@@ -4,7 +4,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import { assertSafeRuntimeEnvironment } from './server/envSecurity';
+import { assertSafeRuntimeEnvironment, isAiStudioPreviewEnv } from './server/envSecurity';
 import { gameManager } from './server/gameEngine';
 import { db } from './server/db';
 import {
@@ -78,6 +78,26 @@ async function startServer() {
     }
   }
 
+  // Periodic non-blocking active game snapshots (every 15 seconds) when PostgreSQL is active
+  let snapshotIntervalId: NodeJS.Timeout | null = null;
+  let isSavingPeriodicSnapshots = false;
+  if (isPostgresConfigured()) {
+    const intervalMs = Math.max(
+      5000,
+      Number(process.env.ACTIVE_ROOM_SNAPSHOT_INTERVAL_MS) || 15000
+    );
+    snapshotIntervalId = setInterval(() => {
+      if (isSavingPeriodicSnapshots) return;
+      const activeGames = gameManager.getAllActiveGames();
+      if (activeGames.length === 0) return;
+      isSavingPeriodicSnapshots = true;
+      void saveActiveGameSnapshotsToPostgres(activeGames, false).finally(() => {
+        isSavingPeriodicSnapshots = false;
+      });
+    }, intervalMs);
+    snapshotIntervalId.unref?.();
+  }
+
   const app = express();
   app.set('trust proxy', 1);
   const httpServer = http.createServer(app);
@@ -103,7 +123,7 @@ async function startServer() {
     res.status(200).json({
       status: 'ok',
       service: 'conquiz-romania-multiplayer',
-      version: '9.1.0',
+      version: '9.2.0',
       uptimeSeconds: Math.round(process.uptime()),
       activeGames: gameManager.getActiveGamesCount(),
       timestamp: new Date().toISOString(),
@@ -148,8 +168,14 @@ async function startServer() {
   // Mount Vite middleware ONLY in development via dynamic import (so production needs zero devDependencies)
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
+    const disableHmr =
+      process.env.DISABLE_HMR === 'true' || isAiStudioPreviewEnv(process.env);
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: disableHmr ? false : { server: httpServer },
+        watch: disableHmr ? null : {},
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -161,7 +187,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🏰 CONQUIZ V9.1 server running on http://0.0.0.0:${PORT}`);
+    console.log(`🏰 CONQUIZ V9.2 server running on http://0.0.0.0:${PORT}`);
   });
 
   // Graceful shutdown handler for SIGTERM / SIGINT (Proxmox / Docker stop)
@@ -171,6 +197,10 @@ async function startServer() {
     isShuttingDown = true;
     console.log(`[${signal}] Se oprește serverul CONQUIZ în mod controlat...`);
     try {
+      if (snapshotIntervalId) {
+        clearInterval(snapshotIntervalId);
+        snapshotIntervalId = null;
+      }
       const activeGames = gameManager.getAllActiveGames();
       if (activeGames.length > 0 && isPostgresConfigured()) {
         await saveActiveGameSnapshotsToPostgres(activeGames, true);
