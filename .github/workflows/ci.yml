@@ -41,16 +41,15 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/bin"
           for tool in pg_isready psql pg_dump; do
-            cat > "$HOME/.local/bin/$tool" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-tool="${0##*/}"
-exec docker run --rm --network host -e PGPASSWORD -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE -e PGSSLMODE -e PGOPTIONS postgres:16-alpine "$tool" "$@"
-EOF
+            printf '%s\n' \
+              '#!/usr/bin/env bash' \
+              'set -euo pipefail' \
+              'tool="${0##*/}"' \
+              'exec docker run --rm --network host -e PGPASSWORD -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE -e PGSSLMODE -e PGOPTIONS postgres:16-alpine "$tool" "$@"' \
+              > "$HOME/.local/bin/$tool"
             chmod +x "$HOME/.local/bin/$tool"
           done
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Verify real PostgreSQL 16 service readiness & create restore verification DB
         run: |
           pg_isready -h 127.0.0.1 -p 5432 -U conquiz_user -d conquiz_test
