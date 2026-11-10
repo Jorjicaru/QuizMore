@@ -800,13 +800,18 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executatÄƒ de douÄ
   const restoreTargetUrl = new URL(process.env.DATABASE_URL!);
   restoreTargetUrl.pathname = `/${restoreTargetDbName}`;
 
-  execFileSync('bash', [restoreScript, backupFiles[0], restoreTargetDbName], {
-    env: {
-      ...process.env,
-      DATABASE_URL: restoreTargetUrl.toString(),
-    },
-    stdio: 'pipe',
-  });
+  try {
+    execFileSync('bash', [restoreScript, backupFiles[0], restoreTargetDbName], {
+      env: {
+        ...process.env,
+        DATABASE_URL: restoreTargetUrl.toString(),
+      },
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer }).stderr?.toString().trim();
+    throw new Error(`Restore script failed: ${stderr || String(error)}`);
+  }
 
   // Connect to `conquiz_restore_target` and compare row counts across all tables
   const restorePool = new Pool({ connectionString: restoreTargetUrl.toString() });
