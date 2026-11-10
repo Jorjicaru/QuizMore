@@ -12,16 +12,17 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-# Stage 2: Minimal Non-Root Production Runtime
+# Stage 2: Production Runtime
 FROM oven/bun:1.4.0 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-
+# Reuse the dependency tree resolved in the builder. This avoids a second
+# registry install during the production image build.
+COPY --from=builder /app/node_modules ./node_modules
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production && rm -rf /root/.bun/install/cache
 
 # Copy only required production artifacts (zero secrets or .env files)
 COPY --from=builder /app/dist ./dist
