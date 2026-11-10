@@ -52,6 +52,14 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Seteaza ADMIN_PASSWORD in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Seteaza POSTGRES_PASSWORD in .env}
       DATABASE_URL: postgresql://${POSTGRES_USER:-conquiz_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-conquiz}
+      SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:?Seteaza SMTP_USER in Portainer}
+      SMTP_PASS: ${SMTP_PASS:?Seteaza SMTP_PASS in Portainer}
+      SMTP_FROM: ${SMTP_FROM:?Seteaza SMTP_FROM in Portainer}
+      PASSWORD_RESET_EXPIRY_MINUTES: ${PASSWORD_RESET_EXPIRY_MINUTES:-30}
+      ACTIVE_ROOM_SNAPSHOT_INTERVAL_MS: ${ACTIVE_ROOM_SNAPSHOT_INTERVAL_MS:-15000}
     volumes:
       - conquiz_appdata:/app/data
     networks:
