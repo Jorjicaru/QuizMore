@@ -3,7 +3,7 @@
 # ==============================================================================
 
 # Stage 1: Install dependencies & build frontend
-FROM oven/bun:1.2-alpine AS builder
+FROM oven/bun:1.4.0-alpine AS builder
 WORKDIR /app
 
 COPY package.json bun.lock ./
@@ -13,7 +13,7 @@ COPY . .
 RUN bun run build
 
 # Stage 2: Minimal Non-Root Production Runtime
-FROM oven/bun:1.2-alpine AS runner
+FROM oven/bun:1.4.0-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
