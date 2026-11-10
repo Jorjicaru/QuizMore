@@ -30,7 +30,6 @@ COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/src/types ./src/types
 COPY --from=builder /app/src/game ./src/game
-COPY --from=builder /app/src/data ./src/data
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/data/questions ./data/questions
 COPY --from=builder /app/data/conquiz_db.example.json ./data/conquiz_db.example.json
