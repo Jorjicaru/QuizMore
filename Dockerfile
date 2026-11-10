@@ -13,13 +13,12 @@ COPY . .
 RUN bun run build
 
 # Stage 2: Minimal Non-Root Production Runtime
-FROM oven/bun:1.4.0-alpine AS runner
+FROM oven/bun:1.4.0 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-RUN apk add --no-cache wget ca-certificates
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production && rm -rf /root/.bun/install/cache
@@ -42,6 +41,6 @@ USER bun
 EXPOSE 3000
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1
+  CMD ["bun", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 CMD ["bun", "run", "server.ts"]
