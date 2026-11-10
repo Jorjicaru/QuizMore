@@ -806,7 +806,7 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executatÄƒ de douÄ
         ...process.env,
         DATABASE_URL: restoreTargetUrl.toString(),
       },
-      stdio: 'pipe',
+      stdio: 'inherit',
     });
   } catch (error) {
     const stderr = (error as { stderr?: Buffer }).stderr?.toString().trim();
