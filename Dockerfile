@@ -41,7 +41,9 @@ COPY --from=builder /app/data/questions ./data/questions
 COPY --from=builder /app/data/conquiz_db.example.json ./data/conquiz_db.example.json
 COPY --from=builder /app/scripts ./scripts
 
-RUN mkdir -p /app/data && chown -R bun:bun /app
+# The named data volume is initialized from this directory by Docker.
+# Leave dependencies and application code readable without recursive chown.
+RUN mkdir -p /app/data && chown bun:bun /app/data
 
 USER bun
 
