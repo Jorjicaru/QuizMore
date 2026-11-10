@@ -806,11 +806,14 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executatÄƒ de douÄ
         ...process.env,
         DATABASE_URL: restoreTargetUrl.toString(),
       },
-      stdio: 'inherit',
+      stdio: 'pipe',
+      maxBuffer: 64 * 1024 * 1024,
     });
   } catch (error) {
-    const stderr = (error as { stderr?: Buffer }).stderr?.toString().trim();
-    throw new Error(`Restore script failed: ${stderr || String(error)}`);
+    const detail = error as { code?: string | number; status?: number | null; signal?: string | null; stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
+    const output = (value?: Buffer | string) => (Buffer.isBuffer(value) ? value.toString('utf8') : String(value ?? '')).slice(-4000);
+    const redact = (value: string) => value.replace(/(postgres(?:ql)?:\/\/[^:@\s]+:)[^@\s]+@/gi, '$1***@');
+    throw new Error(`Restore script failed: code=${detail.code ?? 'unknown'}, status=${detail.status ?? 'unknown'}, signal=${detail.signal ?? 'none'}, message=${redact(detail.message ?? String(error))}, stderr=${redact(output(detail.stderr))}, stdout=${redact(output(detail.stdout))}`);
   }
 
   // Connect to `conquiz_restore_target` and compare row counts across all tables
