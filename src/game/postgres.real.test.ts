@@ -801,7 +801,7 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executatÄƒ de douÄ
   restoreTargetUrl.pathname = `/${restoreTargetDbName}`;
 
   try {
-    execFileSync('bash', [restoreScript, backupFiles[0], restoreTargetDbName], {
+    execFileSync('bash', [restoreScript, backupFiles[0], restoreTargetUrl.toString()], {
       env: {
         ...process.env,
         DATABASE_URL: restoreTargetUrl.toString(),
