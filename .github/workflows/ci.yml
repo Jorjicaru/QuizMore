@@ -45,7 +45,7 @@ jobs:
               '#!/usr/bin/env bash' \
               'set -euo pipefail' \
               'tool="${0##*/}"' \
-              'exec docker run --rm --network host -e PGPASSWORD -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE -e PGSSLMODE -e PGOPTIONS postgres:16-alpine "$tool" "$@"' \
+              'exec docker run --rm -i --network host -e PGPASSWORD -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE -e PGSSLMODE -e PGOPTIONS postgres:16-alpine "$tool" "$@"' \
               > "$HOME/.local/bin/$tool"
             chmod +x "$HOME/.local/bin/$tool"
           done
