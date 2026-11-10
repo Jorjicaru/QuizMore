@@ -45,7 +45,8 @@ jobs:
       - name: Verify real PostgreSQL 16 service readiness & create restore verification DB
         run: |
           pg_isready -h 127.0.0.1 -p 5432 -U conquiz_user -d conquiz_test
-          PGPASSWORD=ci_postgres_password_secure_991122 psql -h 127.0.0.1 -p 5432 -U conquiz_user -d postgres -c "DROP DATABASE IF EXISTS conquiz_restore_target; CREATE DATABASE conquiz_restore_target;"
+          PGPASSWORD=ci_postgres_password_secure_991122 psql -h 127.0.0.1 -p 5432 -U conquiz_user -d postgres -c "DROP DATABASE IF EXISTS conquiz_restore_target;"
+          PGPASSWORD=ci_postgres_password_secure_991122 psql -h 127.0.0.1 -p 5432 -U conquiz_user -d postgres -c "CREATE DATABASE conquiz_restore_target;"
 
       - name: Setup Bun (pinned version)
         uses: oven-sh/setup-bun@v2
