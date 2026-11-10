@@ -15,23 +15,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install
 
       - name: Validate canonical question bank
-        run: npm run validate:questions
+        run: bun run validate:questions
 
       - name: TypeScript typecheck & lint
-        run: npm run lint
+        run: bun run lint
 
       - name: Run unit & Socket.IO multiplayer integration tests
-        run: npm test
+        run: bun run test
 
       - name: Production Vite build
-        run: npm run build
+        run: bun run build

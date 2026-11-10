@@ -35,7 +35,7 @@ import {
 } from '../../server/romaniaMapData';
 import { GameManager } from '../../server/gameEngine';
 import { INITIAL_QUESTIONS, normalizeQuestionText } from '../../server/questionsData';
-import { db } from '../../server/db';
+import { db, Database } from '../../server/db';
 import { generateToken } from '../../server/auth';
 import { setupSocketHandlers } from '../../server/socketHandler';
 
@@ -1213,6 +1213,284 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
     db.deleteUser(u2Id);
   }
 });
+
+// ============================================================================
+// SECȚIUNEA V9.0: AUDIT EDITORIAL, FACTKEY, SCOR TURNURI CETATE, RETRY ALOCARE & SIMULARE 2..10P
+// ============================================================================
+
+test('V9 Test 22: Lovirea unui turn de cetate (castleTowers > 1) acordă +400 puncte în attackBonusPoints și le păstrează după recalculatePlayerScores', () => {
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'p_atk', username: 'AtacatorCetate', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(room.roomId, { id: 'p_def', username: 'AparatorCetate', avatar: 'av_stefan' });
+  gm.setReady(room.roomId, 'p_def', true);
+  gm.startGame(room.roomId, 'p_atk');
+
+  const game = gm.getRoom(room.roomId)!;
+  const tIds = Object.keys(game.territories);
+
+  // Assign half territories to p_atk and half to p_def, ensuring their bases share a border
+  let baseAtkId = tIds[0];
+  let baseDefId = game.territories[baseAtkId].neighbors[0];
+
+  tIds.forEach((tid, idx) => {
+    if (tid === baseAtkId) {
+      game.territories[tid].ownerId = 'p_atk';
+      game.territories[tid].isBase = true;
+      game.territories[tid].points = SCORING.BASE;
+      game.territories[tid].castleTowers = 3;
+    } else if (tid === baseDefId) {
+      game.territories[tid].ownerId = 'p_def';
+      game.territories[tid].isBase = true;
+      game.territories[tid].points = SCORING.BASE;
+      game.territories[tid].castleTowers = 3;
+    } else {
+      game.territories[tid].ownerId = idx % 2 === 0 ? 'p_atk' : 'p_def';
+      game.territories[tid].isBase = false;
+      game.territories[tid].points = SCORING.ALLOCATION;
+      game.territories[tid].castleTowers = 0;
+    }
+  });
+
+  (gm as any).recalculatePlayerScores(game);
+  const attackerBefore = game.players.find((p) => p.id === 'p_atk')!.score;
+
+  // Enter War Phase and force p_atk as attacker and p_def as defender targeting baseDefId
+  game.phase = 'war';
+  game.warRound = {
+    roundId: 'wr_test_tower_1',
+    roundNumber: 1,
+    status: 'choice_question',
+    selectionDeadline: 0,
+    questionDeadline: 0,
+    attackerIds: ['p_atk'],
+    defenderIds: ['p_def'],
+    byePlayerIds: [],
+    battles: [
+      {
+        battleId: 'b_tower_hit',
+        attackerId: 'p_atk',
+        defenderId: 'p_def',
+        targetTerritoryId: baseDefId,
+        status: 'resolved',
+        outcome: 'attacker_won',
+        winnerId: 'p_atk',
+      },
+    ],
+  };
+
+  (gm as any).applySimultaneousWarRoundOutcomes(game);
+
+  const attackerAfter = game.players.find((p) => p.id === 'p_atk')!;
+  const defenderAfter = game.players.find((p) => p.id === 'p_def')!;
+
+  assert.equal(game.territories[baseDefId].castleTowers, 2, 'Cetatea apărătorului scade de la 3 la 2 turnuri');
+  assert.equal(defenderAfter.castleTowers, 2);
+  assert.equal(
+    attackerAfter.attackBonusPoints,
+    SCORING.WAR_DUEL,
+    'Atacatorul primește +400 în attackBonusPoints'
+  );
+  assert.equal(
+    attackerAfter.score,
+    attackerBefore + SCORING.WAR_DUEL,
+    'Scorul total al atacatorului păstrează bonusul de +400 puncte după recalculatePlayerScores!'
+  );
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V9 Test 23: Audit editorial V9 (reviewStatus === approved, factKey non-repetitiv între choice și estimation, echilibru 14 categorii <= 12.5%)', () => {
+  const categoryCounts: Record<string, number> = {};
+  for (const q of INITIAL_QUESTIONS) {
+    assert.equal(q.reviewStatus, 'approved', `Întrebarea ${q.id} trebuie să aibă reviewStatus=approved`);
+    assert.ok(q.factKey && q.factKey.length >= 6, `Întrebarea ${q.id} trebuie să aibă factKey valid`);
+    assert.ok(
+      q.sourceUrl &&
+        q.sourceUrl.startsWith('https://') &&
+        q.sourceUrl !== 'https://ro.wikipedia.org' &&
+        q.sourceUrl !== 'https://ro.wikipedia.org/',
+      `Întrebarea ${q.id} trebuie să aibă sourceUrl specific (actual: ${q.sourceUrl})`
+    );
+    assert.ok(q.sourceTitle && q.sourceTitle.length >= 5, `Întrebarea ${q.id} trebuie să aibă sourceTitle`);
+    categoryCounts[q.category] = (categoryCounts[q.category] || 0) + 1;
+  }
+
+  for (const [cat, count] of Object.entries(categoryCounts)) {
+    const sharePct = (count / INITIAL_QUESTIONS.length) * 100;
+    assert.ok(
+      sharePct <= 12.5,
+      `Categoria ${cat} depășește 12.5% din bancă (${sharePct.toFixed(2)}%)`
+    );
+  }
+
+  // Verify factKey non-repetition across choice and estimation in the same match
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_fk', username: 'FactKeyHost', avatar: 'av_vlad' },
+    maxPlayers: 4,
+    initialBotsCount: 3,
+    isPrivate: true,
+  });
+
+  const seenFactKeys = new Set<string>();
+  for (let i = 0; i < 160; i++) {
+    const qType = i % 2 === 0 ? 'choice' : 'estimation';
+    const q = gm.getRandomQuestion(room, qType);
+    assert.ok(q && q.factKey);
+    assert.equal(
+      seenFactKeys.has(q.factKey),
+      false,
+      `factKey duplicat (${q.factKey}) extras în aceeași partidă la pasul #${i + 1}!`
+    );
+    seenFactKeys.add(q.factKey);
+  }
+  assert.equal(room.usedFactKeys?.length, 160);
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V9 Test 24: Database.normalizeUsersMap convertește users: [] în {} și data/conquiz_db.example.json este valid', () => {
+  const normalizedFromArray = Database.normalizeUsersMap([
+    {
+      id: 'u_arr_1',
+      username: 'UserDinArray',
+      email: 'arr@test.local',
+      passwordHash: 'h',
+      role: 'user',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      profile: {} as any,
+    },
+  ]);
+  assert.equal(Array.isArray(normalizedFromArray), false, 'Rezultatul nu are voie să fie Array');
+  assert.equal(normalizedFromArray['u_arr_1'].username, 'UserDinArray');
+
+  const normalizedEmpty = Database.normalizeUsersMap([]);
+  assert.equal(Array.isArray(normalizedEmpty), false);
+  assert.deepEqual(normalizedEmpty, {});
+
+  const examplePath = path.resolve(process.cwd(), 'data/conquiz_db.example.json');
+  assert.ok(fs.existsSync(examplePath), 'data/conquiz_db.example.json trebuie să existe');
+  const parsedExample = JSON.parse(fs.readFileSync(examplePath, 'utf-8'));
+  assert.equal(
+    typeof parsedExample.users === 'object' &&
+      parsedExample.users !== null &&
+      !Array.isArray(parsedExample.users),
+    true,
+    'În data/conquiz_db.example.json, users trebuie să fie obiect {}, nu array []'
+  );
+});
+
+test('V9 Test 25: Politica anti-blocaj la alocarea teritoriilor neutre (maxim 2 reîncercări la NO_RESPONSE, apoi alocare deterministă)', () => {
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_alloc1', username: 'Alloc1', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(room.roomId, { id: 'u_alloc2', username: 'Alloc2', avatar: 'av_stefan' });
+  gm.setReady(room.roomId, 'u_alloc2', true);
+  gm.startGame(room.roomId, 'u_alloc1');
+
+  const game = gm.getRoom(room.roomId)!;
+  const tIds = Object.keys(game.territories);
+  // Leave only 1 neutral territory, assign the rest
+  const neutralTid = tIds[tIds.length - 1];
+  tIds.slice(0, -1).forEach((tid, idx) => {
+    game.territories[tid].ownerId = idx % 2 === 0 ? 'u_alloc1' : 'u_alloc2';
+    game.territories[tid].points = 300;
+  });
+  game.territories[neutralTid].ownerId = null;
+
+  game.phase = 'conquest';
+  game.allocationNoResponseRetries = 2; // Already retried twice
+  game.currentQuestion = {
+    questionInstanceId: 'q_alloc_no_resp',
+    question: gm.getRandomQuestion(game, 'estimation')!,
+    startTime: Date.now() - 20000,
+    durationSeconds: 12,
+    attackerId: 'u_alloc1',
+    targetTerritoryId: neutralTid,
+    phaseContext: 'allocation',
+    participantIds: ['u_alloc1', 'u_alloc2'],
+    playerAnswers: {}, // Nobody answered
+    resolved: false,
+  };
+
+  (gm as any).resolveCurrentQuestion(game.roomId);
+
+  assert.notEqual(
+    game.territories[neutralTid].ownerId,
+    null,
+    'După atingerea pragului de 2 reîncercări fără răspuns, teritoriul neutru este alocat determinist pentru a preveni blocarea partidei'
+  );
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V9 Test 26: Simulare deterministă a fluxului complet pentru 2, 3, 4, 6, 8 și 10 jucători (fără duplicate de question.id sau factKey)', () => {
+  for (const playerCount of [2, 3, 4, 6, 8, 10]) {
+    const gm = new GameManager();
+    const room = gm.createRoom({
+      hostUser: { id: 'host_sim', username: 'SimHost', avatar: 'av_vlad' },
+      maxPlayers: playerCount,
+      initialBotsCount: playerCount - 1,
+      isPrivate: true,
+    });
+
+    const startRes = gm.startGame(room.roomId, 'host_sim');
+    assert.equal(startRes.success, true, `Start game pentru ${playerCount} jucători`);
+
+    const game = gm.getRoom(room.roomId)!;
+    assert.equal(game.players.length, playerCount);
+    assert.equal(
+      Object.keys(game.territories).length,
+      getTerritoryCountForPlayers(playerCount),
+      `Harta pentru ${playerCount}p are numărul corect de teritorii`
+    );
+
+    // 1. Complete base selection for all players
+    for (let i = 0; i < playerCount; i++) {
+      const currentPlayer = game.players[game.activePlayerIndex];
+      const remainingAfter = playerCount - (i + 1);
+      const validBase = Object.values(game.territories).find((t) =>
+        canCompleteBaseSelection(t.id, game.territories, remainingAfter)
+      )!;
+      assert.ok(validBase, `Bază validă găsită pentru jucătorul ${i + 1}/${playerCount}`);
+      const res = gm.selectTerritory(room.roomId, currentPlayer.id, validBase.id);
+      assert.equal(res.success, true);
+    }
+    assert.equal(game.phase, 'conquest', `${playerCount}p trece în faza de cucerire`);
+
+    // 2. Assign remaining neutral territories and transition to war phase
+    const neutralIds = Object.keys(game.territories).filter((id) => !game.territories[id].ownerId);
+    neutralIds.forEach((tid, idx) => {
+      game.territories[tid].ownerId = game.players[idx % playerCount].id;
+      game.territories[tid].points = SCORING.ALLOCATION;
+    });
+    (gm as any).recalculatePlayerScores(game);
+    (gm as any).enterWarPhase(game);
+
+    assert.equal(game.phase, 'war', `${playerCount}p intră în faza de război simultan`);
+    assert.ok(game.warRound);
+    assert.equal(
+      game.warRound.battles.length,
+      Math.floor(playerCount / 2),
+      `${playerCount}p formează ${Math.floor(playerCount / 2)} bătălii simultane`
+    );
+
+    // Verify question extraction uniqueness across the simulated match
+    const qChoice = gm.getRandomQuestion(game, 'choice');
+    const qEst = gm.getRandomQuestion(game, 'estimation');
+    assert.ok(qChoice && qEst);
+    assert.notEqual(qChoice.factKey, qEst.factKey);
+
+    (gm as any).clearRoomTimers(room.roomId);
+  }
+});
+
 
 
 

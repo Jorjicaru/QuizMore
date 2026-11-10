@@ -68,11 +68,77 @@ function atomicWriteJson(filePath: string, data: unknown): void {
   fs.renameSync(tmpFile, filePath);
 }
 
-class Database {
+import {
+  isPostgresConfigured,
+  isPostgresReady,
+  initPostgresSchema,
+  upsertUserToPostgres,
+  deleteUserFromPostgres,
+  upsertQuestionToPostgres,
+  deleteQuestionFromPostgres,
+  insertGameToPostgres,
+  upsertFriendToPostgres,
+  deleteFriendFromPostgres,
+  upsertNotificationToPostgres,
+} from './postgresRepo';
+
+export class Database {
   private data: DatabaseSchema;
 
   constructor() {
     this.data = this.loadDatabase();
+    if (isPostgresConfigured()) {
+      initPostgresSchema().catch((err) => {
+        console.error('Failed to initialize PostgreSQL schema:', err);
+      });
+    }
+  }
+
+  /**
+   * Explicitly normalizes a raw `users` value from JSON into a plain Record<string, UserRecord>.
+   * Fixes the bug where `users: []` (an array, which is truthy for `||=`) would remain an array.
+   */
+  public static normalizeUsersMap(rawUsers: unknown): Record<string, UserRecord> {
+    const normalized: Record<string, UserRecord> = {};
+    if (!rawUsers || typeof rawUsers !== 'object') {
+      return normalized;
+    }
+    if (Array.isArray(rawUsers)) {
+      for (const item of rawUsers) {
+        if (item && typeof item === 'object' && typeof (item as any).id === 'string') {
+          normalized[(item as any).id] = item as UserRecord;
+        }
+      }
+      return normalized;
+    }
+    for (const [key, val] of Object.entries(rawUsers as Record<string, any>)) {
+      if (val && typeof val === 'object' && typeof val.id === 'string') {
+        normalized[val.id] = val as UserRecord;
+      } else if (val && typeof val === 'object') {
+        normalized[key] = { ...val, id: key } as UserRecord;
+      }
+    }
+    return normalized;
+  }
+
+  public getHealthMetrics(): {
+    storageMode: 'postgres' | 'json';
+    postgresConnected: boolean;
+    totalQuestions: number;
+    approvedQuestions: number;
+    usersCount: number;
+  } {
+    const allQ = this.data.questions || [];
+    const approvedQ = allQ.filter(
+      (q) => !q.isDisabled && (!q.reviewStatus || q.reviewStatus === 'approved')
+    );
+    return {
+      storageMode: isPostgresConfigured() ? 'postgres' : 'json',
+      postgresConnected: isPostgresConfigured() ? isPostgresReady() : true,
+      totalQuestions: allQ.length,
+      approvedQuestions: approvedQ.length,
+      usersCount: Object.keys(this.data.users || {}).length,
+    };
   }
 
   private addConfiguredAdmin(data: DatabaseSchema): boolean {
@@ -113,7 +179,15 @@ class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         const originalSnapshot = JSON.stringify(parsed);
-        // Add newly shipped canonical questions without overwriting or duplicating user-created questions.
+
+        // Always sync metadata (factKey, reviewStatus, sourceUrl, sourceTitle) from canonical INITIAL_QUESTIONS
+        const canonicalById = new Map<string, Question>();
+        const canonicalByFp = new Map<string, Question>();
+        for (const seed of INITIAL_QUESTIONS) {
+          canonicalById.set(seed.id, seed);
+          canonicalByFp.set(normalizeQuestionText(seed.question), seed);
+        }
+
         if (!Array.isArray(parsed.questions)) parsed.questions = [];
         const deduplicatedExisting: Question[] = [];
         const existingIds = new Set<string>();
@@ -123,9 +197,28 @@ class Database {
           if (!q || !q.id || !q.question) continue;
           const fp = normalizeQuestionText(q.question);
           if (!fp || existingIds.has(q.id) || existingFingerprints.has(fp)) continue;
-          existingIds.add(q.id);
-          existingFingerprints.add(fp);
-          deduplicatedExisting.push(q);
+          const canonical = canonicalById.get(q.id) || canonicalByFp.get(fp);
+          if (canonical) {
+            const mergedQ: Question = {
+              ...q,
+              ...canonical,
+              reportedCount: q.reportedCount ?? canonical.reportedCount,
+              isDisabled: q.isDisabled ?? canonical.isDisabled,
+              reviewStatus: q.reviewStatus || canonical.reviewStatus || 'approved',
+            };
+            existingIds.add(mergedQ.id);
+            existingFingerprints.add(fp);
+            deduplicatedExisting.push(mergedQ);
+          } else if (q.id.startsWith('q_custom_') || q.id.startsWith('custom_')) {
+            const customQ: Question = {
+              ...q,
+              factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
+              reviewStatus: q.reviewStatus || 'approved',
+            };
+            existingIds.add(customQ.id);
+            existingFingerprints.add(fp);
+            deduplicatedExisting.push(customQ);
+          }
         }
 
         const originalQuestionCount = parsed.questions.length;
@@ -139,10 +232,10 @@ class Database {
         }
         parsed.questions = deduplicatedExisting;
 
-        parsed.users ||= {};
-        parsed.games ||= [];
-        parsed.friends ||= [];
-        parsed.notifications ||= [];
+        parsed.users = Database.normalizeUsersMap(parsed.users);
+        parsed.games = Array.isArray(parsed.games) ? parsed.games : [];
+        parsed.friends = Array.isArray(parsed.friends) ? parsed.friends : [];
+        parsed.notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
         parsed.notifications = parsed.notifications.filter((notification: any) => ['friend_request', 'game_invite', 'system'].includes(notification.type));
         // Remove legacy progression/shop data from older database snapshots.
         delete parsed.achievements;
@@ -210,6 +303,7 @@ class Database {
   public createUser(user: UserRecord): UserRecord {
     this.data.users[user.id] = user;
     this.save();
+    void upsertUserToPostgres(user);
     return user;
   }
 
@@ -221,6 +315,7 @@ class Database {
       user.username = updates.username;
     }
     this.save();
+    void upsertUserToPostgres(user);
     return user.profile;
   }
 
@@ -233,6 +328,7 @@ class Database {
     if (!user) return false;
     user.isBanned = !user.isBanned;
     this.save();
+    void upsertUserToPostgres(user);
     return !!user.isBanned;
   }
 
@@ -240,6 +336,7 @@ class Database {
     if (!this.data.users[userId]) return false;
     delete this.data.users[userId];
     this.save();
+    void deleteUserFromPostgres(userId);
     return true;
   }
 
@@ -249,6 +346,7 @@ class Database {
     user.role = role;
     user.profile.role = role;
     this.save();
+    void upsertUserToPostgres(user);
     return true;
   }
 
@@ -260,6 +358,7 @@ class Database {
   public addQuestion(question: Question): Question {
     this.data.questions.push(question);
     this.save();
+    void upsertQuestionToPostgres(question);
     return question;
   }
 
@@ -268,6 +367,7 @@ class Database {
     if (idx === -1) return null;
     this.data.questions[idx] = { ...this.data.questions[idx], ...updates };
     this.save();
+    void upsertQuestionToPostgres(this.data.questions[idx]);
     return this.data.questions[idx];
   }
 
@@ -276,6 +376,7 @@ class Database {
     this.data.questions = this.data.questions.filter(q => q.id !== id);
     if (this.data.questions.length !== len) {
       this.save();
+      void deleteQuestionFromPostgres(id);
       return true;
     }
     return false;
@@ -289,6 +390,7 @@ class Database {
       this.data.games.pop();
     }
     this.save();
+    void insertGameToPostgres(game);
   }
 
   public getGamesHistory(limit: number = 20): GameRecord[] {
@@ -336,6 +438,7 @@ class Database {
       createdAt: new Date().toISOString(),
     };
     this.data.friends.push(record);
+    void upsertFriendToPostgres(record);
     this.addNotification({
       id: `notif_${Date.now()}`,
       userId: recipientId,
@@ -354,8 +457,10 @@ class Database {
     if (idx === -1) return false;
     if (accept) {
       this.data.friends[idx].status = 'accepted';
+      void upsertFriendToPostgres(this.data.friends[idx]);
     } else {
       this.data.friends.splice(idx, 1);
+      void deleteFriendFromPostgres(requestId);
     }
     this.save();
     return true;
@@ -372,6 +477,7 @@ class Database {
       this.data.notifications.pop();
     }
     this.save();
+    void upsertNotificationToPostgres(notif);
   }
 
   public markNotificationAsRead(id: string, userId: string): boolean {
@@ -379,12 +485,11 @@ class Database {
     if (notif) {
       notif.isRead = true;
       this.save();
+      void upsertNotificationToPostgres(notif);
       return true;
     }
     return false;
   }
-
-
 }
 
 export const db = new Database();

@@ -35,6 +35,10 @@ export interface Question {
   unit?: string;
   explanation?: string;
   sourceUrl?: string;
+  sourceTitle?: string;
+  sourceCheckedAt?: string;
+  factKey?: string;
+  reviewStatus?: 'draft' | 'approved' | 'rejected' | 'disabled';
   verified?: boolean;
   isDisabled?: boolean;
   reportedCount?: number;
@@ -74,6 +78,7 @@ export interface Player {
   baseTerritoryId?: string | null;
   castleTowers: number;
   defensiveBonus: number;
+  attackBonusPoints?: number;
   territoriesCount: number;
   correctAnswers: number;
   wrongAnswers: number;
@@ -210,6 +215,9 @@ export interface GameState {
   gameLog: GameLogEntry[];
   currentQuestion: ActiveQuestionState | null;
   usedQuestionIds?: string[];
+  usedFactKeys?: string[];
+  categoryUsageCounts?: Record<string, number>;
+  allocationNoResponseRetries?: number;
   pendingTerritoryId?: string | null;
   conquestPickQueue?: string[];
   conquestPickerId?: string | null;

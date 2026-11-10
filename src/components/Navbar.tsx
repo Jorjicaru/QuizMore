@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types/game';
 import {
   Crown,
@@ -11,6 +11,7 @@ import {
   VolumeX,
   Menu,
   X,
+  Download,
 } from 'lucide-react';
 import { sound } from '../services/audio';
 
@@ -30,6 +31,28 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isMuted, setIsMuted] = useState(sound.getIsMuted());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    if (!deferredInstallPrompt) return;
+    sound.playClick();
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredInstallPrompt(null);
+    }
+  };
 
   const handleToggleSound = () => {
     const muted = sound.toggleMute();
@@ -104,6 +127,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right side: User Info or Sound Toggle */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {deferredInstallPrompt && (
+            <button
+              onClick={handleInstallPwa}
+              title="Instalează Aplicația CONQUIZ"
+              aria-label="Instalează Aplicația"
+              className="flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/15 px-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/25 transition"
+            >
+              <Download className="h-3.5 w-3.5 text-amber-400" />
+              <span className="hidden md:inline">Instalează</span>
+            </button>
+          )}
           {/* Sound Toggle - always available */}
           <button
             onClick={handleToggleSound}

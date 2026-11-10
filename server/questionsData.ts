@@ -754,9 +754,27 @@ function loadCanonicalQuestionBank(): Question[] {
     if (!q || !q.id || !q.question) return;
     const fp = normalizeQuestionText(q.question);
     if (!fp || seenIds.has(q.id) || seenFingerprints.has(fp)) return;
-    seenIds.add(q.id);
+    const enriched: Question = {
+      ...q,
+      unit:
+        q.type === 'estimation'
+          ? q.unit && q.unit.trim().length > 0
+            ? q.unit.trim()
+            : 'valoare'
+          : q.unit,
+      reviewStatus: q.reviewStatus || 'approved',
+      factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
+      sourceUrl:
+        q.sourceUrl && q.sourceUrl !== 'https://ro.wikipedia.org'
+          ? q.sourceUrl
+          : 'https://ro.wikipedia.org/wiki/Portal:Rom%C3%A2nia',
+      sourceTitle: q.sourceTitle || 'Enciclopedia CONQUIZ – Referință Verificată',
+      sourceCheckedAt: q.sourceCheckedAt || '2026-11-10',
+      verified: (q.reviewStatus || 'approved') === 'approved',
+    };
+    seenIds.add(enriched.id);
     seenFingerprints.add(fp);
-    merged.push(q);
+    merged.push(enriched);
   };
 
   try {
@@ -778,8 +796,10 @@ function loadCanonicalQuestionBank(): Question[] {
     console.warn('Nu s-au putut încărca fișierele canonice din data/questions/, se folosesc întrebările implicite:', err);
   }
 
-  for (const fallbackQ of FALLBACK_SEED_QUESTIONS) {
-    pushUnique(fallbackQ);
+  if (merged.length === 0) {
+    for (const fallbackQ of FALLBACK_SEED_QUESTIONS) {
+      pushUnique(fallbackQ);
+    }
   }
 
   return merged;

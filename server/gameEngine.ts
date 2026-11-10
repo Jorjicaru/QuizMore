@@ -102,7 +102,7 @@ export class GameManager {
       }
 
       p.territoriesCount = count;
-      p.score = score;
+      p.score = score + (p.attackBonusPoints || 0);
       p.defensiveBonus = defBonus;
       p.baseTerritoryId = baseId;
       if (baseId) {
@@ -121,44 +121,64 @@ export class GameManager {
     playerCount: number,
     territoryCount: number,
     warRounds = 6
-  ): { requiredChoice: number; requiredEstimation: number } {
+  ): { requiredChoice: number; requiredEstimation: number; maxAllocationRetries: number } {
     const conquestRounds = calculateConquestRounds(territoryCount, playerCount);
     const maxUnallocatedTerritories = Math.max(1, territoryCount - playerCount);
+    const maxAllocationRetries = 4;
     return {
       requiredChoice: conquestRounds + warRounds,
-      requiredEstimation: maxUnallocatedTerritories + warRounds,
+      requiredEstimation: maxUnallocatedTerritories + warRounds + maxAllocationRetries,
+      maxAllocationRetries,
     };
   }
 
   public getRandomQuestion(game: GameState, type?: 'choice' | 'estimation'): Question | null {
     const selectedCategories = game.selectedCategories || [];
     const usedIds = new Set(game.usedQuestionIds || []);
+    const usedFacts = new Set(game.usedFactKeys || []);
+    game.categoryUsageCounts = game.categoryUsageCounts || {};
+
     const allAvailable = db
       .getAllQuestions()
       .filter(
         (question) =>
           !question.isDisabled &&
+          (!question.reviewStatus || question.reviewStatus === 'approved') &&
           (!type || question.type === type) &&
-          !usedIds.has(question.id)
+          !usedIds.has(question.id) &&
+          (!question.factKey || !usedFacts.has(question.factKey))
       );
 
-    // 1. Primary pool: unused questions in the room's selected categories
-    let pool = allAvailable.filter(
+    // Strictly respect selectedCategories when the host selected specific categories
+    const pool = allAvailable.filter(
       (question) =>
         !selectedCategories.length || selectedCategories.includes(question.category)
     );
 
-    // 2. If selected categories are exhausted mid-match, fallback ONLY to unused questions from other categories.
-    // NEVER reset or ignore usedQuestionIds — a question must never repeat in the same match.
-    if (!pool.length && selectedCategories.length > 0) {
-      pool = allAvailable;
-    }
-
     if (!pool.length) return null;
 
-    const source = pool[Math.floor(Math.random() * pool.length)];
+    // Category-balanced selection: prefer the allowed category with the lowest usage count in this match
+    const availableCategories = Array.from(new Set(pool.map((q) => q.category)));
+    let minUsage = Infinity;
+    for (const cat of availableCategories) {
+      const count = game.categoryUsageCounts[cat] || 0;
+      if (count < minUsage) minUsage = count;
+    }
+    const leastUsedCategories = new Set(
+      availableCategories.filter((cat) => (game.categoryUsageCounts![cat] || 0) === minUsage)
+    );
+    const balancedPool = pool.filter((q) => leastUsedCategories.has(q.category));
+    const finalCandidates = balancedPool.length > 0 ? balancedPool : pool;
+
+    const source = finalCandidates[Math.floor(Math.random() * finalCandidates.length)];
     usedIds.add(source.id);
     game.usedQuestionIds = Array.from(usedIds);
+    if (source.factKey) {
+      usedFacts.add(source.factKey);
+      game.usedFactKeys = Array.from(usedFacts);
+    }
+    game.categoryUsageCounts[source.category] =
+      (game.categoryUsageCounts[source.category] || 0) + 1;
 
     const selected: Question = { ...source };
     if (source.type === 'choice' && Array.isArray(source.options)) {
@@ -283,6 +303,9 @@ export class GameManager {
       ],
       currentQuestion: null,
       usedQuestionIds: [],
+      usedFactKeys: [],
+      categoryUsageCounts: {},
+      allocationNoResponseRetries: 0,
       allocationPickReady: false,
       warRound: null,
       warRoleHistory: {},
@@ -535,10 +558,12 @@ export class GameManager {
       .filter(
         (q) =>
           !q.isDisabled &&
+          (!q.reviewStatus || q.reviewStatus === 'approved') &&
           (!game.selectedCategories?.length || game.selectedCategories.includes(q.category))
       );
     const availableChoice = roomQuestions.filter((q) => q.type === 'choice').length;
     const availableEstimation = roomQuestions.filter((q) => q.type === 'estimation').length;
+    const uniqueRoomFactKeys = new Set(roomQuestions.map((q) => q.factKey || q.id)).size;
 
     if (availableEstimation === 0) {
       return {
@@ -553,7 +578,11 @@ export class GameManager {
         message: 'Categoriile selectate nu conțin întrebări grilă pentru cucerire și război.',
       };
     }
-    if (availableChoice < budget.requiredChoice || availableEstimation < budget.requiredEstimation) {
+    if (
+      availableChoice < budget.requiredChoice ||
+      availableEstimation < budget.requiredEstimation ||
+      uniqueRoomFactKeys < budget.requiredChoice + budget.requiredEstimation
+    ) {
       return {
         success: false,
         message: `Categoriile selectate au prea puține întrebări unice pentru o partidă de ${game.players.length} jucători (necesar: minim ${budget.requiredChoice} grilă și ${budget.requiredEstimation} numerice; disponibil: ${availableChoice} grilă și ${availableEstimation} numerice). Selectează mai multe categorii!`,
@@ -573,6 +602,12 @@ export class GameManager {
     game.phase = 'base_selection';
     game.activePlayerIndex = 0;
     game.usedQuestionIds = [];
+    game.usedFactKeys = [];
+    game.categoryUsageCounts = {};
+    game.allocationNoResponseRetries = 0;
+    for (const p of game.players) {
+      p.attackBonusPoints = 0;
+    }
     game.allocationPickReady = false;
     game.warRound = null;
     game.warRoleHistory = {};
@@ -1273,11 +1308,12 @@ export class GameManager {
           defender.castleTowers = targetTerritory.castleTowers;
 
           if (targetTerritory.castleTowers > 0) {
-            // Tower destroyed: award +400 pts to attacker by adding a virtual/territory bonus or base hit
+            // Tower destroyed: award +400 pts to attacker via persistent attackBonusPoints so recalculatePlayerScores preserves it
+            attacker.attackBonusPoints = (attacker.attackBonusPoints || 0) + SCORING.WAR_DUEL;
             attacker.score += SCORING.WAR_DUEL;
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `🏰 TURN DOBORÂT! Castelul lui ${defender.username} a pierdut 1 turn în fața lui ${attacker.username}! Mai are ${targetTerritory.castleTowers}/3 turnuri intacte.`,
+              text: `🏰 TURN DOBORÂT! Castelul lui ${defender.username} a pierdut 1 turn în fața lui ${attacker.username} (+${SCORING.WAR_DUEL} pct)! Mai are ${targetTerritory.castleTowers}/3 turnuri intacte.`,
               timestamp: Date.now(),
               type: 'battle',
             });
@@ -1687,6 +1723,7 @@ export class GameManager {
       }
 
       if (outcome.winnerId) {
+        game.allocationNoResponseRetries = 0;
         const winner = game.players.find((p) => p.id === outcome.winnerId);
         if (winner) {
           winner.correctAnswers++;
@@ -1722,22 +1759,63 @@ export class GameManager {
           return;
         }
       } else {
-        // No one answered the allocation question: trigger next allocation question
-        game.gameLog.push({
-          id: this.makeLogId(),
-          text: `⏱️ Niciun jucător nu a trimis un număr valid la departajare. Se trece la următoarea întrebare!`,
-          timestamp: Date.now(),
-          type: 'info',
-        });
-        this.notifyUpdate(roomId);
-        const retryTimer = setTimeout(() => {
-          game.currentQuestion = null;
-          this.triggerNextAllocationQuestion(game);
-        }, 2800);
-        const pending = this.botTimers.get(roomId) || [];
-        pending.push(retryTimer);
-        this.botTimers.set(roomId, pending);
-        return;
+        // Bounded retry policy when no player answers the allocation question (max 2 retries per territory)
+        game.allocationNoResponseRetries = (game.allocationNoResponseRetries || 0) + 1;
+        if (game.allocationNoResponseRetries <= 2) {
+          game.gameLog.push({
+            id: this.makeLogId(),
+            text: `⏱️ Niciun jucător nu a trimis un număr valid la departajare (încercarea ${game.allocationNoResponseRetries}/2). Se repetă întrebarea pentru această zonă!`,
+            timestamp: Date.now(),
+            type: 'info',
+          });
+          this.notifyUpdate(roomId);
+          const retryTimer = setTimeout(() => {
+            game.currentQuestion = null;
+            game.round = Math.max(0, game.round - 1);
+            this.triggerNextAllocationQuestion(game);
+          }, 2800);
+          const pending = this.botTimers.get(roomId) || [];
+          pending.push(retryTimer);
+          this.botTimers.set(roomId, pending);
+          return;
+        } else {
+          // Max retries reached: deterministically assign a neutral territory to the active player with fewest territories
+          game.allocationNoResponseRetries = 0;
+          const neutrals = Object.values(game.territories).filter((t) => t.ownerId === null);
+          const activePlayers = game.players.filter((p) => !p.isEliminated);
+          if (neutrals.length > 0 && activePlayers.length > 0) {
+            const fallbackPlayer = [...activePlayers].sort((a, b) => {
+              if (a.territoriesCount !== b.territoriesCount) return a.territoriesCount - b.territoriesCount;
+              return a.score - b.score;
+            })[0];
+            const adj = neutrals.filter((t) => isAdjacentToPlayer(t.id, fallbackPlayer.id, game.territories));
+            const targetNeutral = adj.length > 0 ? adj[0] : neutrals[0];
+            targetNeutral.ownerId = fallbackPlayer.id;
+            targetNeutral.points = SCORING.ALLOCATION;
+            targetNeutral.defensiveBonus = 0;
+            this.recalculatePlayerScores(game);
+            game.gameLog.push({
+              id: this.makeLogId(),
+              text: `⚖️ Lipsă repetată de răspuns: teritoriul ${targetNeutral.name} a fost alocat automat către ${fallbackPlayer.username} (+${SCORING.ALLOCATION} pct).`,
+              timestamp: Date.now(),
+              type: 'conquest',
+            });
+          }
+          this.notifyUpdate(roomId);
+          const nextTimer = setTimeout(() => {
+            game.currentQuestion = null;
+            const remainingNeutrals = Object.values(game.territories).filter((t) => t.ownerId === null).length;
+            if (remainingNeutrals > 0) {
+              this.triggerNextAllocationQuestion(game);
+            } else {
+              this.enterWarPhase(game);
+            }
+          }, 2800);
+          const pending = this.botTimers.get(roomId) || [];
+          pending.push(nextTimer);
+          this.botTimers.set(roomId, pending);
+          return;
+        }
       }
     }
 
@@ -2311,6 +2389,24 @@ export class GameManager {
     if (advTimer) {
       clearTimeout(advTimer);
       this.turnAdvanceTimers.delete(roomId);
+    }
+  }
+
+  public getActiveGamesCount(): number {
+    let count = 0;
+    for (const game of this.games.values()) {
+      if (game.phase !== 'finished') count++;
+    }
+    return count;
+  }
+
+  public getAllActiveGames(): GameState[] {
+    return Array.from(this.games.values()).filter((g) => g.phase !== 'finished');
+  }
+
+  public shutdownAllRooms(): void {
+    for (const roomId of this.games.keys()) {
+      this.clearRoomTimers(roomId);
     }
   }
 

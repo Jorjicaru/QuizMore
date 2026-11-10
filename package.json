@@ -13,6 +13,7 @@
     "generate:map-presets": "node scripts/generate_all_maps.cjs",
     "build:questions": "node scripts/build_and_validate_questions.cjs",
     "validate:questions": "node scripts/validate_question_bank.cjs",
+    "migrate:postgres": "tsx scripts/migrate_json_to_postgres.ts",
     "test": "tsx --test src/game/rules.test.ts"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/canvas-confetti": "^1.9.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
@@ -30,6 +32,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "socket.io": "^4.8.4",
