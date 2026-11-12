@@ -74,6 +74,8 @@ export interface Player {
   isAi: boolean;
   aiDifficulty?: 'incepator' | 'intermediar' | 'avansat' | 'expert';
   isConnected?: boolean;
+  botControlled?: boolean;
+  disconnectedAt?: number;
   isEliminated?: boolean;
   baseTerritoryId?: string | null;
   castleTowers: number;
@@ -134,13 +136,21 @@ export interface WarBattleAssignment {
 export interface WarRoundState {
   roundId: string;
   roundNumber: number;
-  status: 'selecting_targets' | 'choice_question' | 'numeric_tiebreak' | 'resolving' | 'completed';
+  status:
+    | 'selecting_targets'
+    | 'attack_preview'
+    | 'choice_question'
+    | 'numeric_tiebreak'
+    | 'resolving'
+    | 'completed';
   attackerIds: string[];
   defenderIds: string[];
   byePlayerIds: string[];
   battles: WarBattleAssignment[];
   selectionDeadline: number | null;
   questionDeadline: number | null;
+  attackPreviewDurationMs?: number;
+  attackPreviewExpiresAt?: number | null;
 }
 
 export type RoundTrackerMarkerState =
@@ -177,7 +187,15 @@ export interface RoundTrackerBattlePair {
 export interface RoundDisplayModel {
   phase: GamePhase;
   phaseLabel: string;
-  subMode: 'base_selection' | 'question' | 'picking' | 'war_selecting' | 'war_question' | 'war_resolving' | 'finished';
+  subMode:
+    | 'base_selection'
+    | 'question'
+    | 'picking'
+    | 'war_selecting'
+    | 'war_preview'
+    | 'war_question'
+    | 'war_resolving'
+    | 'finished';
   subModeLabel: string;
   currentRound: number;
   totalRounds: number;

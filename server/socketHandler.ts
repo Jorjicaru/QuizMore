@@ -1,13 +1,41 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { GameManager } from './gameEngine';
 import { verifyAuthToken } from './auth';
+import { isMaintenanceModeEnabled, getMaintenanceMessage } from './maintenance';
+
+const connectedSocketsByUser = new Map<string, Set<string>>();
+
+export function getConnectedUsersStats(): {
+  onlineUsersCount: number;
+  activeSocketConnections: number;
+  onlineUserIds: string[];
+} {
+  let activeSocketConnections = 0;
+  const onlineUserIds: string[] = [];
+  for (const [userId, sockets] of connectedSocketsByUser.entries()) {
+    if (sockets.size > 0) {
+      onlineUserIds.push(userId);
+      activeSocketConnections += sockets.size;
+    }
+  }
+  return {
+    onlineUsersCount: onlineUserIds.length,
+    activeSocketConnections,
+    onlineUserIds,
+  };
+}
 
 export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager): void {
   io.use((socket, next) => {
+    if (isMaintenanceModeEnabled()) {
+      return next(new Error(getMaintenanceMessage()));
+    }
     const token = socket.handshake.auth?.token;
-    if (typeof token !== 'string' || !token) return next(new Error('Autentificare necesară pentru conexiunea multiplayer.'));
+    if (typeof token !== 'string' || !token)
+      return next(new Error('Autentificare necesară pentru conexiunea multiplayer.'));
     const identity = verifyAuthToken(token);
-    if (!identity) return next(new Error('Sesiune invalidă sau expirată. Autentifică-te din nou.'));
+    if (!identity)
+      return next(new Error('Sesiune invalidă sau expirată. Autentifică-te din nou.'));
     socket.data.identity = identity;
     next();
   });
@@ -17,14 +45,24 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
   });
 
   io.on('connection', (socket: Socket) => {
-    const identity = socket.data.identity as { userId: string; role: 'user' | 'admin'; username: string; avatar: string };
+    const identity = socket.data.identity as {
+      userId: string;
+      role: 'user' | 'admin';
+      username: string;
+      avatar: string;
+    };
     let currentRoomId: string | null = null;
     const currentUserId = identity.userId;
     const user = { id: identity.userId, username: identity.username, avatar: identity.avatar };
 
+    const userSet = connectedSocketsByUser.get(currentUserId) || new Set<string>();
+    userSet.add(socket.id);
+    connectedSocketsByUser.set(currentUserId, userSet);
+
     socket.on('create_room', (data = {}, callback) => {
       try {
-        if (currentRoomId) return callback?.({ success: false, message: 'Ești deja într-o cameră.' });
+        if (currentRoomId)
+          return callback?.({ success: false, message: 'Ești deja într-o cameră.' });
         const game = gameManager.createRoom({
           hostUser: user,
           roomName: data.roomName,
@@ -32,7 +70,9 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
           maxPlayers: data.maxPlayers || 4,
           initialBotsCount: data.initialBotsCount || 0,
           botDifficulty: data.botDifficulty || 'intermediar',
-          selectedCategories: Array.isArray(data.selectedCategories) ? data.selectedCategories : [],
+          selectedCategories: Array.isArray(data.selectedCategories)
+            ? data.selectedCategories
+            : [],
         });
         currentRoomId = game.roomId;
         socket.join(`room_${game.roomId}`);
@@ -42,9 +82,16 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       }
     });
 
-    socket.on('join_room', (data = {}, callback) => {
-      if (currentRoomId) return callback?.({ success: false, message: 'Ești deja într-o cameră.' });
-      const roomId = String(data.roomId || '').trim().toUpperCase();
+    const handleJoinOrReconnect = (data: any = {}, callback?: (res: any) => void) => {
+      const roomId = String(data.roomId || '')
+        .trim()
+        .toUpperCase();
+      if (!roomId) {
+        return callback?.({ success: false, message: 'Codul camerei lipsește.' });
+      }
+      if (currentRoomId && currentRoomId !== roomId) {
+        return callback?.({ success: false, message: 'Ești deja într-o altă cameră.' });
+      }
       const result = gameManager.joinRoom(roomId, user);
       if (result.success && result.game) {
         currentRoomId = roomId;
@@ -54,7 +101,10 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       } else {
         callback?.({ success: false, message: result.message });
       }
-    });
+    };
+
+    socket.on('join_room', handleJoinOrReconnect);
+    socket.on('reconnect_room', handleJoinOrReconnect);
 
     socket.on('leave_room', () => {
       if (currentRoomId) {
@@ -69,10 +119,12 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       if (currentRoomId) gameManager.setReady(currentRoomId, currentUserId, !!data.isReady);
     });
     socket.on('add_bot', (data = {}) => {
-      if (currentRoomId) gameManager.addBot(currentRoomId, currentUserId, data.difficulty || 'intermediar');
+      if (currentRoomId)
+        gameManager.addBot(currentRoomId, currentUserId, data.difficulty || 'intermediar');
     });
     socket.on('remove_bot', (data = {}) => {
-      if (currentRoomId && data.botId) gameManager.removeBot(currentRoomId, currentUserId, data.botId);
+      if (currentRoomId && data.botId)
+        gameManager.removeBot(currentRoomId, currentUserId, data.botId);
     });
     socket.on('time_sync_request', (data = {}, callback) => {
       const payload = {
@@ -88,7 +140,8 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       if (currentRoomId) callback?.(gameManager.startGame(currentRoomId, currentUserId));
     });
     socket.on('select_territory', (data = {}, callback) => {
-      if (currentRoomId && data.territoryId) callback?.(gameManager.selectTerritory(currentRoomId, currentUserId, data.territoryId));
+      if (currentRoomId && data.territoryId)
+        callback?.(gameManager.selectTerritory(currentRoomId, currentUserId, data.territoryId));
     });
     socket.on('submit_answer', (data = {}, callback) => {
       if (currentRoomId && data.answer !== undefined) {
@@ -123,7 +176,16 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
     });
 
     socket.on('disconnect', () => {
-      if (currentRoomId) gameManager.leaveRoom(currentRoomId, currentUserId);
+      const set = connectedSocketsByUser.get(currentUserId);
+      if (set) {
+        set.delete(socket.id);
+        if (set.size === 0) {
+          connectedSocketsByUser.delete(currentUserId);
+        }
+      }
+      if (currentRoomId) {
+        gameManager.handleSocketDisconnect(currentRoomId, currentUserId);
+      }
     });
   });
 }

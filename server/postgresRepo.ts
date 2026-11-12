@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
 import { Question, GameState } from '../src/types/game';
-import { UserRecord, GameRecord, FriendRecord, NotificationRecord, DatabaseSchema } from './db';
+import { UserRecord, GameRecord, FriendRecord, NotificationRecord, AuditLogRecord, DatabaseSchema } from './db';
 import { normalizeQuestionText } from './questionsData';
 import { isAiStudioPreviewEnv, isPlaceholderValue } from './envSecurity';
 
@@ -156,13 +156,16 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
   const pgPool = getPostgresPool();
   if (!pgPool) return null;
 
-  const [usersRes, questionsRes, gamesRes, resultsRes, friendsRes, notifsRes] = await Promise.all([
+  const [usersRes, questionsRes, gamesRes, resultsRes, friendsRes, notifsRes, auditRes] = await Promise.all([
     pgPool.query('SELECT * FROM users ORDER BY created_at ASC'),
     pgPool.query('SELECT * FROM questions ORDER BY id ASC'),
     pgPool.query('SELECT * FROM games ORDER BY created_at DESC LIMIT 200'),
     pgPool.query('SELECT * FROM game_player_results ORDER BY id ASC'),
     pgPool.query('SELECT * FROM friends ORDER BY created_at DESC'),
     pgPool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 500'),
+    pgPool
+      .query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200')
+      .catch(() => ({ rows: [] as any[] })),
   ]);
 
   const users: Record<string, UserRecord> = {};
@@ -289,12 +292,28 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }));
 
+  const auditLogs: AuditLogRecord[] = (auditRes?.rows || []).map((row: any) => ({
+    id: row.id,
+    adminId: row.admin_id,
+    adminUsername: row.admin_username,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    details:
+      typeof row.details_json === 'string'
+        ? JSON.parse(row.details_json)
+        : row.details_json || {},
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }));
+
   return {
     users,
     questions,
     games,
     friends,
     notifications,
+    auditLogs,
   };
 }
 
@@ -595,6 +614,33 @@ export async function upsertNotificationToPostgres(
   }
   await withPostgresTransaction(async (tx) => {
     await upsertNotificationToPostgres(n, tx);
+  });
+}
+
+export async function insertAuditLogToPostgres(
+  entry: AuditLogRecord,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query(
+      `INSERT INTO audit_logs (id, admin_id, admin_username, action, target_type, target_id, details_json, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        entry.id,
+        entry.adminId,
+        entry.adminUsername,
+        entry.action,
+        entry.targetType,
+        entry.targetId,
+        JSON.stringify(entry.details || {}),
+        entry.createdAt,
+      ]
+    );
+    return;
+  }
+  await withPostgresTransaction(async (tx) => {
+    await insertAuditLogToPostgres(entry, tx);
   });
 }
 

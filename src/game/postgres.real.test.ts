@@ -841,6 +841,19 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de dou�
       countsAfterRun2,
       'Baza de date restaurată din pg_dump (conquiz_restore_target) are exact același număr de înregistrări ca baza primară în toate tabelele'
     );
+
+    // Verify audit_logs table in real PostgreSQL (003_audit_logs.sql)
+    const auditRec = await db.recordAuditLog({
+      adminId: 'u_real_pg_2',
+      adminUsername: 'MirceaRealPG',
+      action: 'ADMIN_TEST_PG_AUDIT',
+      targetType: 'user',
+      targetId: 'u_real_pg_2',
+      details: { note: 'Audit log persisted in real PostgreSQL' },
+    });
+    const pgAuditRows = await pool.query('SELECT * FROM audit_logs WHERE id = $1', [auditRec.id]);
+    assert.equal(pgAuditRows.rows.length, 1, 'Înregistrarea de audit există în tabelul PostgreSQL audit_logs');
+    assert.equal(pgAuditRows.rows[0].action, 'ADMIN_TEST_PG_AUDIT');
   } finally {
     await restorePool.end();
     if (fs.existsSync(backupDir)) {

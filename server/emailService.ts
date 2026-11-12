@@ -13,6 +13,19 @@ export type EmailSenderFn = (payload: PasswordResetEmailPayload) => Promise<void
 
 let injectedEmailSender: EmailSenderFn | null = null;
 
+/** Returns true when SMTP host and sender are configured with non-placeholder values. */
+export function isEmailDeliveryConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  const smtpHost = String(env.SMTP_HOST || '').trim();
+    const smtpFrom = String(env.SMTP_FROM || '').trim();
+      return Boolean(
+          smtpHost &&
+              smtpFrom &&
+                  !isPlaceholderValue(smtpHost) &&
+                      !isPlaceholderValue(smtpFrom)
+                        );
+                        }
+                        
+
 export function setEmailSenderForTesting(sender: EmailSenderFn | null): void {
   injectedEmailSender = sender;
 }

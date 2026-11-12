@@ -205,6 +205,15 @@ router.post('/', authenticate, requireAdmin, async (req: AuthRequest, res: Respo
 
     const saved = await db.addQuestion(newQ);
     gameManager.reloadQuestions();
+    const adminUser = req.userId ? db.findUserById(req.userId) : undefined;
+    await db.recordAuditLog({
+      adminId: req.userId || 'admin',
+      adminUsername: adminUser?.username || 'admin',
+      action: 'QUESTION_CREATE',
+      targetType: 'question',
+      targetId: saved.id,
+      details: { category: saved.category, type: saved.type, reviewStatus: saved.reviewStatus },
+    });
     res.json({ success: true, question: saved });
   } catch (err) {
     console.error('[Question Create Error]:', err instanceof Error ? err.message : err);
@@ -258,6 +267,15 @@ router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res: Res
       return;
     }
     gameManager.reloadQuestions();
+    const adminUser = req.userId ? db.findUserById(req.userId) : undefined;
+    await db.recordAuditLog({
+      adminId: req.userId || 'admin',
+      adminUsername: adminUser?.username || 'admin',
+      action: 'QUESTION_UPDATE',
+      targetType: 'question',
+      targetId: id,
+      details: { updatedFields: Object.keys(safePatch) },
+    });
     res.json({ success: true, question: updated });
   } catch (err) {
     console.error('[Question Update Error]:', err instanceof Error ? err.message : err);
@@ -275,6 +293,14 @@ router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res: 
       return;
     }
     gameManager.reloadQuestions();
+    const adminUser = req.userId ? db.findUserById(req.userId) : undefined;
+    await db.recordAuditLog({
+      adminId: req.userId || 'admin',
+      adminUsername: adminUser?.username || 'admin',
+      action: 'QUESTION_DELETE',
+      targetType: 'question',
+      targetId: id,
+    });
     res.json({ success: true, message: 'Întrebare ștearsă.' });
   } catch (err) {
     console.error('[Question Delete Error]:', err instanceof Error ? err.message : err);
@@ -348,6 +374,15 @@ router.post('/import', authenticate, requireAdmin, async (req: AuthRequest, res:
     if (validCandidates.length > 0) {
       await db.addQuestionsBatch(validCandidates);
       gameManager.reloadQuestions();
+      const adminUser = req.userId ? db.findUserById(req.userId) : undefined;
+      await db.recordAuditLog({
+        adminId: req.userId || 'admin',
+        adminUsername: adminUser?.username || 'admin',
+        action: 'QUESTION_IMPORT',
+        targetType: 'question_batch',
+        targetId: `batch_${validCandidates.length}`,
+        details: { imported: validCandidates.length, skipped },
+      });
     }
 
     res.json({

@@ -23,6 +23,7 @@ import {
   upsertFriendToPostgres,
   deleteFriendFromPostgres,
   upsertNotificationToPostgres,
+  insertAuditLogToPostgres,
   createPasswordResetTokenToPostgres,
   invalidatePasswordResetTokenInPostgres,
   consumePasswordResetTokenAndUpdatePasswordInPostgres,
@@ -88,12 +89,24 @@ export interface PasswordResetTokenRecord {
   createdAt: string;
 }
 
+export interface AuditLogRecord {
+  id: string;
+  adminId: string;
+  adminUsername: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  details: Record<string, any>;
+  createdAt: string;
+}
+
 export interface DatabaseSchema {
   users: Record<string, UserRecord>;
   questions: Question[];
   games: GameRecord[];
   friends: FriendRecord[];
   notifications: NotificationRecord[];
+  auditLogs?: AuditLogRecord[];
 }
 
 const DB_DIR = path.resolve(process.cwd(), 'data');
@@ -346,51 +359,41 @@ export class Database {
         originalQuestionCount = Array.isArray(rawObj.questions) ? rawObj.questions.length : 0;
 
         const canonicalById = new Map<string, Question>();
-        const canonicalByFp = new Map<string, Question>();
         for (const seed of INITIAL_QUESTIONS) {
           canonicalById.set(seed.id, seed);
-          canonicalByFp.set(normalizeQuestionText(seed.question), seed);
         }
 
         if (!Array.isArray(rawObj.questions)) rawObj.questions = [];
         const deduplicatedExisting: Question[] = [];
         const existingIds = new Set<string>();
-        const existingFingerprints = new Set<string>();
+        const existingActiveFingerprints = new Set<string>();
+
+        for (const seed of INITIAL_QUESTIONS) {
+          const existingRecord = (rawObj.questions as Question[]).find((x) => x && x.id === seed.id);
+          const mergedQ: Question = {
+            ...seed,
+            reportedCount: existingRecord?.reportedCount ?? seed.reportedCount,
+          };
+          existingIds.add(mergedQ.id);
+          if (mergedQ.reviewStatus === 'approved' && !mergedQ.isDisabled) {
+            existingActiveFingerprints.add(normalizeQuestionText(mergedQ.question));
+          }
+          deduplicatedExisting.push(mergedQ);
+        }
 
         for (const q of rawObj.questions as Question[]) {
-          if (!q || !q.id || !q.question) continue;
-          const fp = normalizeQuestionText(q.question);
-          if (!fp || existingIds.has(q.id) || existingFingerprints.has(fp)) continue;
-          const canonical = canonicalById.get(q.id) || canonicalByFp.get(fp);
-          if (canonical) {
-            const mergedQ: Question = {
-              ...q,
-              ...canonical,
-              reportedCount: q.reportedCount ?? canonical.reportedCount,
-              isDisabled: q.isDisabled ?? canonical.isDisabled,
-              reviewStatus: q.reviewStatus || canonical.reviewStatus || 'draft',
-            };
-            existingIds.add(mergedQ.id);
-            existingFingerprints.add(fp);
-            deduplicatedExisting.push(mergedQ);
-          } else if (q.id.startsWith('q_custom_') || q.id.startsWith('custom_')) {
+          if (!q || !q.id || !q.question || existingIds.has(q.id)) continue;
+          if (q.id.startsWith('q_custom_') || q.id.startsWith('custom_')) {
+            const fp = normalizeQuestionText(q.question);
+            if (!fp || existingActiveFingerprints.has(fp)) continue;
             const customQ: Question = {
               ...q,
               factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
               reviewStatus: q.reviewStatus || 'draft',
             };
             existingIds.add(customQ.id);
-            existingFingerprints.add(fp);
+            existingActiveFingerprints.add(fp);
             deduplicatedExisting.push(customQ);
-          }
-        }
-
-        for (const seed of INITIAL_QUESTIONS) {
-          const fp = normalizeQuestionText(seed.question);
-          if (!existingIds.has(seed.id) && !existingFingerprints.has(fp)) {
-            existingIds.add(seed.id);
-            existingFingerprints.add(fp);
-            deduplicatedExisting.push(seed);
           }
         }
         rawObj.questions = deduplicatedExisting;
@@ -402,6 +405,7 @@ export class Database {
               ['friend_request', 'game_invite', 'system'].includes(notification.type)
             )
           : [];
+        rawObj.auditLogs = Array.isArray(rawObj.auditLogs) ? rawObj.auditLogs : [];
 
         delete rawObj.achievements;
         delete rawObj.userAchievements;
@@ -429,6 +433,7 @@ export class Database {
         games: [],
         friends: [],
         notifications: [],
+        auditLogs: [],
       };
     }
 
@@ -936,6 +941,46 @@ export class Database {
     notif.isRead = true;
     this.save();
     return true;
+  }
+
+  // --- AUDIT LOGS ---
+  public async recordAuditLog(params: {
+    adminId: string;
+    adminUsername: string;
+    action: string;
+    targetType: string;
+    targetId: string;
+    details?: Record<string, any>;
+  }): Promise<AuditLogRecord> {
+    const entry: AuditLogRecord = {
+      id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      adminId: params.adminId,
+      adminUsername: params.adminUsername,
+      action: params.action,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      details: params.details || {},
+      createdAt: new Date().toISOString(),
+    };
+    if (isPostgresConfigured()) {
+      await insertAuditLogToPostgres(entry);
+    }
+    if (!Array.isArray(this.data.auditLogs)) {
+      this.data.auditLogs = [];
+    }
+    this.data.auditLogs.unshift(entry);
+    if (this.data.auditLogs.length > 200) {
+      this.data.auditLogs.pop();
+    }
+    this.save();
+    return entry;
+  }
+
+  public getAuditLogs(limit: number = 100): AuditLogRecord[] {
+    if (!Array.isArray(this.data.auditLogs)) {
+      this.data.auditLogs = [];
+    }
+    return this.data.auditLogs.slice(0, limit);
   }
 }
 

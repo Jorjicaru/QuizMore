@@ -1,35 +1,36 @@
 {
-  "version": "9.1.0",
-  "generatedAt": "2026-11-10T13:14:58.089Z",
+  "version": "9.4.0",
+  "generatedAt": "2026-11-11T21:49:22.940Z",
   "totalQuestions": 6241,
-  "approvedCount": 6241,
+  "approvedCount": 1167,
+  "disabledCount": 5074,
+  "convertedFromEstimationCount": 27,
   "draftCount": 0,
   "rejectedCount": 0,
-  "disabledCount": 0,
-  "uniqueFactKeysCount": 5064,
-  "choiceCount": 3324,
-  "estimationCount": 2917,
+  "activeChoiceCount": 1167,
+  "activeEstimationCount": 0,
+  "choiceFileCount": 3351,
+  "estimationFileCount": 2890,
+  "archiveFile": "data/questions/archive_v91_original.json",
   "duplicateIds": 0,
-  "duplicateTexts": 0,
-  "categoryBreakdown": {
-    "geografie": 708,
-    "cultura_generala": 395,
-    "chimie": 321,
-    "fizica": 504,
-    "istorie": 639,
-    "literatura": 490,
-    "arta": 385,
-    "muzica": 402,
-    "cinematografie": 396,
-    "sport": 457,
-    "informatica": 403,
-    "tehnologie": 404,
-    "biologie": 367,
-    "matematica": 370
+  "duplicateActiveTexts": 0,
+  "activeCategoryBreakdown": {
+    "geografie": 345,
+    "cultura_generala": 83,
+    "chimie": 82,
+    "istorie": 147,
+    "literatura": 122,
+    "arta": 55,
+    "muzica": 55,
+    "cinematografie": 62,
+    "sport": 90,
+    "informatica": 22,
+    "tehnologie": 52,
+    "biologie": 42,
+    "fizica": 10
   },
-  "difficultyBreakdown": {
-    "usor": 735,
-    "mediu": 2333,
-    "greu": 3173
+  "activeDifficultyBreakdown": {
+    "usor": 622,
+    "mediu": 545
   }
 }

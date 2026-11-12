@@ -26,23 +26,6 @@ interface DashboardViewProps {
   onOpenLeaderboard: () => void;
 }
 
-const ALL_CATEGORIES: { id: string; name: string; icon: string }[] = [
-  { id: 'istorie', name: 'Istorie', icon: '🏛️' },
-  { id: 'geografie', name: 'Geografie', icon: '🌍' },
-  { id: 'biologie', name: 'Biologie', icon: '🧬' },
-  { id: 'fizica', name: 'Fizică', icon: '⚡' },
-  { id: 'chimie', name: 'Chimie', icon: '🧪' },
-  { id: 'matematica', name: 'Matematică', icon: '📐' },
-  { id: 'literatura', name: 'Literatură', icon: '📜' },
-  { id: 'arta', name: 'Artă & Arhitectură', icon: '🎨' },
-  { id: 'sport', name: 'Sport', icon: '⚽' },
-  { id: 'muzica', name: 'Muzică', icon: '🎵' },
-  { id: 'cinematografie', name: 'Film & Cinema', icon: '🎬' },
-  { id: 'cultura_generala', name: 'Cultură Generală', icon: '💡' },
-  { id: 'tehnologie', name: 'Tehnologie', icon: '💻' },
-  { id: 'informatica', name: 'Informatică', icon: '🖥️' },
-];
-
 export const DashboardView: React.FC<DashboardViewProps> = ({
   user,
   onPlayVsAi,
@@ -60,31 +43,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [aiBotCount, setAiBotCount] = useState<number>(3); // 4 players total (1 human + 3 bots)
   const [aiDifficulty, setAiDifficulty] = useState<'incepator' | 'intermediar' | 'avansat' | 'expert'>('intermediar');
 
-  // Create Room State: maxPlayers + Trivia Categories (rounds are fixed by default per phase structure)
+  // Create Room State: maxPlayers (all matches use mixed general knowledge across all categories)
   const [customMaxPlayers, setCustomMaxPlayers] = useState<number>(4);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    ALL_CATEGORIES.map(c => c.id)
-  );
-
-  const toggleCategory = (catId: string) => {
-    setSelectedCategories(prev => {
-      if (prev.includes(catId)) {
-        if (prev.length <= 1) return prev; // Keep at least 1 category
-        return prev.filter(c => c !== catId);
-      } else {
-        return [...prev, catId];
-      }
-    });
-  };
-
-  const selectAllCategories = () => {
-    setSelectedCategories(ALL_CATEGORIES.map(c => c.id));
-  };
-
-  const clearCategories = () => {
-    // Keep at least default general
-    setSelectedCategories(['istorie', 'geografie', 'cultura_generala']);
-  };
 
   const fetchRooms = async () => {
     try {
@@ -306,7 +266,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <div className="font-mono text-blue-300 font-black text-lg mb-2">300 Puncte</div>
             <p className="text-stone-300">
-              Dacă rămân teritorii neutre după cucerire, se intră în departajare. Toți jucătorii răspund la întrebare de estimare. Cel mai apropiat câștigă teritoriul și 300 pct.
+              Dacă rămân teritorii neutre după cucerire, se intră în departajare. Toți jucătorii răspund la o întrebare cu variante, iar cel mai rapid răspuns corect câștigă un teritoriu neutru învecinat și 300 pct.
             </p>
           </div>
 
@@ -485,56 +445,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
 
-              {/* Fixed Structure Notice (Requested: "ala ar trebui sa fie default peste ORICARE meci existent") */}
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-slate-300">
-                <span className="font-bold text-amber-300 block mb-1">⚔️ Structura Rundelor (Fixă):</span>
-                <span>Faza 1: Bază (1000 pct) &bull; Faza 2: Cucerire (4 runde, 200 pct) &bull; Faza 3: Departajare (300 pct) &bull; Faza 4: Război (5 runde, 400 pct).</span>
-              </div>
-
-              {/* Category / Domain Selector (Requested: "tot aici la camere private lasam sa selectez domeniile din care sa fie intrebarile") */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="font-bold text-slate-200">
-                    Domenii Întrebări ({selectedCategories.length}/{ALL_CATEGORIES.length}):
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllCategories}
-                      className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
-                    >
-                      Selectează Tot
-                    </button>
-                    <span className="text-slate-600">&bull;</span>
-                    <button
-                      type="button"
-                      onClick={clearCategories}
-                      className="text-[10px] text-slate-400 hover:text-slate-200 font-semibold underline cursor-pointer"
-                    >
-                      Esențiale
-                    </button>
-                  </div>
+              {/* Fixed Structure & General Knowledge Notice */}
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-slate-300 space-y-1.5">
+                <div>
+                  <span className="font-bold text-amber-300 block mb-0.5">⚔️ Structura Rundelor (Fixă):</span>
+                  <span>Faza 1: Bază (1000 pct) &bull; Faza 2: Cucerire (4 runde, 200 pct) &bull; Faza 3: Departajare (300 pct) &bull; Faza 4: Război (5 runde, 400 pct).</span>
                 </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {ALL_CATEGORIES.map((cat) => {
-                    const isSelected = selectedCategories.includes(cat.id);
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => toggleCategory(cat.id)}
-                        className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs transition cursor-pointer ${
-                          isSelected
-                            ? 'border-amber-500 bg-amber-500/15 text-amber-200 font-bold shadow-sm'
-                            : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
-                        }`}
-                      >
-                        <span className="text-base">{cat.icon}</span>
-                        <span className="truncate">{cat.name}</span>
-                      </button>
-                    );
-                  })}
+                <div className="border-t border-amber-500/20 pt-1.5">
+                  <span className="font-bold text-amber-300 block mb-0.5">📚 Întrebări Scurte de Cultură Generală (15s):</span>
+                  <span>Meciul selectează automat întrebări scurte dintr-un fond comun variat de cultură generală, fără filtrare pe domenii înguste.</span>
                 </div>
               </div>
             </div>
@@ -550,7 +469,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 onClick={() => {
                   sound.playClick();
                   setShowCreateModal(false);
-                  onCreatePrivateRoom(customMaxPlayers, selectedCategories);
+                  onCreatePrivateRoom(customMaxPlayers, []);
                 }}
                 className="rounded-xl bg-amber-500 px-5 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 shadow-lg shadow-amber-500/20 cursor-pointer"
               >

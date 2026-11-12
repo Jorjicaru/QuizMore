@@ -352,7 +352,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 : gamePhase === 'conquest'
                 ? 'CUCEREȘTE ZONĂ ÎNVECINATĂ (200 PCT)'
                 : gamePhase === 'allocation'
-                ? 'ALEGE TERITORIU (300 PCT)'
+                ? 'ALEGE TERITORIU VECIN (300 PCT)'
                 : 'ATACĂ ȚINTA INAMICĂ (400 PCT)'}
             </span>
           </div>
@@ -509,14 +509,25 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
 
               if (owner) {
                 fillColor = owner.color;
-                fillOpacity = 0.92;
+                fillOpacity =
+                  isMyTurn && !isActionable && t.ownerId !== currentUserId ? 0.62 : 0.92;
               } else if (isForbiddenBase) {
                 fillColor = '#78716c';
                 fillOpacity = 0.5;
+              } else if (isMyTurn && !isActionable) {
+                fillColor = '#9ca3af';
+                fillOpacity = 0.45;
               }
 
+              const isAttackPreviewTarget =
+                gamePhase === 'war' &&
+                warRound?.status === 'attack_preview' &&
+                Boolean(warTargetEntry);
+
               const isHovered = hoveredId === t.id;
-              const strokeColor = isSelected
+              const strokeColor = isAttackPreviewTarget
+                ? '#f43f5e'
+                : isSelected
                 ? '#38bdf8'
                 : isInspected || isHovered
                 ? '#f59e0b'
@@ -526,7 +537,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 ? '#fef08a'
                 : '#6b4c28';
 
-              const strokeWidth = isSelected
+              const strokeWidth = isAttackPreviewTarget
+                ? 4.5
+                : isSelected
                 ? 4.0
                 : isInspected || isHovered
                 ? 3.2
@@ -542,8 +555,13 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   key={t.id}
                   data-testid={`territory-${t.id}`}
                   data-owner={t.ownerId || 'neutral'}
-                  className={`transition-all duration-150 ${
-                    isActionable ? 'cursor-pointer hover:brightness-110' : 'cursor-pointer'
+                  data-actionable={isActionable ? 'true' : 'false'}
+                  className={`transition-opacity duration-150 motion-reduce:transition-none ${
+                    isActionable
+                      ? 'cursor-pointer hover:brightness-110'
+                      : isMyTurn
+                      ? 'cursor-not-allowed'
+                      : 'cursor-pointer'
                   }`}
                   onMouseEnter={() => setHoveredId(t.id)}
                   onMouseLeave={() => setHoveredId(null)}
@@ -610,14 +628,14 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                         d={t.svgPath}
                         fill="url(#selected-hatch)"
                         stroke="none"
-                        className="pointer-events-none animate-pulse"
+                        className="pointer-events-none animate-pulse motion-reduce:animate-none"
                       />
                     ) : (
                       <polygon
                         points={t.svgPath}
                         fill="url(#selected-hatch)"
                         stroke="none"
-                        className="pointer-events-none animate-pulse"
+                        className="pointer-events-none animate-pulse motion-reduce:animate-none"
                       />
                     ))}
                 </g>
@@ -871,7 +889,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 <g
                   key={`arrow_${t.id}`}
                   transform={`translate(${t.labelX}, ${t.labelY - 32})`}
-                  className="animate-bounce"
+                  className="animate-bounce motion-reduce:animate-none"
                   filter="url(#arrow-glow)"
                 >
                   <rect

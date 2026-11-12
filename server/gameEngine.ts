@@ -15,6 +15,8 @@ import {
   canCompleteBaseSelection,
   isAdjacentToPlayer,
   determineEstimationWinner,
+  selectEligibleAllocationWinner,
+  getLegalNeutralTargetsForPlayer,
   calculateConquestRounds,
   buildSimultaneousWarPairings,
   evaluateWarBattleChoiceOutcome,
@@ -58,6 +60,7 @@ export class GameManager {
   private games: Map<string, GameState> = new Map();
   private ioCallback?: (roomId: string, event: string, data: any) => void;
   private botTimers: Map<string, NodeJS.Timeout[]> = new Map();
+  private playerBotTimers: Map<string, NodeJS.Timeout> = new Map();
   private questionTimers: Map<string, NodeJS.Timeout> = new Map();
   private selectionTimers: Map<string, NodeJS.Timeout> = new Map();
   private turnAdvanceTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -66,6 +69,37 @@ export class GameManager {
 
   private makeLogId(): string {
     return `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  private isBotControlled(player: Player | undefined): boolean {
+    if (!player) return false;
+    return Boolean(player.isAi || player.botControlled || player.isConnected === false);
+  }
+
+  private setPlayerBotTimer(roomId: string, playerId: string, timer: NodeJS.Timeout): void {
+    const key = `${roomId}:${playerId}`;
+    const prev = this.playerBotTimers.get(key);
+    if (prev) clearTimeout(prev);
+    this.playerBotTimers.set(key, timer);
+
+    const timers = this.botTimers.get(roomId) || [];
+    timers.push(timer);
+    this.botTimers.set(roomId, timers);
+  }
+
+  private clearPlayerBotTimer(roomId: string, playerId: string): void {
+    const key = `${roomId}:${playerId}`;
+    const timer = this.playerBotTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.playerBotTimers.delete(key);
+    }
+  }
+
+  private setTurnAdvanceTimer(roomId: string, timer: NodeJS.Timeout): void {
+    const prev = this.turnAdvanceTimers.get(roomId);
+    if (prev) clearTimeout(prev);
+    this.turnAdvanceTimers.set(roomId, timer);
   }
 
   public setIoCallback(callback: (roomId: string, event: string, data: any) => void): void {
@@ -128,54 +162,54 @@ export class GameManager {
     warRounds = 6
   ): { requiredChoice: number; requiredEstimation: number; maxAllocationRetries: number } {
     const conquestRounds = calculateConquestRounds(territoryCount, playerCount);
-    const maxUnallocatedTerritories = Math.max(1, territoryCount - playerCount);
+    const maxAllocationQuestions = Math.max(
+      2,
+      Math.ceil((territoryCount - playerCount) / Math.max(2, playerCount))
+    );
     const maxAllocationRetries = 4;
     return {
-      requiredChoice: conquestRounds + warRounds,
-      requiredEstimation: maxUnallocatedTerritories + warRounds + maxAllocationRetries,
+      requiredChoice: conquestRounds + maxAllocationQuestions + warRounds + maxAllocationRetries,
+      requiredEstimation: 0,
       maxAllocationRetries,
     };
   }
 
-  public getRandomQuestion(game: GameState, type?: 'choice' | 'estimation'): Question | null {
+  public getRandomQuestion(game: GameState, _type?: 'choice' | 'estimation'): Question | null {
     const selectedCategories = game.selectedCategories || [];
     const usedIds = new Set(game.usedQuestionIds || []);
     const usedFacts = new Set(game.usedFactKeys || []);
     game.categoryUsageCounts = game.categoryUsageCounts || {};
 
+    // Trivia gameplay uses exclusively approved multiple-choice ('choice') questions
     const allAvailable = db
       .getAllQuestions()
       .filter(
         (question) =>
           !question.isDisabled &&
           question.reviewStatus === 'approved' &&
-          (!type || question.type === type) &&
+          question.type === 'choice' &&
           !usedIds.has(question.id) &&
           (!question.factKey || !usedFacts.has(question.factKey))
       );
 
-    // Strictly respect selectedCategories when the host selected specific categories
-    const pool = allAvailable.filter(
+    // Respect selectedCategories when the host selected specific categories
+    const filteredPool = allAvailable.filter(
       (question) =>
         !selectedCategories.length || selectedCategories.includes(question.category)
     );
+    const pool = filteredPool.length > 0 ? filteredPool : selectedCategories.length ? [] : allAvailable;
 
     if (!pool.length) return null;
 
-    // Category-balanced selection: prefer the allowed category with the lowest usage count in this match
-    const availableCategories = Array.from(new Set(pool.map((q) => q.category)));
-    let minUsage = Infinity;
-    for (const cat of availableCategories) {
-      const count = game.categoryUsageCounts[cat] || 0;
-      if (count < minUsage) minUsage = count;
-    }
-    const leastUsedCategories = new Set(
-      availableCategories.filter((cat) => (game.categoryUsageCounts![cat] || 0) === minUsage)
-    );
-    const balancedPool = pool.filter((q) => leastUsedCategories.has(q.category));
-    const finalCandidates = balancedPool.length > 0 ? balancedPool : pool;
+    // Mix topics randomly across questions (avoiding specialized single-category streaks)
+    const lastCategory = (game as any).lastQuestionCategory as string | undefined;
+    const diversePool =
+      lastCategory && pool.some((q) => q.category !== lastCategory)
+        ? pool.filter((q) => q.category !== lastCategory)
+        : pool;
 
-    const source = finalCandidates[Math.floor(Math.random() * finalCandidates.length)];
+    const source = diversePool[Math.floor(Math.random() * diversePool.length)];
+    (game as any).lastQuestionCategory = source.category;
     usedIds.add(source.id);
     game.usedQuestionIds = Array.from(usedIds);
     if (source.factKey) {
@@ -379,7 +413,20 @@ export class GameManager {
 
     const existing = game.players.find((p) => p.id === user.id);
     if (existing) {
+      const wasDisconnected = existing.isConnected === false || existing.botControlled === true;
+      this.clearPlayerBotTimer(roomId, user.id);
       existing.isConnected = true;
+      existing.botControlled = false;
+      delete existing.disconnectedAt;
+
+      if (wasDisconnected && game.phase !== 'waiting' && game.phase !== 'finished') {
+        game.gameLog.push({
+          id: this.makeLogId(),
+          text: `🔄 ${existing.username} a revenit în partidă și a preluat comanda de la bot!`,
+          timestamp: Date.now(),
+          type: 'info',
+        });
+      }
       this.notifyUpdate(roomId);
       return {
         success: true,
@@ -389,7 +436,10 @@ export class GameManager {
     }
 
     if (game.phase !== 'waiting') {
-      return { success: false, message: 'Jocul este deja în desfășurare.' };
+      return {
+        success: false,
+        message: 'Jocul este deja în desfășurare. Doar jucătorii din meci pot reveni pe locurile lor.',
+      };
     }
     if (game.players.length >= game.maxPlayers) {
       return { success: false, message: 'Camera este plină.' };
@@ -405,6 +455,7 @@ export class GameManager {
       isReady: false,
       isAi: false,
       isConnected: true,
+      botControlled: false,
       castleTowers: 3,
       defensiveBonus: 0,
       territoriesCount: 0,
@@ -429,6 +480,60 @@ export class GameManager {
     };
   }
 
+  private activateBotTakeoverForPlayer(game: GameState, player: Player): void {
+    const alreadyOffline = player.isConnected === false && player.botControlled === true;
+    player.isConnected = false;
+    player.botControlled = true;
+    player.disconnectedAt = player.disconnectedAt || Date.now();
+
+    if (!alreadyOffline) {
+      game.gameLog.push({
+        id: this.makeLogId(),
+        text: `🤖 ${player.username} s-a deconectat. Botul a preluat temporar controlul până la revenirea jucătorului.`,
+        timestamp: Date.now(),
+        type: 'info',
+      });
+    }
+
+    this.notifyUpdate(game.roomId);
+
+    if (game.currentQuestion && !game.currentQuestion.resolved) {
+      this.scheduleAiAnswerForPlayer(game, player);
+    } else {
+      this.checkAiTurn(game.roomId);
+    }
+  }
+
+  public handleSocketDisconnect(roomId: string, userId: string): void {
+    const game = this.games.get(roomId);
+    if (!game) return;
+    const player = game.players.find((p) => p.id === userId);
+    if (!player || player.isAi) return;
+
+    if (game.phase !== 'waiting' && game.phase !== 'finished') {
+      this.activateBotTakeoverForPlayer(game, player);
+      return;
+    }
+
+    if (game.phase === 'finished') {
+      player.isConnected = false;
+      this.notifyUpdate(roomId);
+      return;
+    }
+
+    // In waiting lobby: mark player disconnected without corrupting player list, and transfer host if another connected human exists
+    player.isConnected = false;
+    player.disconnectedAt = Date.now();
+    if (player.isHost) {
+      const nextConnectedHuman = game.players.find((p) => !p.isAi && p.id !== userId && p.isConnected !== false);
+      if (nextConnectedHuman) {
+        player.isHost = false;
+        nextConnectedHuman.isHost = true;
+      }
+    }
+    this.notifyUpdate(roomId);
+  }
+
   public leaveRoom(roomId: string, userId: string): void {
     const game = this.games.get(roomId);
     if (!game) return;
@@ -436,20 +541,20 @@ export class GameManager {
     if (!leavingPlayer) return;
 
     if (game.phase !== 'waiting' && game.phase !== 'finished') {
-      // Keep the player record and owned territories stable during an active match.
+      // Keep the player record and owned territories stable during an active match and activate bot takeover.
+      this.activateBotTakeoverForPlayer(game, leavingPlayer);
+      return;
+    }
+
+    if (game.phase === 'finished') {
       leavingPlayer.isConnected = false;
-      game.gameLog.push({
-        id: this.makeLogId(),
-        text: `${leavingPlayer.username} s-a deconectat. Poate reveni în partidă.`,
-        timestamp: Date.now(),
-        type: 'info',
-      });
       this.notifyUpdate(roomId);
       return;
     }
 
     game.players = game.players.filter((p) => p.id !== userId);
-    if (game.players.length === 0) {
+    const remainingHumans = game.players.filter((p) => !p.isAi);
+    if (game.players.length === 0 || remainingHumans.length === 0) {
       this.clearRoomTimers(roomId);
       this.games.delete(roomId);
       if (isPostgresConfigured()) {
@@ -458,7 +563,10 @@ export class GameManager {
       return;
     }
     if (leavingPlayer.isHost) {
-      const nextHuman = game.players.find((p) => !p.isAi) || game.players[0];
+      const nextHuman =
+        game.players.find((p) => !p.isAi && p.isConnected !== false) ||
+        game.players.find((p) => !p.isAi) ||
+        game.players[0];
       nextHuman.isHost = true;
     }
     if (game.phase === 'waiting') {
@@ -471,6 +579,28 @@ export class GameManager {
       type: 'info',
     });
     this.notifyUpdate(roomId);
+  }
+
+  public getRoomForUser(userId: string): GameState | undefined {
+    let activeMatch: GameState | undefined;
+    let waitingRoom: GameState | undefined;
+    let finishedRoom: GameState | undefined;
+
+    for (const game of this.games.values()) {
+      const hasUser = game.players.some((p) => p.id === userId && !p.isAi);
+      if (!hasUser) continue;
+      if (game.phase !== 'waiting' && game.phase !== 'finished') {
+        activeMatch = game;
+        break;
+      } else if (game.phase === 'waiting') {
+        waitingRoom = game;
+      } else if (game.phase === 'finished') {
+        finishedRoom = game;
+      }
+    }
+
+    const target = activeMatch || waitingRoom || finishedRoom;
+    return target ? this.getClientState(target.roomId) : undefined;
   }
 
   public addBot(
@@ -545,10 +675,10 @@ export class GameManager {
         message: 'Sunt necesari cel puțin 2 jucători (sau adaugă un bot AI).',
       };
     }
-    if (game.players.some((p) => !p.isAi && !p.isReady)) {
+    if (game.players.some((p) => !p.isAi && p.isConnected !== false && !p.isReady)) {
       return {
         success: false,
-        message: 'Toți jucătorii trebuie să fie gata înainte de începerea meciului.',
+        message: 'Toți jucătorii conectați trebuie să fie gata înainte de începerea meciului.',
       };
     }
     // Freeze map according to actual participant count (game.players.length, never maxPlayers)
@@ -567,33 +697,22 @@ export class GameManager {
         (q) =>
           !q.isDisabled &&
           q.reviewStatus === 'approved' &&
+          q.type === 'choice' &&
           (!game.selectedCategories?.length || game.selectedCategories.includes(q.category))
       );
-    const availableChoice = roomQuestions.filter((q) => q.type === 'choice').length;
-    const availableEstimation = roomQuestions.filter((q) => q.type === 'estimation').length;
+    const availableChoice = roomQuestions.length;
     const uniqueRoomFactKeys = new Set(roomQuestions.map((q) => q.factKey || q.id)).size;
 
-    if (availableEstimation === 0) {
-      return {
-        success: false,
-        message:
-          'Categoriile selectate nu conțin întrebări numerice pentru faza de împărțire și departajări.',
-      };
-    }
     if (availableChoice === 0) {
       return {
         success: false,
-        message: 'Categoriile selectate nu conțin întrebări grilă pentru cucerire și război.',
+        message: 'Categoriile selectate nu conțin întrebări cu variante pentru începerea meciului.',
       };
     }
-    if (
-      availableChoice < budget.requiredChoice ||
-      availableEstimation < budget.requiredEstimation ||
-      uniqueRoomFactKeys < budget.requiredChoice + budget.requiredEstimation
-    ) {
+    if (availableChoice < budget.requiredChoice || uniqueRoomFactKeys < budget.requiredChoice) {
       return {
         success: false,
-        message: `Categoriile selectate au prea puține întrebări unice pentru o partidă de ${game.players.length} jucători (necesar: minim ${budget.requiredChoice} grilă și ${budget.requiredEstimation} numerice; disponibil: ${availableChoice} grilă și ${availableEstimation} numerice). Selectează mai multe categorii!`,
+        message: `Categoriile selectate au prea puține întrebări unice pentru o partidă de ${game.players.length} jucători (necesar: minim ${budget.requiredChoice} întrebări cu variante; disponibil: ${availableChoice}).`,
       };
     }
 
@@ -615,6 +734,9 @@ export class GameManager {
     game.allocationNoResponseRetries = 0;
     for (const p of game.players) {
       p.attackBonusPoints = 0;
+      if (!p.isAi && p.isConnected === false) {
+        p.botControlled = true;
+      }
     }
     game.allocationPickReady = false;
     game.warRound = null;
@@ -694,7 +816,7 @@ export class GameManager {
           }
         }
       }
-      this.launchSimultaneousWarChoiceQuestion(game);
+      this.beginWarAttackPreview(game);
       return;
     }
 
@@ -705,20 +827,26 @@ export class GameManager {
     }
 
     if (game.phase === 'allocation' && game.allocationWinnerId) {
-      const neutralTerritories = Object.values(game.territories).filter((t) => t.ownerId === null);
-      if (neutralTerritories.length > 0) {
-        const adjacentNeutrals = neutralTerritories.filter((t) =>
-          isAdjacentToPlayer(t.id, game.allocationWinnerId!, game.territories)
-        );
-        const pool = adjacentNeutrals.length > 0 ? adjacentNeutrals : neutralTerritories;
-        const pick = pool[Math.floor(Math.random() * pool.length)];
+      const winnerPlayer = game.players.find((p) => p.id === game.allocationWinnerId);
+      const adjacentIds = winnerPlayer
+        ? getLegalNeutralTargetsForPlayer(winnerPlayer.id, game.territories)
+        : [];
+      if (adjacentIds.length > 0) {
+        const pickId = adjacentIds[Math.floor(Math.random() * adjacentIds.length)];
+        const pickName = game.territories[pickId]?.name || pickId;
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `⏱️ Timpul a expirat pentru ${activePlayer.username}! S-a selectat automat ${pick.name}.`,
+          text: `⏱️ Timpul a expirat pentru ${activePlayer.username}! S-a selectat automat teritoriul învecinat ${pickName}.`,
           timestamp: Date.now(),
           type: 'info',
         });
-        this.selectTerritory(roomId, game.allocationWinnerId, pick.id);
+        this.selectTerritory(roomId, game.allocationWinnerId, pickId);
+        return;
+      } else {
+        // Winner has no adjacent neutral territory (enclaved): advance cleanly without violating adjacency
+        game.allocationWinnerId = null;
+        game.allocationPickReady = false;
+        this.triggerNextAllocationQuestion(game);
         return;
       }
     }
@@ -893,7 +1021,7 @@ export class GameManager {
         (b) => b.targetTerritoryId !== null || b.status === 'skipped'
       );
       if (allSelected) {
-        this.launchSimultaneousWarChoiceQuestion(game);
+        this.beginWarAttackPreview(game);
       } else {
         // Set activePlayerIndex to the next attacker who still needs to pick a target
         const nextUnpicked = game.warRound.battles.find(
@@ -987,9 +1115,11 @@ export class GameManager {
         });
 
         this.notifyUpdate(roomId);
-        setTimeout(() => {
+        const startConquestTimer = setTimeout(() => {
+          this.turnAdvanceTimers.delete(roomId);
           this.triggerNextConquestQuestion(game);
         }, 1500);
+        this.setTurnAdvanceTimer(roomId, startConquestTimer);
         return {
           success: true,
           message: `Cetatea de bază ${territory.name} (+1000 pct) a fost întemeiată! Începe Cucerirea!`,
@@ -1034,9 +1164,11 @@ export class GameManager {
 
       this.notifyUpdate(roomId);
 
-      setTimeout(() => {
+      const nextPickTimer = setTimeout(() => {
+        this.turnAdvanceTimers.delete(roomId);
         this.processNextConquestPick(game);
       }, 900);
+      this.setTurnAdvanceTimer(roomId, nextPickTimer);
       return {
         success: true,
         message: `TERITORIU CUCERIT: ${territory.name} (+${SCORING.CONQUEST} PCT)!`,
@@ -1058,6 +1190,14 @@ export class GameManager {
       if (territory.ownerId !== null) {
         return { success: false, message: 'Trebuie să alegi un teritoriu liber (neutru)!' };
       }
+      const check = canTargetTerritory(territoryId, activePlayer, game.territories, 'allocation');
+      if (!check.allowed) {
+        return {
+          success: false,
+          message:
+            check.reason || 'Trebuie să alegi un teritoriu liber învecinat cu teritoriile tale!',
+        };
+      }
 
       this.clearSelectionTimer(roomId);
       territory.ownerId = activePlayer.id;
@@ -1078,9 +1218,11 @@ export class GameManager {
 
       const neutralCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
       if (neutralCount > 0) {
-        setTimeout(() => {
+        const nextAllocTimer = setTimeout(() => {
+          this.turnAdvanceTimers.delete(roomId);
           this.triggerNextAllocationQuestion(game);
         }, 1200);
+        this.setTurnAdvanceTimer(roomId, nextAllocTimer);
       } else {
         this.enterWarPhase(game);
       }
@@ -1214,8 +1356,9 @@ export class GameManager {
 
     for (const battle of game.warRound.battles) {
       const attacker = game.players.find((p) => p.id === battle.attackerId);
-      if (attacker && attacker.isAi && !battle.targetTerritoryId) {
+      if (attacker && this.isBotControlled(attacker) && !battle.targetTerritoryId) {
         const timer = setTimeout(() => {
+          this.playerBotTimers.delete(`${roomId}:${attacker.id}`);
           const currentGame = this.games.get(roomId);
           if (
             !currentGame ||
@@ -1225,6 +1368,9 @@ export class GameManager {
           ) {
             return;
           }
+          const currentAttacker = currentGame.players.find((p) => p.id === battle.attackerId);
+          if (!this.isBotControlled(currentAttacker)) return;
+
           const currentBattle = currentGame.warRound.battles.find(
             (b) => b.battleId === battle.battleId
           );
@@ -1245,24 +1391,87 @@ export class GameManager {
               (b) => b.targetTerritoryId !== null || b.status === 'skipped'
             );
             if (allDone) {
-              this.launchSimultaneousWarChoiceQuestion(currentGame);
+              this.beginWarAttackPreview(currentGame);
             } else {
               this.notifyUpdate(roomId);
             }
           }
         }, 1100 + Math.random() * 1100);
 
-        const timers = this.botTimers.get(roomId) || [];
-        timers.push(timer);
-        this.botTimers.set(roomId, timers);
+        this.setPlayerBotTimer(roomId, attacker.id, timer);
       }
     }
+  }
+
+  private beginWarAttackPreview(game: GameState, customDurationMs = 2800): void {
+    if (!game.warRound) return;
+    const roomId = game.roomId;
+    this.clearSelectionTimer(roomId);
+
+    const prevAdv = this.turnAdvanceTimers.get(roomId);
+    if (prevAdv) {
+      clearTimeout(prevAdv);
+      this.turnAdvanceTimers.delete(roomId);
+    }
+
+    const activeBattles = game.warRound.battles.filter((b) => b.targetTerritoryId !== null);
+    if (activeBattles.length === 0) {
+      game.round++;
+      this.startSimultaneousWarRound(game);
+      return;
+    }
+
+    const durationMs = Math.max(250, Math.min(5000, Math.round(customDurationMs)));
+    const expiresAt = Date.now() + durationMs;
+    game.warRound.status = 'attack_preview';
+    game.warRound.attackPreviewDurationMs = durationMs;
+    game.warRound.attackPreviewExpiresAt = expiresAt;
+    game.warRound.selectionDeadline = null;
+    game.turnTimeLimit = Math.max(1, Math.ceil(durationMs / 1000));
+    game.turnTimerExpiresAt = expiresAt;
+
+    const attackSummary = activeBattles
+      .map((b) => {
+        const atk = game.players.find((p) => p.id === b.attackerId)?.username || 'Atacator';
+        const def = game.players.find((p) => p.id === b.defenderId)?.username || 'Apărător';
+        const tName = b.targetTerritoryId
+          ? game.territories[b.targetTerritoryId]?.name || b.targetTerritoryId
+          : 'teritoriu';
+        return `${atk} ⚔️ ${tName} (${def})`;
+      })
+      .join(' | ');
+
+    game.gameLog.push({
+      id: this.makeLogId(),
+      text: `🎯 Ținte de atac fixate: ${attackSummary}! Urmează întrebarea duelului!`,
+      timestamp: Date.now(),
+      type: 'battle',
+    });
+
+    this.notifyUpdate(roomId);
+
+    const previewTimer = setTimeout(() => {
+      this.turnAdvanceTimers.delete(roomId);
+      const currentGame = this.games.get(roomId);
+      if (
+        !currentGame ||
+        currentGame.phase !== 'war' ||
+        !currentGame.warRound ||
+        currentGame.warRound.status !== 'attack_preview'
+      ) {
+        return;
+      }
+      this.launchSimultaneousWarChoiceQuestion(currentGame);
+    }, durationMs);
+
+    this.turnAdvanceTimers.set(roomId, previewTimer);
   }
 
   private launchSimultaneousWarChoiceQuestion(game: GameState): void {
     if (!game.warRound) return;
     const roomId = game.roomId;
     this.clearSelectionTimer(roomId);
+    game.warRound.attackPreviewExpiresAt = null;
 
     const activeBattles = game.warRound.battles.filter((b) => b.targetTerritoryId !== null);
     if (activeBattles.length === 0) {
@@ -1411,7 +1620,7 @@ export class GameManager {
       warRoundId?: string;
     }
   ): void {
-    const durationSeconds = question.type === 'estimation' ? 10 : 12;
+    const durationSeconds = 15;
     const startTime = Date.now();
 
     const defaultParticipants =
@@ -1702,38 +1911,118 @@ export class GameManager {
     // CASE 2: ALLOCATION / DEPARTAJARE (+300 pts)
     // ------------------------------------------
     if (cq.phaseContext === 'allocation') {
-      const numericSubmissions: Record<string, { answer: number; submitTime: number }> = {};
-      for (const pid of requiredPlayers) {
-        const sub = cq.playerAnswers[pid];
-        if (!sub || sub.answer === null || sub.answer === undefined || isNaN(Number(sub.answer))) {
-          cq.playerAnswers[pid] = {
-            answer: null,
-            submitTime: cq.durationSeconds * 1000,
-            isCorrect: false,
-            answerStatus: 'NO_RESPONSE',
-          };
-        } else {
-          const val = Number(sub.answer);
-          numericSubmissions[pid] = {
-            answer: val,
-            submitTime: sub.submitTime,
-          };
-          sub.diff = Math.abs(val - (q.targetNumber || 0));
-          sub.answerStatus = 'WRONG';
+      let rankings: Array<{
+        playerId: string;
+        answer: number;
+        diff: number;
+        submitTime: number;
+        rank: number;
+      }> = [];
+
+      if (q.type === 'choice') {
+        const correctEntries: Array<{ playerId: string; answer: number; submitTime: number }> = [];
+        for (const pid of requiredPlayers) {
+          const p = game.players.find((x) => x.id === pid);
+          const sub = cq.playerAnswers[pid];
+          if (!sub || sub.answer === null || sub.answer === undefined || isNaN(Number(sub.answer))) {
+            cq.playerAnswers[pid] = {
+              answer: null,
+              submitTime: cq.durationSeconds * 1000,
+              isCorrect: false,
+              answerStatus: 'NO_RESPONSE',
+            };
+          } else {
+            const val = Number(sub.answer);
+            const isCorr = val === q.correctAnswerIndex;
+            sub.isCorrect = isCorr;
+            sub.answerStatus = isCorr ? 'CORRECT' : 'WRONG';
+            sub.diff = isCorr ? 0 : 1;
+            if (isCorr) {
+              correctEntries.push({
+                playerId: pid,
+                answer: val,
+                submitTime: sub.submitTime,
+              });
+            } else if (p) {
+              p.wrongAnswers++;
+            }
+          }
+        }
+        correctEntries.sort((a, b) => a.submitTime - b.submitTime);
+        rankings = correctEntries.map((entry, idx) => ({
+          playerId: entry.playerId,
+          answer: entry.answer,
+          diff: 0,
+          submitTime: entry.submitTime,
+          rank: idx + 1,
+        }));
+        for (const r of rankings) {
+          if (cq.playerAnswers[r.playerId]) {
+            cq.playerAnswers[r.playerId].rank = r.rank;
+          }
+        }
+      } else {
+        const numericSubmissions: Record<string, { answer: number; submitTime: number }> = {};
+        for (const pid of requiredPlayers) {
+          const sub = cq.playerAnswers[pid];
+          if (!sub || sub.answer === null || sub.answer === undefined || isNaN(Number(sub.answer))) {
+            cq.playerAnswers[pid] = {
+              answer: null,
+              submitTime: cq.durationSeconds * 1000,
+              isCorrect: false,
+              answerStatus: 'NO_RESPONSE',
+            };
+          } else {
+            const val = Number(sub.answer);
+            numericSubmissions[pid] = {
+              answer: val,
+              submitTime: sub.submitTime,
+            };
+            sub.diff = Math.abs(val - (q.targetNumber || 0));
+            sub.answerStatus = 'WRONG';
+          }
+        }
+        const outcome = determineEstimationWinner(q.targetNumber || 0, numericSubmissions);
+        rankings = outcome.rankings;
+        for (const r of rankings) {
+          if (cq.playerAnswers[r.playerId]) {
+            cq.playerAnswers[r.playerId].rank = r.rank;
+            cq.playerAnswers[r.playerId].diff = r.diff;
+          }
         }
       }
 
-      const outcome = determineEstimationWinner(q.targetNumber || 0, numericSubmissions);
-      for (const r of outcome.rankings) {
-        if (cq.playerAnswers[r.playerId]) {
-          cq.playerAnswers[r.playerId].rank = r.rank;
-          cq.playerAnswers[r.playerId].diff = r.diff;
-        }
+      const activePlayerIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+      const eligibility = selectEligibleAllocationWinner(
+        rankings,
+        activePlayerIds,
+        game.territories
+      );
+
+      if (eligibility.noAdjacentNeutralInMatch) {
+        // No active player borders any remaining neutral territory (isolated neutral enclave)
+        game.allocationWinnerId = null;
+        game.allocationPickReady = false;
+        game.gameLog.push({
+          id: this.makeLogId(),
+          text: `⚖️ Niciun teritoriu liber rămas nu mai este adiacent cu teritoriile jucătorilor activi. Se trece la Faza de Război!`,
+          timestamp: Date.now(),
+          type: 'info',
+        });
+        this.notifyUpdate(roomId);
+        const warTimer = setTimeout(() => {
+          game.currentQuestion = null;
+          this.enterWarPhase(game);
+        }, 2000);
+        const pending = this.botTimers.get(roomId) || [];
+        pending.push(warTimer);
+        this.botTimers.set(roomId, pending);
+        return;
       }
 
-      if (outcome.winnerId) {
+      if (eligibility.winnerId) {
         game.allocationNoResponseRetries = 0;
-        const winner = game.players.find((p) => p.id === outcome.winnerId);
+        const winner = game.players.find((p) => p.id === eligibility.winnerId);
         if (winner) {
           winner.correctAnswers++;
           if (cq.playerAnswers[winner.id]) {
@@ -1745,9 +2034,21 @@ export class GameManager {
           game.allocationWinnerId = winner.id;
           game.activePlayerIndex = game.players.findIndex((p) => p.id === winner.id);
 
+          if (eligibility.bypassedEnclavedIds.length > 0) {
+            const bypassedNames = eligibility.bypassedEnclavedIds
+              .map((id) => game.players.find((p) => p.id === id)?.username || id)
+              .join(', ');
+            game.gameLog.push({
+              id: this.makeLogId(),
+              text: `⚠️ ${bypassedNames} nu are niciun teritoriu liber învecinat. Dreptul de alegere trece la ${winner.username}!`,
+              timestamp: Date.now(),
+              type: 'info',
+            });
+          }
+
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `🏆 ${winner.username} a fost cel mai aproape la departajare (+${SCORING.ALLOCATION} pct) și are 15s să aleagă o zonă liberă!`,
+            text: `🏆 ${winner.username} a câștigat departajarea (+${SCORING.ALLOCATION} pct) și are 15s să aleagă o zonă liberă învecinată!`,
             timestamp: Date.now(),
             type: 'conquest',
           });
@@ -1768,12 +2069,12 @@ export class GameManager {
           return;
         }
       } else {
-        // Bounded retry policy when no player answers the allocation question (max 2 retries per territory)
+        // Bounded retry policy when no player with an adjacent neutral territory answered correctly (max 2 retries per territory)
         game.allocationNoResponseRetries = (game.allocationNoResponseRetries || 0) + 1;
         if (game.allocationNoResponseRetries <= 2) {
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⏱️ Niciun jucător nu a trimis un număr valid la departajare (încercarea ${game.allocationNoResponseRetries}/2). Se repetă întrebarea pentru această zonă!`,
+            text: `⏱️ Niciun jucător eligibil nu a răspuns corect la departajare (încercarea ${game.allocationNoResponseRetries}/2). Se repetă întrebarea pentru această zonă!`,
             timestamp: Date.now(),
             type: 'info',
           });
@@ -1788,33 +2089,43 @@ export class GameManager {
           this.botTimers.set(roomId, pending);
           return;
         } else {
-          // Max retries reached: deterministically assign a neutral territory to the active player with fewest territories
+          // Max retries reached: deterministically assign an ADJACENT neutral territory to the active player with fewest territories who borders a neutral territory
           game.allocationNoResponseRetries = 0;
-          const neutrals = Object.values(game.territories).filter((t) => t.ownerId === null);
-          const activePlayers = game.players.filter((p) => !p.isEliminated);
-          if (neutrals.length > 0 && activePlayers.length > 0) {
-            const fallbackPlayer = [...activePlayers].sort((a, b) => {
-              if (a.territoriesCount !== b.territoriesCount) return a.territoriesCount - b.territoriesCount;
+          const eligiblePlayers = game.players.filter(
+            (p) =>
+              !p.isEliminated &&
+              getLegalNeutralTargetsForPlayer(p.id, game.territories).length > 0
+          );
+          if (eligiblePlayers.length > 0) {
+            const fallbackPlayer = [...eligiblePlayers].sort((a, b) => {
+              if (a.territoriesCount !== b.territoriesCount)
+                return a.territoriesCount - b.territoriesCount;
               return a.score - b.score;
             })[0];
-            const adj = neutrals.filter((t) => isAdjacentToPlayer(t.id, fallbackPlayer.id, game.territories));
-            const targetNeutral = adj.length > 0 ? adj[0] : neutrals[0];
-            targetNeutral.ownerId = fallbackPlayer.id;
-            targetNeutral.points = SCORING.ALLOCATION;
-            targetNeutral.defensiveBonus = 0;
-            this.recalculatePlayerScores(game);
-            game.gameLog.push({
-              id: this.makeLogId(),
-              text: `⚖️ Lipsă repetată de răspuns: teritoriul ${targetNeutral.name} a fost alocat automat către ${fallbackPlayer.username} (+${SCORING.ALLOCATION} pct).`,
-              timestamp: Date.now(),
-              type: 'conquest',
-            });
+            const adjIds = getLegalNeutralTargetsForPlayer(fallbackPlayer.id, game.territories);
+            const targetNeutral = game.territories[adjIds[0]];
+            if (targetNeutral) {
+              targetNeutral.ownerId = fallbackPlayer.id;
+              targetNeutral.points = SCORING.ALLOCATION;
+              targetNeutral.defensiveBonus = 0;
+              this.recalculatePlayerScores(game);
+              game.gameLog.push({
+                id: this.makeLogId(),
+                text: `⚖️ Lipsă repetată de răspuns: teritoriul învecinat ${targetNeutral.name} a fost alocat automat către ${fallbackPlayer.username} (+${SCORING.ALLOCATION} pct).`,
+                timestamp: Date.now(),
+                type: 'conquest',
+              });
+            }
           }
           this.notifyUpdate(roomId);
           const nextTimer = setTimeout(() => {
             game.currentQuestion = null;
-            const remainingNeutrals = Object.values(game.territories).filter((t) => t.ownerId === null).length;
-            if (remainingNeutrals > 0) {
+            const anyAdjacentRemaining = game.players.some(
+              (p) =>
+                !p.isEliminated &&
+                getLegalNeutralTargetsForPlayer(p.id, game.territories).length > 0
+            );
+            if (anyAdjacentRemaining) {
               this.triggerNextAllocationQuestion(game);
             } else {
               this.enterWarPhase(game);
@@ -1901,14 +2212,14 @@ export class GameManager {
 
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⚔️ Egalitate la grilă în duelul (${tiedNames})! Se declanșează Întrebarea Numerică de Departajare (10s)!`,
+            text: `⚔️ Egalitate în duelul (${tiedNames})! Se declanșează Întrebarea de Departajare (15s)!`,
             timestamp: Date.now(),
             type: 'battle',
           });
 
           this.notifyUpdate(roomId);
 
-          const tiebreakQ = this.getRandomQuestion(game, 'estimation');
+          const tiebreakQ = this.getRandomQuestion(game, 'choice');
           if (!tiebreakQ) {
             for (const b of tiedBattles) {
               b.outcome = 'draw_no_bonus';
@@ -1958,7 +2269,7 @@ export class GameManager {
         this.turnAdvanceTimers.set(roomId, advTimer);
         return;
       } else {
-        // Tiebreak numeric question resolution for tied battles
+        // Tiebreak question resolution for tied battles (choice or legacy estimation)
         const winners: string[] = [];
         for (const battle of game.warRound.battles) {
           if (battle.outcome !== 'needs_tiebreak') {
@@ -1968,30 +2279,73 @@ export class GameManager {
             continue;
           }
 
-          const res = evaluateWarBattleTiebreakOutcome(
-            battle.attackerId,
-            battle.defenderId,
-            cq.playerAnswers,
-            q.targetNumber ?? 0
-          );
-          battle.attackerNumericAnswer = res.attackerNumericAnswer;
-          battle.defenderNumericAnswer = res.defenderNumericAnswer;
-          battle.attackerNumericDiff = res.attackerNumericDiff;
-          battle.defenderNumericDiff = res.defenderNumericDiff;
-          battle.attackerSubmitTime = res.attackerSubmitTime;
-          battle.defenderSubmitTime = res.defenderSubmitTime;
-          battle.outcome = res.outcome;
-          battle.winnerId = res.winnerId;
-          battle.status = 'resolved';
+          if (q.type === 'choice') {
+            const atkSub = cq.playerAnswers[battle.attackerId];
+            const defSub = cq.playerAnswers[battle.defenderId];
+            const atkCorr = Boolean(
+              atkSub && atkSub.answer !== null && Number(atkSub.answer) === q.correctAnswerIndex
+            );
+            const defCorr = Boolean(
+              defSub && defSub.answer !== null && Number(defSub.answer) === q.correctAnswerIndex
+            );
+            const atkTime = atkSub?.submitTime ?? cq.durationSeconds * 1000;
+            const defTime = defSub?.submitTime ?? cq.durationSeconds * 1000;
 
-          if (res.outcome === 'attacker_won' || res.outcome === 'defender_won') {
-            winners.push(res.winnerId);
-            const winPlayer = game.players.find((p) => p.id === res.winnerId);
-            if (winPlayer) winPlayer.correctAnswers++;
-            if (cq.playerAnswers[res.winnerId]) {
-              cq.playerAnswers[res.winnerId].isCorrect = true;
-              cq.playerAnswers[res.winnerId].answerStatus = 'CORRECT';
-              cq.playerAnswers[res.winnerId].rank = 1;
+            battle.attackerSubmitTime = atkTime;
+            battle.defenderSubmitTime = defTime;
+
+            if (atkCorr && !defCorr) {
+              battle.outcome = 'attacker_won';
+              battle.winnerId = battle.attackerId;
+            } else if (!atkCorr && defCorr) {
+              battle.outcome = 'defender_won';
+              battle.winnerId = battle.defenderId;
+            } else if (atkCorr && defCorr) {
+              if (atkTime <= defTime) {
+                battle.outcome = 'attacker_won';
+                battle.winnerId = battle.attackerId;
+              } else {
+                battle.outcome = 'defender_won';
+                battle.winnerId = battle.defenderId;
+              }
+            } else {
+              battle.outcome = 'draw_no_bonus';
+              battle.winnerId = battle.defenderId;
+            }
+            battle.status = 'resolved';
+
+            if (battle.outcome === 'attacker_won' || battle.outcome === 'defender_won') {
+              winners.push(battle.winnerId!);
+              if (cq.playerAnswers[battle.winnerId!]) {
+                cq.playerAnswers[battle.winnerId!].rank = 1;
+              }
+            }
+          } else {
+            const res = evaluateWarBattleTiebreakOutcome(
+              battle.attackerId,
+              battle.defenderId,
+              cq.playerAnswers,
+              q.targetNumber ?? 0
+            );
+            battle.attackerNumericAnswer = res.attackerNumericAnswer;
+            battle.defenderNumericAnswer = res.defenderNumericAnswer;
+            battle.attackerNumericDiff = res.attackerNumericDiff;
+            battle.defenderNumericDiff = res.defenderNumericDiff;
+            battle.attackerSubmitTime = res.attackerSubmitTime;
+            battle.defenderSubmitTime = res.defenderSubmitTime;
+            battle.outcome = res.outcome;
+            battle.winnerId = res.winnerId;
+            battle.status = 'resolved';
+
+            if (res.outcome === 'attacker_won' || res.outcome === 'defender_won') {
+              winners.push(res.winnerId);
+              const winPlayer = game.players.find((p) => p.id === res.winnerId);
+              if (winPlayer) winPlayer.correctAnswers++;
+              if (cq.playerAnswers[res.winnerId]) {
+                cq.playerAnswers[res.winnerId].isCorrect = true;
+                cq.playerAnswers[res.winnerId].answerStatus = 'CORRECT';
+                cq.playerAnswers[res.winnerId].rank = 1;
+              }
             }
           }
         }
@@ -2055,7 +2409,7 @@ export class GameManager {
 
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⚖️ Au rămas ${neutralCount} teritorii neocupate! Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu prin estimare).`,
+            text: `⚖️ Au rămas ${neutralCount} teritorii neocupate! Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu).`,
             timestamp: Date.now(),
             type: 'info',
           });
@@ -2182,23 +2536,29 @@ export class GameManager {
         game.maxRounds = neutralCount;
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `⚖️ S-a încheiat faza de cucerire! Au rămas ${neutralCount} teritorii libere. Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu - întrebări numerice)!`,
+          text: `⚖️ S-a încheiat faza de cucerire! Au rămas ${neutralCount} teritorii libere. Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu)!`,
           timestamp: Date.now(),
           type: 'info',
         });
         this.notifyUpdate(roomId);
-        setTimeout(() => this.triggerNextAllocationQuestion(game), 1800);
+        const startAllocTimer = setTimeout(() => {
+          this.turnAdvanceTimers.delete(roomId);
+          this.triggerNextAllocationQuestion(game);
+        }, 1800);
+        this.setTurnAdvanceTimer(roomId, startAllocTimer);
       } else {
         this.enterWarPhase(game);
       }
     } else {
-      setTimeout(() => {
+      const nextConquestTimer = setTimeout(() => {
+        this.turnAdvanceTimers.delete(roomId);
         this.triggerNextConquestQuestion(game);
       }, 1800);
+      this.setTurnAdvanceTimer(roomId, nextConquestTimer);
     }
   }
 
-  private triggerNextAllocationQuestion(game: GameState): void {
+  public triggerNextAllocationQuestion(game: GameState): void {
     if (game.phase !== 'allocation' || game.currentQuestion) return;
     game.round += 1;
     const neutralCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
@@ -2213,14 +2573,14 @@ export class GameManager {
     game.pendingTerritoryId = null;
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `⚖️ Departajare pentru unul dintre cele ${neutralCount} teritorii libere! Toți jucătorii răspund la aceeași întrebare numerică.`,
+      text: `⚖️ Departajare pentru unul dintre cele ${neutralCount} teritorii libere! Cel mai rapid răspuns corect eligibil câștigă teritoriul.`,
       timestamp: Date.now(),
       type: 'info',
     });
 
-    const q = this.getRandomQuestion(game, 'estimation');
+    const q = this.getRandomQuestion(game, 'choice');
     if (!q) {
-      this.finishForQuestionExhaustion(game, 'estimation');
+      this.finishForQuestionExhaustion(game, 'choice');
       return;
     }
     const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
@@ -2299,20 +2659,26 @@ export class GameManager {
     }
 
     const activePlayer = game.players[game.activePlayerIndex];
-    if (!activePlayer || !activePlayer.isAi) return;
+    if (!activePlayer || !this.isBotControlled(activePlayer)) return;
 
     const timer = setTimeout(() => {
-      this.executeAiTurn(roomId, activePlayer);
+      this.playerBotTimers.delete(`${roomId}:${activePlayer.id}`);
+      const currentGame = this.games.get(roomId);
+      if (!currentGame) return;
+      const currentActive = currentGame.players[currentGame.activePlayerIndex];
+      if (!currentActive || currentActive.id !== activePlayer.id || !this.isBotControlled(currentActive)) {
+        return;
+      }
+      this.executeAiTurn(roomId, currentActive);
     }, 1100 + Math.random() * 700);
 
-    const timers = this.botTimers.get(roomId) || [];
-    timers.push(timer);
-    this.botTimers.set(roomId, timers);
+    this.setPlayerBotTimer(roomId, activePlayer.id, timer);
   }
 
   private executeAiTurn(roomId: string, bot: Player): void {
     const game = this.games.get(roomId);
     if (!game || game.players[game.activePlayerIndex]?.id !== bot.id) return;
+    if (!this.isBotControlled(bot)) return;
 
     if (game.phase === 'base_selection') {
       const validBases = Object.values(game.territories).filter((t) =>
@@ -2338,23 +2704,94 @@ export class GameManager {
         this.processNextConquestPick(game);
       }
     } else if (game.phase === 'allocation' && game.allocationWinnerId === bot.id) {
-      const neutrals = Object.values(game.territories).filter((t) => t.ownerId === null);
-      if (neutrals.length > 0) {
-        const adjacentNeutrals = neutrals.filter((t) =>
-          isAdjacentToPlayer(t.id, bot.id, game.territories)
-        );
-        const pool = adjacentNeutrals.length > 0 ? adjacentNeutrals : neutrals;
-        const choice = pool[Math.floor(Math.random() * pool.length)];
-        this.selectTerritory(roomId, bot.id, choice.id);
+      const adjacentNeutralIds = getLegalNeutralTargetsForPlayer(bot.id, game.territories);
+      if (adjacentNeutralIds.length > 0) {
+        const pickId = adjacentNeutralIds[Math.floor(Math.random() * adjacentNeutralIds.length)];
+        this.selectTerritory(roomId, bot.id, pickId);
+      } else {
+        game.allocationWinnerId = null;
+        game.allocationPickReady = false;
+        this.triggerNextAllocationQuestion(game);
       }
     }
+  }
+
+  private scheduleAiAnswerForPlayer(game: GameState, player: Player): void {
+    const cq = game.currentQuestion;
+    if (!cq || cq.resolved) return;
+    if (!this.isBotControlled(player)) return;
+    if (Object.prototype.hasOwnProperty.call(cq.playerAnswers, player.id)) return;
+
+    const participants =
+      cq.participantIds && cq.participantIds.length > 0
+        ? cq.participantIds
+        : cq.phaseContext === 'war'
+        ? [cq.attackerId, cq.defenderId!].filter(Boolean)
+        : game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+
+    if (!participants.includes(player.id)) return;
+
+    const q = cq.question;
+    const difficulty = player.aiDifficulty || 'intermediar';
+    let accuracy = 0.7;
+    let delayMs = 2600 + Math.random() * 2000;
+
+    if (difficulty === 'incepator') {
+      accuracy = 0.5;
+      delayMs = 3800 + Math.random() * 2200;
+    } else if (difficulty === 'avansat') {
+      accuracy = 0.85;
+      delayMs = 1800 + Math.random() * 1400;
+    } else if (difficulty === 'expert') {
+      accuracy = 0.95;
+      delayMs = 1100 + Math.random() * 1100;
+    }
+
+    const qInstanceId = cq.questionInstanceId;
+    const timer = setTimeout(() => {
+      this.playerBotTimers.delete(`${game.roomId}:${player.id}`);
+      const currentGame = this.games.get(game.roomId);
+      if (!currentGame || !currentGame.currentQuestion || currentGame.currentQuestion.resolved) {
+        return;
+      }
+      if (
+        qInstanceId &&
+        currentGame.currentQuestion.questionInstanceId &&
+        currentGame.currentQuestion.questionInstanceId !== qInstanceId
+      ) {
+        return;
+      }
+      const currentPlayer = currentGame.players.find((p) => p.id === player.id);
+      if (!this.isBotControlled(currentPlayer)) return;
+      if (Object.prototype.hasOwnProperty.call(currentGame.currentQuestion.playerAnswers, player.id)) {
+        return;
+      }
+
+      let chosenAnswer: number | string = 0;
+      if (q.type === 'choice') {
+        const isCorrect = Math.random() < accuracy;
+        if (isCorrect && q.correctAnswerIndex !== undefined) {
+          chosenAnswer = q.correctAnswerIndex;
+        } else {
+          const wrongOptions = [0, 1, 2, 3].filter((idx) => idx !== q.correctAnswerIndex);
+          chosenAnswer = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+        }
+      } else if (q.type === 'estimation' && q.targetNumber !== undefined) {
+        const variancePercent = (1 - accuracy) * 0.35;
+        const factor = 1 + (Math.random() * variancePercent * 2 - variancePercent);
+        chosenAnswer = Math.round(q.targetNumber * factor);
+      }
+
+      this.submitAnswer(game.roomId, player.id, chosenAnswer, qInstanceId);
+    }, delayMs);
+
+    this.setPlayerBotTimer(game.roomId, player.id, timer);
   }
 
   private scheduleAiAnswers(game: GameState): void {
     const cq = game.currentQuestion;
     if (!cq) return;
 
-    const q = cq.question;
     const participants =
       cq.participantIds && cq.participantIds.length > 0
         ? cq.participantIds
@@ -2364,44 +2801,8 @@ export class GameManager {
 
     for (const pid of participants) {
       const player = game.players.find((p) => p.id === pid);
-      if (player && player.isAi) {
-        const difficulty = player.aiDifficulty || 'intermediar';
-        let accuracy = 0.7;
-        let delayMs = 2600 + Math.random() * 2000;
-
-        if (difficulty === 'incepator') {
-          accuracy = 0.5;
-          delayMs = 3800 + Math.random() * 2200;
-        } else if (difficulty === 'avansat') {
-          accuracy = 0.85;
-          delayMs = 1800 + Math.random() * 1400;
-        } else if (difficulty === 'expert') {
-          accuracy = 0.95;
-          delayMs = 1100 + Math.random() * 1100;
-        }
-
-        const timer = setTimeout(() => {
-          let chosenAnswer: number | string = 0;
-          if (q.type === 'choice') {
-            const isCorrect = Math.random() < accuracy;
-            if (isCorrect && q.correctAnswerIndex !== undefined) {
-              chosenAnswer = q.correctAnswerIndex;
-            } else {
-              const wrongOptions = [0, 1, 2, 3].filter((idx) => idx !== q.correctAnswerIndex);
-              chosenAnswer = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
-            }
-          } else if (q.type === 'estimation' && q.targetNumber !== undefined) {
-            const variancePercent = (1 - accuracy) * 0.35;
-            const factor = 1 + (Math.random() * variancePercent * 2 - variancePercent);
-            chosenAnswer = Math.round(q.targetNumber * factor);
-          }
-
-          this.submitAnswer(game.roomId, player.id, chosenAnswer);
-        }, delayMs);
-
-        const timers = this.botTimers.get(game.roomId) || [];
-        timers.push(timer);
-        this.botTimers.set(game.roomId, timers);
+      if (player && this.isBotControlled(player)) {
+        this.scheduleAiAnswerForPlayer(game, player);
       }
     }
   }
@@ -2411,6 +2812,12 @@ export class GameManager {
     if (timers) {
       for (const t of timers) clearTimeout(t);
       this.botTimers.delete(roomId);
+    }
+    for (const [key, timer] of this.playerBotTimers.entries()) {
+      if (key.startsWith(`${roomId}:`)) {
+        clearTimeout(timer);
+        this.playerBotTimers.delete(key);
+      }
     }
     const qTimer = this.questionTimers.get(roomId);
     if (qTimer) {
@@ -2439,6 +2846,84 @@ export class GameManager {
 
   public getAllActiveGames(): GameState[] {
     return Array.from(this.games.values()).filter((g) => g.phase !== 'finished');
+  }
+
+  public getAllRoomsForAdmin(): Array<{
+    roomId: string;
+    roomName: string;
+    phase: GamePhase;
+    isPrivate: boolean;
+    round: number;
+    maxRounds: number;
+    playersCount: number;
+    maxPlayers: number;
+    humanPlayersCount: number;
+    connectedHumansCount: number;
+    disconnectedHumansCount: number;
+    botTakeoverCount: number;
+    aiBotsCount: number;
+    players: Array<{
+      id: string;
+      username: string;
+      isAi: boolean;
+      isConnected: boolean;
+      botControlled: boolean;
+      score: number;
+      territoriesCount: number;
+    }>;
+  }> {
+    return Array.from(this.games.values()).map((g) => {
+      const humans = g.players.filter((p) => !p.isAi);
+      const connectedHumans = humans.filter((p) => p.isConnected !== false);
+      const disconnectedHumans = humans.filter((p) => p.isConnected === false);
+      const botTakeovers = humans.filter(
+        (p) => (p.botControlled || p.isConnected === false) && g.phase !== 'waiting' && g.phase !== 'finished'
+      );
+      return {
+        roomId: g.roomId,
+        roomName: g.roomName,
+        phase: g.phase,
+        isPrivate: g.isPrivate,
+        round: g.round,
+        maxRounds: g.maxRounds,
+        playersCount: g.players.length,
+        maxPlayers: g.maxPlayers,
+        humanPlayersCount: humans.length,
+        connectedHumansCount: connectedHumans.length,
+        disconnectedHumansCount: disconnectedHumans.length,
+        botTakeoverCount: botTakeovers.length,
+        aiBotsCount: g.players.filter((p) => p.isAi).length,
+        players: g.players.map((p) => ({
+          id: p.id,
+          username: p.username,
+          isAi: p.isAi,
+          isConnected: p.isConnected !== false,
+          botControlled: Boolean(!p.isAi && (p.botControlled || p.isConnected === false)),
+          score: p.score,
+          territoriesCount: p.territoriesCount,
+        })),
+      };
+    });
+  }
+
+  public forceCloseRoom(roomId: string, adminReason = 'Închisă de administrator'): boolean {
+    const game = this.games.get(roomId);
+    if (!game) return false;
+    this.clearRoomTimers(roomId);
+    game.phase = 'finished';
+    game.currentQuestion = null;
+    game.gameLog.push({
+      id: this.makeLogId(),
+      text: `🛑 Camera a fost închisă de administrator (${adminReason}).`,
+      timestamp: Date.now(),
+      type: 'info',
+    });
+    this.notifyUpdate(roomId);
+    this.games.delete(roomId);
+    if (isPostgresConfigured()) {
+      void deleteActiveGameSnapshotFromPostgres(roomId);
+    }
+    return true;
   }
 
   /**
@@ -2476,6 +2961,9 @@ export class GameManager {
         for (const p of snapshot.players) {
           if (!p.isAi) {
             p.isConnected = false;
+            if (snapshot.phase !== 'waiting') {
+              p.botControlled = true;
+            }
           }
         }
       }
@@ -2491,7 +2979,7 @@ export class GameManager {
 
       // Re-arm active timers preserving remaining time (never granting extra time on restart)
       if (snapshot.currentQuestion && !snapshot.currentQuestion.resolved) {
-        const totalDurationMs = (snapshot.currentQuestion.durationSeconds || 12) * 1000;
+        const totalDurationMs = (snapshot.currentQuestion.durationSeconds || 15) * 1000;
         const originalStartMs = Number(snapshot.currentQuestion.startTime) || referenceNowMs;
         const elapsedBeforeSaveMs = Math.max(0, referenceNowMs - originalStartMs);
         const remainingMs = Math.max(
@@ -2506,10 +2994,18 @@ export class GameManager {
         }, remainingMs);
         this.questionTimers.set(snapshot.roomId, timer);
         this.scheduleAiAnswers(snapshot);
+      } else if (snapshot.phase === 'war' && snapshot.warRound?.status === 'attack_preview') {
+        const originalPreviewExpiresMs =
+          Number(snapshot.warRound.attackPreviewExpiresAt) || referenceNowMs + 2800;
+        const remainingPreviewMs = Math.max(
+          250,
+          Math.min(5000, originalPreviewExpiresMs - referenceNowMs)
+        );
+        this.beginWarAttackPreview(snapshot, remainingPreviewMs);
       } else if (
         snapshot.phase === 'base_selection' ||
-        (snapshot.phase === 'conquest' &&
-          (snapshot.conquestPickerId || snapshot.allocationPickReady)) ||
+        (snapshot.phase === 'conquest' && snapshot.conquestPickerId) ||
+        (snapshot.phase === 'allocation' && snapshot.allocationPickReady && snapshot.allocationWinnerId) ||
         (snapshot.phase === 'war' && snapshot.warRound?.status === 'selecting_targets')
       ) {
         const originalExpiresAtMs = Number(snapshot.turnTimerExpiresAt) || referenceNowMs + 15000;

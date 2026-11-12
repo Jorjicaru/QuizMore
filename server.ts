@@ -21,6 +21,7 @@ import gameRoutes from './server/routes/gameRoutes';
 import socialRoutes from './server/routes/socialRoutes';
 import adminRoutes from './server/routes/adminRoutes';
 import { setupSocketHandlers } from './server/socketHandler';
+import { isMaintenanceModeEnabled, getMaintenanceMessage } from './server/maintenance';
 
 // Load .env with override: true if present so user edits in .env take effect immediately
 const envPath = path.resolve(process.cwd(), '.env');
@@ -118,14 +119,26 @@ async function startServer() {
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-  // Liveness endpoint (/healthz)
+  // Liveness endpoint (/healthz) - remains 200 OK even in maintenance mode so Docker does not restart loop
   app.get('/healthz', (_req, res) => {
     res.status(200).json({
       status: 'ok',
       service: 'conquiz-romania-multiplayer',
       version: '9.2.0',
+      maintenanceMode: isMaintenanceModeEnabled(),
       uptimeSeconds: Math.round(process.uptime()),
       activeGames: gameManager.getActiveGamesCount(),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Public status endpoint (/api/status) for maintenance detection by frontend
+  app.get('/api/status', (_req, res) => {
+    const maintenance = isMaintenanceModeEnabled();
+    res.status(200).json({
+      ok: true,
+      maintenance,
+      message: maintenance ? getMaintenanceMessage() : null,
       timestamp: new Date().toISOString(),
     });
   });
@@ -145,6 +158,7 @@ async function startServer() {
 
     res.status(isReady ? 200 : 503).json({
       status: isReady ? 'ready' : 'not_ready',
+      maintenanceMode: isMaintenanceModeEnabled(),
       storageMode: metrics.storageMode,
       databaseConnected: dbOk,
       postgresLatencyMs: pgLatencyMs,
@@ -153,6 +167,21 @@ async function startServer() {
       activeGames: gameManager.getActiveGamesCount(),
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Maintenance mode guard for API routes (returns 503 Service Unavailable with Romanian message)
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/status') {
+      return next();
+    }
+    if (isMaintenanceModeEnabled()) {
+      res.status(503).json({
+        error: getMaintenanceMessage(),
+        maintenance: true,
+      });
+      return;
+    }
+    next();
   });
 
   // API Routes with rate limiting

@@ -21,7 +21,7 @@ export const FALLBACK_SEED_QUESTIONS: Question[] = [
     type: 'choice',
     category: 'istorie',
     difficulty: 'mediu',
-    question: 'Care tratat de pace a consfințit recunoașterea internațională a Marii Uniri de la 1 Decembrie 1918 cu Transilvania?',
+    question: 'Ce tratat de pace a recunoscut internațional unirea Transilvaniei cu România (1920)?',
     options: ['Tratatul de la Versailles', 'Tratatul de la Trianon', 'Tratatul de la Saint-Germain', 'Tratatul de la Neuilly'],
     correctAnswerIndex: 1,
     explanation: 'Tratatul de la Trianon a fost semnat la 4 iunie 1920 și a consfințit unirea Transilvaniei cu România.',
@@ -31,7 +31,7 @@ export const FALLBACK_SEED_QUESTIONS: Question[] = [
     type: 'choice',
     category: 'istorie',
     difficulty: 'mediu',
-    question: 'În ce an a fost ucis Mihai Viteazul pe Câmpia Turzii, în timpul conflictului cu trupele imperiale conduse de generalul Basta?',
+    question: 'În ce an a fost asasinat Mihai Viteazul pe Câmpia Turzii?',
     options: ['1599', '1600', '1601', '1603'],
     correctAnswerIndex: 2,
     explanation: 'Mihai Viteazul a fost ucis la 9/19 august 1601 pe Câmpia Turzii.',
@@ -748,13 +748,18 @@ export const FALLBACK_SEED_QUESTIONS: Question[] = [
 function loadCanonicalQuestionBank(): Question[] {
   const merged: Question[] = [];
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
+  const seenActiveFingerprints = new Set<string>();
 
   const pushUnique = (q: Question) => {
     if (!q || !q.id || !q.question) return;
-    const fp = normalizeQuestionText(q.question);
-    if (!fp || seenIds.has(q.id) || seenFingerprints.has(fp)) return;
+    if (seenIds.has(q.id)) return;
     const status = q.reviewStatus || 'draft';
+    const isDisabled = Boolean(q.isDisabled || status === 'disabled');
+    const isActive = status === 'approved' && !isDisabled;
+    const fp = normalizeQuestionText(q.question);
+    if (!fp) return;
+    if (isActive && seenActiveFingerprints.has(fp)) return;
+
     const enriched: Question = {
       ...q,
       unit:
@@ -762,16 +767,19 @@ function loadCanonicalQuestionBank(): Question[] {
           ? q.unit && q.unit.trim().length > 0
             ? q.unit.trim()
             : 'valoare'
-          : q.unit,
+          : undefined,
       reviewStatus: status,
+      isDisabled,
       factKey: q.factKey || `fact_${q.category || 'cg'}_${q.id}`,
       sourceUrl: q.sourceUrl || undefined,
       sourceTitle: q.sourceTitle || undefined,
       sourceCheckedAt: q.sourceCheckedAt || undefined,
-      verified: status === 'approved',
+      verified: isActive,
     };
     seenIds.add(enriched.id);
-    seenFingerprints.add(fp);
+    if (isActive) {
+      seenActiveFingerprints.add(fp);
+    }
     merged.push(enriched);
   };
 

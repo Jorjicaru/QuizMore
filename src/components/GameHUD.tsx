@@ -125,6 +125,15 @@ export const renderPlayerCardItem = (
           >
             {player.username}
           </span>
+          {!player.isAi && player.botControlled && (
+            <span
+              data-testid={`bot-takeover-badge-${player.id}`}
+              className="rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0 text-[8px] font-bold text-amber-300 shrink-0"
+              title="Jucător deconectat – controlat temporar de bot"
+            >
+              🤖 Bot
+            </span>
+          )}
         </div>
 
         {/* Role / Castle Towers Badge */}
@@ -294,6 +303,15 @@ export const PlayerSidebar: React.FC<{
                     {isMe && (
                       <span className="rounded bg-amber-500/25 px-1 py-0 text-[8px] font-black text-amber-300 shrink-0">
                         TU
+                      </span>
+                    )}
+                    {!player.isAi && player.botControlled && (
+                      <span
+                        data-testid={`sidebar-bot-badge-${player.id}`}
+                        className="rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0 text-[8px] font-bold text-amber-300 shrink-0"
+                        title="Jucător deconectat – controlat temporar de bot"
+                      >
+                        🤖 Bot temporar
                       </span>
                     )}
                   </div>
@@ -502,6 +520,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
           <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[180px] sm:max-w-[240px]">
             {game.warRound.status === 'selecting_targets'
               ? 'Atacatorii aleg țintele...'
+              : game.warRound.status === 'attack_preview'
+              ? '⚔️ Prezentare atac și țintă...'
               : 'Dueluri simultane active'}
           </span>
         </div>
@@ -589,9 +609,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
               {game.phase === 'base_selection'
                 ? 'Alege Baza (1000 pct)'
                 : game.phase === 'conquest'
-                ? 'Cucerește teritoriu (200 pct)'
+                ? 'Cucerește teritoriu vecin (200 pct)'
                 : game.phase === 'allocation'
-                ? 'Revendică zonă (300 pct)'
+                ? 'Revendică zonă vecină (300 pct)'
+                : game.warRound?.status === 'attack_preview'
+                ? 'Prezentare atac înainte de întrebare'
                 : 'Alege ținta de atac (400 pct)'}
             </span>
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">

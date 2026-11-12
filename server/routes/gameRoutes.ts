@@ -48,4 +48,10 @@ router.get('/my-history', authenticate, (req: AuthRequest, res: Response): void 
   res.json({ history });
 });
 
+// Active or recently finished room for the authenticated user (for reconnect / return)
+router.get('/my-active-room', authenticate, (req: AuthRequest, res: Response): void => {
+  const room = gameManager.getRoomForUser(req.userId!);
+  res.json({ room: room || null });
+});
+
 export default router;

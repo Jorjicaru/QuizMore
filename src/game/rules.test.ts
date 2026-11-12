@@ -19,6 +19,8 @@ import {
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
+  getLegalNeutralTargetsForPlayer,
+  selectEligibleAllocationWinner,
   sanitizeNumericInput,
   buildRoundDisplayItems,
   computeClockOffsetSample,
@@ -577,10 +579,18 @@ test('Test 7: fluxul complet de Război Simultan pentru 4 jucători (2 atacatori
   const sel2 = gm.selectTerritory(room.roomId, battle2.attackerId, legal2[0]);
   assert.equal(sel2.success, true);
 
-  // Now common choice question must be active for all 4 participants!
+  // Immediately after all attackers select targets, warRound enters 'attack_preview' before the question appears!
+  assert.equal(game.warRound.status, 'attack_preview');
+  assert.equal(game.currentQuestion, null, 'Întrebarea nu pornește înainte de etapa de prezentare a atacului');
+
+  // Complete the pre-question attack presentation stage
+  (gm as any).launchSimultaneousWarChoiceQuestion(game);
+
+  // Now common choice question must be active for all 4 participants with 15s timer!
   const activeCq = gm.getRoom(room.roomId)!.currentQuestion;
   assert.ok(activeCq);
   assert.equal(game.warRound.status, 'choice_question');
+  assert.equal(activeCq.durationSeconds, 15);
   assert.equal(activeCq.participantIds?.length, 4);
 
   const correctIdx = activeCq.question.correctAnswerIndex!;
@@ -857,76 +867,50 @@ test('V7: Smooth Timer - calcul continuu al raportului scaleX și gestionarea de
 // SECȚIUNEA V8.0: BANCA CANONICĂ DE ÎNTREBĂRI, NON-REPETIȚIE, CEAS SERVER & SOCKET.IO
 // ============================================================================
 
-test('V8 Test 17: Banca canonică de întrebări are peste 5.000 de întrebări verificate, 0 duplicate și acoperă toate cele 14 categorii pentru 10 jucători', () => {
-  assert.ok(
-    INITIAL_QUESTIONS.length >= 5000,
-    `Banca canonică trebuie să aibă >= 5000 întrebări (actual: ${INITIAL_QUESTIONS.length})`
+test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1.167 întrebări active choice verificate + 5.074 dezactivate), 0 duplicate și acoperă toate cele 14 categorii', () => {
+  assert.equal(
+    INITIAL_QUESTIONS.length,
+    6241,
+    `Banca canonică trebuie să păstreze toate cele 6241 înregistrări (actual: ${INITIAL_QUESTIONS.length})`
   );
 
-  const choiceList = INITIAL_QUESTIONS.filter((q) => q.type === 'choice');
-  const estimationList = INITIAL_QUESTIONS.filter((q) => q.type === 'estimation');
+  const activeList = INITIAL_QUESTIONS.filter((q) => q.reviewStatus === 'approved' && !q.isDisabled);
+  const disabledList = INITIAL_QUESTIONS.filter((q) => q.isDisabled || q.reviewStatus === 'disabled');
 
-  assert.ok(choiceList.length >= 2500, `Minim 2500 întrebări choice (actual: ${choiceList.length})`);
-  assert.ok(
-    estimationList.length >= 2500,
-    `Minim 2500 întrebări estimation (actual: ${estimationList.length})`
+  assert.equal(activeList.length, 1167, `Exact 1167 întrebări active aprobate (actual: ${activeList.length})`);
+  assert.equal(disabledList.length, 5074, `Exact 5074 întrebări dezactivate (actual: ${disabledList.length})`);
+  assert.equal(
+    activeList.every((q) => q.type === 'choice'),
+    true,
+    'Toate întrebările active din fluxul de joc sunt cu variante de răspuns (choice)'
   );
 
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
-
   for (const q of INITIAL_QUESTIONS) {
     assert.ok(q.id && !seenIds.has(q.id), `ID duplicat sau lipsă: ${q.id}`);
     seenIds.add(q.id);
+  }
 
+  const seenActiveFingerprints = new Set<string>();
+  for (const q of activeList) {
     const fp = normalizeQuestionText(q.question);
-    assert.ok(fp.length >= 8 && !seenFingerprints.has(fp), `Text duplicat: ${q.question}`);
-    seenFingerprints.add(fp);
+    assert.ok(fp.length >= 8 && !seenActiveFingerprints.has(fp), `Text activ duplicat: ${q.question}`);
+    seenActiveFingerprints.add(fp);
 
-    if (q.type === 'choice') {
-      assert.equal(q.options?.length, 4, `Întrebarea ${q.id} trebuie să aibă 4 opțiuni`);
-      assert.ok(
-        Number.isInteger(q.correctAnswerIndex) &&
-          q.correctAnswerIndex! >= 0 &&
-          q.correctAnswerIndex! <= 3
-      );
-    } else {
-      assert.ok(Number.isFinite(q.targetNumber), `Întrebarea ${q.id} trebuie să aibă targetNumber finit`);
-      assert.ok(q.unit && q.unit.length > 0, `Întrebarea ${q.id} trebuie să aibă unitate de măsură`);
-    }
+    assert.equal(q.options?.length, 4, `Întrebarea ${q.id} trebuie să aibă 4 opțiuni`);
+    assert.ok(
+      Number.isInteger(q.correctAnswerIndex) &&
+        q.correctAnswerIndex! >= 0 &&
+        q.correctAnswerIndex! <= 3
+    );
   }
 
-  // Verify every single selectable category has enough choice and estimation questions for a 10-player match
   const maxBudget10 = GameManager.calculateMatchQuestionBudget(10, 38, 6);
-  const categories = [
-    'istorie',
-    'geografie',
-    'biologie',
-    'fizica',
-    'chimie',
-    'matematica',
-    'literatura',
-    'arta',
-    'sport',
-    'muzica',
-    'cinematografie',
-    'cultura_generala',
-    'tehnologie',
-    'informatica',
-  ];
-
-  for (const cat of categories) {
-    const catChoice = choiceList.filter((q) => q.category === cat).length;
-    const catEst = estimationList.filter((q) => q.category === cat).length;
-    assert.ok(
-      catChoice >= maxBudget10.requiredChoice,
-      `Categoria ${cat} are ${catChoice} întrebări choice, sub bugetul pentru 10p (${maxBudget10.requiredChoice})`
-    );
-    assert.ok(
-      catEst >= maxBudget10.requiredEstimation,
-      `Categoria ${cat} are ${catEst} întrebări estimation, sub bugetul pentru 10p (${maxBudget10.requiredEstimation})`
-    );
-  }
+  assert.equal(maxBudget10.requiredEstimation, 0, 'Jocul nu mai cere întrebări de estimare numerică');
+  assert.ok(
+    activeList.length >= maxBudget10.requiredChoice,
+    `Banca activă (${activeList.length}) acoperă bugetul pentru 10 jucători (${maxBudget10.requiredChoice})`
+  );
 });
 
 test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția strictă în aceeași partidă și nu resetează niciodată usedQuestionIds la epuizare', () => {
@@ -935,15 +919,14 @@ test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția stric
     hostUser: { id: 'u_nonrep', username: 'NonRepHost', avatar: 'av_vlad' },
     maxPlayers: 4,
     initialBotsCount: 3,
-    selectedCategories: ['arta'],
     isPrivate: true,
   });
 
   const drawnIds = new Set<string>();
   for (let i = 0; i < 120; i++) {
-    const qType = i % 2 === 0 ? 'choice' : 'estimation';
-    const q = gm.getRandomQuestion(room, qType);
-    assert.ok(q, `Extragerea #${i + 1} (${qType}) trebuie să returneze o întrebare validă`);
+    const q = gm.getRandomQuestion(room, 'choice');
+    assert.ok(q, `Extragerea #${i + 1} trebuie să returneze o întrebare validă`);
+    assert.equal(q.type, 'choice', 'Întrebarea extrasă trebuie să fie cu variante (choice)');
     assert.equal(
       drawnIds.has(q.id),
       false,
@@ -956,16 +939,10 @@ test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția stric
   // Now simulate total pool exhaustion by marking all DB questions as used in this room
   room.usedQuestionIds = db.getAllQuestions().map((q) => q.id);
   const exhaustedChoice = gm.getRandomQuestion(room, 'choice');
-  const exhaustedEst = gm.getRandomQuestion(room, 'estimation');
   assert.equal(
     exhaustedChoice,
     null,
     'La epuizarea completă a băncii, getRandomQuestion trebuie să returneze null (fără resetarea usedQuestionIds)'
-  );
-  assert.equal(
-    exhaustedEst,
-    null,
-    'La epuizarea completă a băncii numerice, getRandomQuestion trebuie să returneze null'
   );
   (gm as any).clearRoomTimers(room.roomId);
 });
@@ -976,22 +953,23 @@ test('V8 Test 19: Preflight Question Budget în startGame blochează pornirea me
     hostUser: { id: 'u_budget', username: 'BudgetHost', avatar: 'av_vlad' },
     maxPlayers: 10,
     initialBotsCount: 9,
-    selectedCategories: ['muzica'],
     isPrivate: true,
   });
 
-  // Temporarily mark muzica questions as isDisabled to test preflight rejection
-  const muzicaQuestions = db.getAllQuestions().filter((q) => q.category === 'muzica');
-  for (const q of muzicaQuestions) q.isDisabled = true;
+  // Temporarily mark currently active questions as isDisabled to test preflight rejection
+  const activeBefore = db
+    .getAllQuestions()
+    .filter((q) => !q.isDisabled && q.reviewStatus === 'approved');
+  for (const q of activeBefore) q.isDisabled = true;
 
   try {
     const blockedStart = gm.startGame(room.roomId, 'u_budget');
     assert.equal(blockedStart.success, false, 'startGame trebuie să respingă pornirea când bugetul de întrebări nu este îndeplinit');
   } finally {
-    for (const q of muzicaQuestions) q.isDisabled = false;
+    for (const q of activeBefore) q.isDisabled = false;
   }
 
-  // With muzica questions re-enabled, 10-player match starts cleanly
+  // With active questions re-enabled, 10-player match starts cleanly
   const validStart = gm.startGame(room.roomId, 'u_budget');
   assert.equal(validStart.success, true, 'startGame pornește cu succes când bugetul de întrebări este disponibil');
   (gm as any).clearRoomTimers(room.roomId);
@@ -1320,9 +1298,13 @@ test('V9 Test 22: Lovirea unui turn de cetate (castleTowers > 1) acordă +400 pu
   (gm as any).clearRoomTimers(room.roomId);
 });
 
-test('V9 Test 23: Audit editorial V9 (reviewStatus === approved, factKey non-repetitiv între choice și estimation, echilibru 14 categorii <= 12.5%)', () => {
-  const categoryCounts: Record<string, number> = {};
-  for (const q of INITIAL_QUESTIONS) {
+test('V9 Test 23: Audit editorial V9 (întrebări active reviewStatus === approved, factKey non-repetitiv, surse verificate)', () => {
+  const activeQuestions = INITIAL_QUESTIONS.filter(
+    (q) => q.reviewStatus === 'approved' && !q.isDisabled
+  );
+  assert.equal(activeQuestions.length, 1167);
+
+  for (const q of activeQuestions) {
     assert.equal(q.reviewStatus, 'approved', `Întrebarea ${q.id} trebuie să aibă reviewStatus=approved`);
     assert.ok(q.factKey && q.factKey.length >= 6, `Întrebarea ${q.id} trebuie să aibă factKey valid`);
     assert.ok(
@@ -1333,18 +1315,9 @@ test('V9 Test 23: Audit editorial V9 (reviewStatus === approved, factKey non-rep
       `Întrebarea ${q.id} trebuie să aibă sourceUrl specific (actual: ${q.sourceUrl})`
     );
     assert.ok(q.sourceTitle && q.sourceTitle.length >= 5, `Întrebarea ${q.id} trebuie să aibă sourceTitle`);
-    categoryCounts[q.category] = (categoryCounts[q.category] || 0) + 1;
   }
 
-  for (const [cat, count] of Object.entries(categoryCounts)) {
-    const sharePct = (count / INITIAL_QUESTIONS.length) * 100;
-    assert.ok(
-      sharePct <= 12.5,
-      `Categoria ${cat} depășește 12.5% din bancă (${sharePct.toFixed(2)}%)`
-    );
-  }
-
-  // Verify factKey non-repetition across choice and estimation in the same match
+  // Verify factKey non-repetition across 160 draws in the same match
   const gm = new GameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_fk', username: 'FactKeyHost', avatar: 'av_vlad' },
@@ -1355,8 +1328,7 @@ test('V9 Test 23: Audit editorial V9 (reviewStatus === approved, factKey non-rep
 
   const seenFactKeys = new Set<string>();
   for (let i = 0; i < 160; i++) {
-    const qType = i % 2 === 0 ? 'choice' : 'estimation';
-    const q = gm.getRandomQuestion(room, qType);
+    const q = gm.getRandomQuestion(room, 'choice');
     assert.ok(q && q.factKey);
     assert.equal(
       seenFactKeys.has(q.factKey),
@@ -1426,9 +1398,9 @@ test('V9 Test 25: Politica anti-blocaj la alocarea teritoriilor neutre (maxim 2 
   game.allocationNoResponseRetries = 2; // Already retried twice
   game.currentQuestion = {
     questionInstanceId: 'q_alloc_no_resp',
-    question: gm.getRandomQuestion(game, 'estimation')!,
+    question: gm.getRandomQuestion(game, 'choice')!,
     startTime: Date.now() - 20000,
-    durationSeconds: 12,
+    durationSeconds: 15,
     attackerId: 'u_alloc1',
     targetTerritoryId: neutralTid,
     phaseContext: 'allocation',
@@ -1499,10 +1471,11 @@ test('V9 Test 26: Simulare deterministă a fluxului complet pentru 2, 3, 4, 6, 8
     );
 
     // Verify question extraction uniqueness across the simulated match
-    const qChoice = gm.getRandomQuestion(game, 'choice');
-    const qEst = gm.getRandomQuestion(game, 'estimation');
-    assert.ok(qChoice && qEst);
-    assert.notEqual(qChoice.factKey, qEst.factKey);
+    const qChoice1 = gm.getRandomQuestion(game, 'choice');
+    const qChoice2 = gm.getRandomQuestion(game, 'choice');
+    assert.ok(qChoice1 && qChoice2);
+    assert.notEqual(qChoice1.id, qChoice2.id);
+    assert.notEqual(qChoice1.factKey, qChoice2.factKey);
 
     (gm as any).clearRoomTimers(room.roomId);
   }
@@ -2285,7 +2258,7 @@ test('V9.1 Test 30 [SIMULAT - Dublură în Memorie]: Serializare/restaurare simu
   }
 });
 
-test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft, filtrare strictă approved în meci și nicio categorie peste 12,5%', async () => {
+test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft, filtrare strictă approved în meci și excluderea întrebărilor dezactivate', async () => {
   // 1. Add a question without reviewStatus and verify it defaults to draft and is NOT selected by GameManager
   const draftQ = await db.addQuestion({
     id: 'q_draft_test_v91',
@@ -2311,7 +2284,6 @@ test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft
       hostUser: { id: 'u_gov', username: 'GovHost', avatar: 'av_vlad' },
       maxPlayers: 2,
       initialBotsCount: 1,
-      selectedCategories: ['istorie'],
       isPrivate: true,
     });
 
@@ -2324,13 +2296,14 @@ test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft
         'Întrebarea în statut draft nu are voie să apară în meci!'
       );
       assert.equal(picked.reviewStatus, 'approved');
+      assert.equal(Boolean(picked.isDisabled), false);
     }
     (gm as any).clearRoomTimers(room.roomId);
   } finally {
     await db.deleteQuestion(draftQ.id);
   }
 
-  // 2. Verify category balance <= 12.5% across the canonical question bank
+  // 2. Verify category balance <= 12.5% across the total 6241 canonical records
   const allCanonical = INITIAL_QUESTIONS;
   const catCounts: Record<string, number> = {};
   for (const q of allCanonical) {
@@ -2344,3 +2317,503 @@ test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft
     );
   }
 });
+
+// ============================================================================
+// SECȚIUNEA V9.3: ADIACENȚĂ ÎN ALLOCATION, BOT TAKEOVER & RECONECTARE,
+// ÎNTREBĂRI SCURTE (<= 15 CUVINTE), TIMER 15S, PREZENTARE ATAC & AUDIT ADMIN
+// ============================================================================
+
+test('V9.3 Test 32: Alegerea teritoriilor impune vecinătatea strictă în conquest și allocation, actualizează vecinii după cucerire și respinge cererile invalide pe server fără a schimba starea', () => {
+  // 1. Reject non-adjacent neutral target in both conquest and allocation
+  const nonAdjConquest = canTargetTerritory('bihor', player1, mockTerritories, 'conquest');
+  assert.equal(nonAdjConquest.allowed, false, 'Țintă neutră neadiacentă respinsă în conquest');
+  assert.match(nonAdjConquest.reason || '', /învecinat cu teritoriile tale/);
+
+  const nonAdjAllocation = canTargetTerritory('bihor', player1, mockTerritories, 'allocation');
+  assert.equal(nonAdjAllocation.allowed, false, 'Țintă neutră neadiacentă respinsă și în allocation');
+  assert.match(nonAdjAllocation.reason || '', /învecinat cu teritoriile tale/);
+
+  // 2. Accept adjacent neutral target in both conquest and allocation
+  const adjConquest = canTargetTerritory('satu_mare', player1, mockTerritories, 'conquest');
+  assert.equal(adjConquest.allowed, true, 'Țintă neutră adiacentă acceptată în conquest');
+
+  const adjAllocation = canTargetTerritory('satu_mare', player1, mockTerritories, 'allocation');
+  assert.equal(adjAllocation.allowed, true, 'Țintă neutră adiacentă acceptată în allocation');
+
+  // 3. Server-side enforcement & dynamic neighbor expansion after claiming a territory
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'p_adj1', username: 'Jucator1', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(room.roomId, { id: 'p_adj2', username: 'Jucator2', avatar: 'av_stefan' });
+  gm.setReady(room.roomId, 'p_adj2', true);
+  gm.startGame(room.roomId, 'p_adj1');
+
+  const game = gm.getRoom(room.roomId)!;
+  // Complete base selection for both players
+  const base1 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 1)
+  )!;
+  gm.selectTerritory(room.roomId, 'p_adj1', base1.id);
+  const base2 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 0)
+  )!;
+  gm.selectTerritory(room.roomId, 'p_adj2', base2.id);
+
+  assert.equal(game.phase, 'conquest');
+
+  // Set real allocation picking state for p_adj1
+  game.phase = 'allocation';
+  game.currentQuestion = null;
+  game.activePlayerIndex = game.players.findIndex((p) => p.id === 'p_adj1');
+  game.allocationWinnerId = 'p_adj1';
+  game.allocationPickReady = true;
+
+  const legalBefore = getLegalNeutralTargetsForPlayer('p_adj1', game.territories);
+  const nonAdjacentNeutral = Object.values(game.territories).find(
+    (t) => t.ownerId === null && !legalBefore.includes(t.id)
+  );
+  assert.ok(nonAdjacentNeutral, 'Există cel puțin un teritoriu neutru neadiacent pe hartă');
+
+  const scoreBefore = game.players.find((p) => p.id === 'p_adj1')!.score;
+  const winnerBefore = game.allocationWinnerId;
+
+  // 4. Send invalid non-adjacent territory directly to server in 'allocation' -> MUST be rejected without state mutation
+  const invalidServerAttempt = gm.selectTerritory(room.roomId, 'p_adj1', nonAdjacentNeutral.id);
+  assert.equal(invalidServerAttempt.success, false, 'Serverul respinge teritoriul neutru neadiacent în allocation');
+  assert.match(invalidServerAttempt.message || '', /învecinat cu teritoriile tale/);
+  assert.equal(game.territories[nonAdjacentNeutral.id].ownerId, null, 'Proprietarul nu s-a schimbat');
+  assert.equal(game.players.find((p) => p.id === 'p_adj1')!.score, scoreBefore, 'Scorul nu s-a schimbat');
+  assert.equal(game.allocationWinnerId, winnerBefore, 'Câștigătorul departajării nu s-a schimbat');
+  assert.equal(game.allocationPickReady, true, 'Starea de alegere din allocation nu s-a schimbat');
+
+  // 5. Claim a valid adjacent neutral territory -> its neutral neighbors immediately become valid targets!
+  const validTargetId = legalBefore[0];
+  const newNeighbors = game.territories[validTargetId].neighbors.filter(
+    (nId) => game.territories[nId].ownerId === null && !legalBefore.includes(nId)
+  );
+  const validClaimRes = gm.selectTerritory(room.roomId, 'p_adj1', validTargetId);
+  assert.equal(validClaimRes.success, true, 'Teritoriul adiacent este revendicat cu succes');
+  assert.equal(game.territories[validTargetId].ownerId, 'p_adj1');
+  assert.equal(game.territories[validTargetId].points, SCORING.ALLOCATION);
+
+  const legalAfter = getLegalNeutralTargetsForPlayer('p_adj1', game.territories);
+  for (const newlyReachableId of newNeighbors) {
+    assert.ok(
+      legalAfter.includes(newlyReachableId),
+      `Vecinul ${newlyReachableId} al teritoriului proaspăt cucerit a devenit țintă validă`
+    );
+  }
+
+  // 6. Verify enclave fallback in selectEligibleAllocationWinner
+  const enclaveTerritories: Record<string, Territory> = JSON.parse(JSON.stringify(mockTerritories));
+  // Make satu_mare owned by player2 and cluj owned by player2 so player1 (maramures) is completely surrounded (0 neutral neighbors)
+  enclaveTerritories.satu_mare.ownerId = 'player2';
+  enclaveTerritories.cluj.ownerId = 'player2';
+  // alba is neutral and borders cluj & arad (both owned by player2)
+  enclaveTerritories.alba.ownerId = null;
+
+  const eligibleOutcome = selectEligibleAllocationWinner(
+    [
+      { playerId: 'player1', answer: 1900, diff: 0, submitTime: 1000, rank: 1 },
+      { playerId: 'player2', answer: 1850, diff: 50, submitTime: 1200, rank: 2 },
+    ],
+    ['player1', 'player2'],
+    enclaveTerritories
+  );
+  assert.equal(
+    eligibleOutcome.winnerId,
+    'player2',
+    'Dacă primul clasat (player1) este blocat într-o enclavă fără vecini neutri, dreptul de alegere trece la următorul jucător cu vecin neutru (player2)'
+  );
+  assert.deepEqual(eligibleOutcome.bypassedEnclavedIds, ['player1']);
+
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V9.3 Test 33: Preluarea jocului de către bot la deconectare și revenirea atomică a jucătorului autentificat (toate cele 8 scenarii)', () => {
+  const gm = new GameManager();
+
+  // Scenariul 7: Deconectare și revenire în lobby (waiting) - locul este păstrat cu isConnected=false pentru reconectare
+  const lobbyRoom = gm.createRoom({
+    hostUser: { id: 'u_host', username: 'HostUser', avatar: 'av_vlad' },
+    maxPlayers: 3,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(lobbyRoom.roomId, { id: 'u_guest', username: 'GuestUser', avatar: 'av_stefan' });
+  assert.equal(gm.getRoom(lobbyRoom.roomId)!.players.length, 2);
+
+  // Guest disconnects in lobby -> seat stays reserved with isConnected = false, and guest can reconnect cleanly
+  gm.handleSocketDisconnect(lobbyRoom.roomId, 'u_guest');
+  const lobbyGuestAfterDisc = gm.getRoom(lobbyRoom.roomId)!.players.find((p) => p.id === 'u_guest')!;
+  assert.equal(gm.getRoom(lobbyRoom.roomId)!.players.length, 2, 'Locul în lobby rămâne rezervat la deconectarea temporară');
+  assert.equal(lobbyGuestAfterDisc.isConnected, false, 'Jucătorul deconectat în lobby are isConnected = false');
+
+  const rejoinLobby = gm.joinRoom(lobbyRoom.roomId, { id: 'u_guest', username: 'GuestUser', avatar: 'av_stefan' });
+  assert.equal(rejoinLobby.success, true);
+  assert.equal(gm.getRoom(lobbyRoom.roomId)!.players.length, 2);
+  assert.equal(gm.getRoom(lobbyRoom.roomId)!.players.find((p) => p.id === 'u_guest')!.isConnected, true);
+
+  // Start match with 2 humans + 1 bot = 3 players
+  gm.addBot(lobbyRoom.roomId, 'u_host', 'intermediar');
+  gm.setReady(lobbyRoom.roomId, 'u_guest', true);
+  const startRes = gm.startGame(lobbyRoom.roomId, 'u_host');
+  assert.equal(startRes.success, true);
+
+  const game = gm.getRoom(lobbyRoom.roomId)!;
+  assert.equal(game.phase, 'base_selection');
+
+  // Scenariul 1: Deconectarea unui jucător în timpul meciului -> loc rezervat + botControlled = true
+  gm.handleSocketDisconnect(lobbyRoom.roomId, 'u_guest');
+  const guestPlayer = game.players.find((p) => p.id === 'u_guest')!;
+  assert.equal(guestPlayer.isConnected, false, 'Jucătorul deconectat are isConnected = false');
+  assert.equal(guestPlayer.botControlled, true, 'Jucătorul deconectat este preluat temporar de bot (botControlled = true)');
+  assert.equal(typeof guestPlayer.disconnectedAt, 'number', 'Timestamp-ul deconectării este înregistrat');
+
+  // Scenariul 4: Respingerea unui alt cont care încearcă să preia locul sau să intre în meciul început
+  const intruderAttempt = gm.joinRoom(lobbyRoom.roomId, {
+    id: 'u_intruder_999',
+    username: 'Intruder',
+    avatar: 'av_mihai',
+  });
+  assert.equal(intruderAttempt.success, false, 'Un alt cont nu poate prelua locul rezervat în meciul activ');
+
+  // Scenariul 2: Botul preia locul și face mutări valide (ex: alegerea bazei când îi vine rândul)
+  // Host selects base first
+  const hostBase = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 2)
+  )!;
+  gm.selectTerritory(lobbyRoom.roomId, 'u_host', hostBase.id);
+
+  // Now it is u_guest's turn in base_selection, and since u_guest is botControlled, a bot timer is scheduled
+  assert.equal(game.players[game.activePlayerIndex].id, 'u_guest');
+
+  // Scenariul 3 & 5: Revenirea aceluiași cont autentificat oprește atomic timerul botului și previne mutarea dublă
+  const reconnectRes = gm.joinRoom(lobbyRoom.roomId, {
+    id: 'u_guest',
+    username: 'GuestUser',
+    avatar: 'av_stefan',
+  });
+  assert.equal(reconnectRes.success, true);
+  assert.equal(guestPlayer.isConnected, true, 'La revenire, isConnected redevine true');
+  assert.equal(guestPlayer.botControlled, false, 'La revenire, botControlled redevine false');
+
+  // Guest now picks their own base manually; bot timer was cancelled so no duplicate move occurs
+  const guestBase = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 1)
+  )!;
+  const manualBaseRes = gm.selectTerritory(lobbyRoom.roomId, 'u_guest', guestBase.id);
+  assert.equal(manualBaseRes.success, true, 'Jucătorul revenit își alege singur baza');
+
+  // Complete third player's base so game enters conquest
+  const thirdPlayer = game.players[game.activePlayerIndex];
+  const thirdBase = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 0)
+  )!;
+  gm.selectTerritory(lobbyRoom.roomId, thirdPlayer.id, thirdBase.id);
+  assert.equal(game.phase, 'conquest');
+
+  // Scenariul 6: Păstrarea scorului, teritoriilor, turnurilor și timerului la deconectare + reconectare în timpul întrebării
+  gm.triggerNextConquestQuestion(game);
+  const cq = game.currentQuestion!;
+  assert.ok(cq);
+  const startTimeBefore = cq.startTime;
+  const durationBefore = cq.durationSeconds;
+  const guestScoreBefore = guestPlayer.score;
+  const guestTowersBefore = guestPlayer.castleTowers;
+  const guestTerritoriesBefore = guestPlayer.territoriesCount;
+
+  // Disconnect u_guest during active question
+  gm.handleSocketDisconnect(lobbyRoom.roomId, 'u_guest');
+  assert.equal(guestPlayer.botControlled, true);
+
+  // Reconnect u_guest immediately before bot answers
+  gm.joinRoom(lobbyRoom.roomId, { id: 'u_guest', username: 'GuestUser', avatar: 'av_stefan' });
+  assert.equal(guestPlayer.botControlled, false);
+  assert.equal(guestPlayer.score, guestScoreBefore, 'Scorul s-a păstrat intact');
+  assert.equal(guestPlayer.castleTowers, guestTowersBefore, 'Turnurile cetății s-au păstrat intacte');
+  assert.equal(guestPlayer.territoriesCount, guestTerritoriesBefore, 'Numărul de teritorii s-a păstrat intact');
+  assert.equal(game.currentQuestion?.startTime, startTimeBefore, 'StartTime-ul întrebării nu a fost resetat');
+  assert.equal(game.currentQuestion?.durationSeconds, durationBefore, 'Durata întrebării nu a fost modificată');
+
+  // u_guest submits answer manually; trying to submit a second time is rejected (no duplicate move)
+  const ans1 = gm.submitAnswer(lobbyRoom.roomId, 'u_guest', 0, cq.questionInstanceId);
+  assert.equal(ans1.success, true);
+  const ansDup = gm.submitAnswer(lobbyRoom.roomId, 'u_guest', 1, cq.questionInstanceId);
+  assert.equal(ansDup.success, false);
+  assert.equal(ansDup.code, 'DUPLICATE');
+
+  // Scenariul 8: Revenirea după ce meciul s-a încheiat deja (phase === 'finished') permite vizualizarea rezultatului final
+  game.phase = 'finished';
+  const postFinishRejoin = gm.joinRoom(lobbyRoom.roomId, {
+    id: 'u_guest',
+    username: 'GuestUser',
+    avatar: 'av_stefan',
+  });
+  assert.equal(postFinishRejoin.success, true, 'Jucătorul din meci poate reveni după finalizarea partidei pentru a vedea rezultatul');
+  assert.equal(postFinishRejoin.game?.phase, 'finished');
+
+  (gm as any).clearRoomTimers(lobbyRoom.roomId);
+});
+
+test('V9.3 Test 34: Toate întrebările aprobate sunt scurte (<= 15 cuvinte, o singură propoziție) și timerul întrebărilor trivia este de 15 secunde', async () => {
+  assert.equal(INITIAL_QUESTIONS.length, 6241, 'Banca canonică păstrează exact 6.241 de înregistrări');
+
+  const activeQuestions = INITIAL_QUESTIONS.filter(
+    (q) => q.reviewStatus === 'approved' && !q.isDisabled
+  );
+  assert.equal(activeQuestions.length, 1167, 'Există 1.167 de întrebări active aprobate');
+
+  const countWords = (text: string) =>
+    text
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+
+  let over15Count = 0;
+  for (const q of activeQuestions) {
+    const wc = countWords(q.question);
+    if (wc > 15) {
+      over15Count++;
+    }
+  }
+  assert.equal(
+    over15Count,
+    0,
+    `Nicio întrebare aprobată nu trebuie să depășească 15 cuvinte (găsite peste 15 cuvinte: ${over15Count})`
+  );
+
+  // Verify startQuestion uses 15 seconds timer after completing base selection and waiting for the 1.5s transition timer
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_timer15', username: 'Timer15Host', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(room.roomId, { id: 'u_timer15_p2', username: 'Timer15P2', avatar: 'av_stefan' });
+  gm.setReady(room.roomId, 'u_timer15_p2', true);
+  gm.startGame(room.roomId, 'u_timer15');
+
+  const game = gm.getRoom(room.roomId)!;
+  const base1 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 1)
+  )!;
+  gm.selectTerritory(room.roomId, 'u_timer15', base1.id);
+  const base2 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 0)
+  )!;
+  gm.selectTerritory(room.roomId, 'u_timer15_p2', base2.id);
+
+  // Wait for the real 1500ms post-base-selection timeout to trigger triggerNextConquestQuestion(game)
+  await new Promise((r) => setTimeout(r, 1600));
+
+  assert.ok(game.currentQuestion, 'Întrebarea de cucerire a pornit după timeout-ul de tranziție');
+  assert.equal(game.currentQuestion.durationSeconds, 15, 'Timerul întrebărilor trivia este de exact 15 secunde');
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+test('V9.3 Test 35: Jurnalul de audit admin, închiderea forțată a unei camere și modul de mentenanță (MAINTENANCE_MODE)', async () => {
+  // 1. Test audit log recording and retrieval in Database
+  const auditEntry = await db.recordAuditLog({
+    adminId: 'admin_test_1',
+    adminUsername: 'AdminVoievod',
+    action: 'USER_ADJUST_STATS',
+    targetType: 'user',
+    targetId: 'u_target_1',
+    details: { before: { rating: 1000 }, after: { rating: 1350 } },
+  });
+  assert.ok(auditEntry.id.startsWith('aud_'), `ID-ul de audit trebuie să înceapă cu aud_ (primit: ${auditEntry.id})`);
+  const logs = db.getAuditLogs(20);
+  assert.ok(logs.some((l) => l.id === auditEntry.id && l.action === 'USER_ADJUST_STATS'));
+
+  // 2. Test forceCloseRoom in GameManager
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'u_fc', username: 'ForceCloseHost', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 1,
+    isPrivate: true,
+  });
+  assert.ok(gm.getRoom(room.roomId));
+  const closed = await gm.forceCloseRoom(room.roomId, 'Cameră închisă în testul de administrare');
+  assert.equal(closed, true);
+  assert.equal(gm.getRoom(room.roomId), undefined, 'Camera a fost eliminată din memorie după închiderea forțată');
+});
+
+test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (21.2)/(#4), fără scurgerea răspunsului în enunț, fără estimări numerice/unități, amestec aleatoriu de subiecte și eliminarea etichetelor de domeniu din UI', () => {
+  const activeQuestions = INITIAL_QUESTIONS.filter(
+    (q) => q.reviewStatus === 'approved' && !q.isDisabled
+  );
+  assert.equal(activeQuestions.length, 1167, 'Există exact 1.167 de întrebări active aprobate');
+
+  const STOPWORDS = new Set([
+    'care', 'este', 'sunt', 'fost', 'pentru', 'prin', 'dintre', 'dupa', 'peste',
+    'sub', 'intre', 'catre', 'fara', 'despre', 'unde', 'cand', 'cine', 'carui',
+    'carei', 'caror', 'acest', 'aceasta', 'aceste', 'acesti', 'unui', 'unei',
+    'unor', 'sale', 'sali', 'tara', 'oras', 'stat', 'lume', 'mare', 'mica',
+    'primul', 'prima', 'doilea', 'doua', 'treia', 'timpul', 'anul', 'secolul',
+    'partea', 'numele', 'numit', 'numita', 'cunoscut', 'cunoscuta', 'romania',
+    'romaniei', 'roman', 'romana', 'romani', 'europene', 'europa', 'fluviul',
+    'raului', 'raul', 'muntii', 'marele', 'marea', 'oceanul', 'capitala',
+  ]);
+
+  const stripDiacritics = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ș/g, 's')
+      .replace(/ț/g, 't')
+      .replace(/ă/g, 'a')
+      .replace(/â/g, 'a')
+      .replace(/î/g, 'i');
+
+  for (const q of activeQuestions) {
+    // 1. Nicio întrebare activă nu este de estimare numerică și nu cere unități
+    assert.equal(q.type, 'choice', `Întrebarea activă ${q.id} trebuie să fie choice`);
+    assert.equal(Boolean(q.unit), false, `Întrebarea activă ${q.id} nu trebuie să aibă unitate (${q.unit})`);
+    assert.equal(
+      q.targetNumber === undefined || q.targetNumber === null,
+      true,
+      `Întrebarea activă ${q.id} nu trebuie să aibă targetNumber`
+    );
+
+    // 2. Fără numere/indici în paranteză de tipul (21.2), (#4), (set 21.2), (seria 1-2) sau trunchieri
+    assert.equal(
+      /\(\s*#\d+\s*\)/.test(q.question),
+      false,
+      `Metadată (#N) scursă în întrebarea ${q.id}: ${q.question}`
+    );
+    assert.equal(
+      /\(\s*(?:set|seria|lot|grup|nr\.?|index)\s*[\d.-]+\s*\)/i.test(q.question),
+      false,
+      `Metadată (set/seria) scursă în întrebarea ${q.id}: ${q.question}`
+    );
+    assert.equal(
+      /\(\s*\d+(?:[.,]\d+)?\s*\)/.test(q.question),
+      false,
+      `Număr în paranteză de tipul (21.2) scurs în întrebarea ${q.id}: ${q.question}`
+    );
+    assert.equal(
+      /\s+(?:al|a|ai|ale|din|în|la|pe|cu|de|și|sau|pentru|spre|sub|între)\s*[”"»]\s*\??$/.test(
+        q.question
+      ),
+      false,
+      `Formulă trunchiată în întrebarea ${q.id}: ${q.question}`
+    );
+
+    // 3. Fără scurgerea răspunsului corect în enunț
+    assert.ok(Array.isArray(q.options) && q.options.length === 4);
+    const correctOption = String(q.options[q.correctAnswerIndex!]);
+    const normQ = stripDiacritics(q.question)
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const normAns = stripDiacritics(correctOption)
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (normAns.length >= 3) {
+      const paddedQ = ` ${normQ} `;
+      assert.equal(
+        paddedQ.includes(` ${normAns} `),
+        false,
+        `Răspunsul corect "${correctOption}" apare direct în enunțul întrebării ${q.id}: "${q.question}"`
+      );
+    }
+
+    const ansTokens = normAns
+      .split(' ')
+      .filter((t) => t.length >= 4 && !STOPWORDS.has(t) && !/^\d+$/.test(t));
+    if (ansTokens.length > 0) {
+      const qTokens = new Set(normQ.split(' '));
+      assert.equal(
+        ansTokens.every((tok) => qTokens.has(tok)),
+        false,
+        `Termenii răspunsului "${correctOption}" apar în enunțul întrebării ${q.id}: "${q.question}"`
+      );
+    }
+  }
+
+  // 4. Fluxul de joc (conquest, allocation, war și war tiebreak) folosește exclusiv întrebări cu variante (choice) și păstrează punctajul 1000/200/300/400
+  assert.equal(SCORING.BASE, 1000);
+  assert.equal(SCORING.CONQUEST, 200);
+  assert.equal(SCORING.ALLOCATION, 300);
+  assert.equal(SCORING.WAR_DUEL, 400);
+
+  const gm = new GameManager();
+  const room = gm.createRoom({
+    hostUser: { id: 'p_flow1', username: 'Flow1', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+  });
+  gm.joinRoom(room.roomId, { id: 'p_flow2', username: 'Flow2', avatar: 'av_stefan' });
+  gm.setReady(room.roomId, 'p_flow2', true);
+  gm.startGame(room.roomId, 'p_flow1');
+
+  const game = gm.getRoom(room.roomId)!;
+  const b1 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 1)
+  )!;
+  gm.selectTerritory(room.roomId, 'p_flow1', b1.id);
+  const b2 = Object.values(game.territories).find((t) =>
+    canCompleteBaseSelection(t.id, game.territories, 0)
+  )!;
+  gm.selectTerritory(room.roomId, 'p_flow2', b2.id);
+
+  // Trigger allocation question -> must be 'choice' and award winner right to pick adjacent neutral territory for 300 pts
+  game.phase = 'allocation';
+  game.currentQuestion = null;
+  gm.triggerNextAllocationQuestion(game);
+  assert.equal(game.phase, 'allocation');
+  const allocCq = gm.getRoom(room.roomId)!.currentQuestion;
+  assert.ok(allocCq);
+  assert.equal(allocCq.question.type, 'choice', 'Departajarea din allocation folosește întrebare cu variante');
+
+  const allocCorrectIdx = allocCq.question.correctAnswerIndex!;
+  const allocWrongIdx = (allocCorrectIdx + 1) % 4;
+  gm.submitAnswer(room.roomId, 'p_flow1', allocCorrectIdx, allocCq.questionInstanceId);
+  gm.submitAnswer(room.roomId, 'p_flow2', allocWrongIdx, allocCq.questionInstanceId);
+
+  assert.equal(allocCq.resolved, true);
+  assert.equal(game.allocationWinnerId, 'p_flow1', 'Jucătorul care a răspuns corect și cel mai rapid câștigă departajarea');
+
+  // Verify random topic mixing across 30 drawn questions
+  const drawnCategories = new Set<string>();
+  for (let i = 0; i < 30; i++) {
+    const q = gm.getRandomQuestion(game, 'choice');
+    assert.ok(q);
+    drawnCategories.add(q.category);
+  }
+  assert.ok(
+    drawnCategories.size >= 6,
+    `Întrebările extrase trebuie să amestece aleatoriu subiectele (găsite ${drawnCategories.size} categorii în 30 extrageri)`
+  );
+
+  // 5. Verifică că QuestionModal.tsx nu mai conține tastatura numerică și nici eticheta de domeniu (categoryNames)
+  const modalSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/QuestionModal.tsx'),
+    'utf-8'
+  );
+  assert.equal(
+    modalSource.includes('estimation-input'),
+    false,
+    'QuestionModal.tsx nu trebuie să mai conțină câmpul numeric estimation-input'
+  );
+  assert.equal(
+    modalSource.includes('categoryNames[question.category]'),
+    false,
+    'QuestionModal.tsx nu trebuie să mai afișeze etichete de domeniu precum CHIMIE/ARTĂ/LITERATURĂ'
+  );
+
+  (gm as any).clearRoomTimers(room.roomId);
+});
+
+

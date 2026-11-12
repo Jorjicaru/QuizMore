@@ -153,10 +153,23 @@ export function canCompleteBaseSelection(
 }
 
 /**
+ * Returnează toate teritoriile neutre (libere) care sunt direct învecinate cu cel puțin un teritoriu deținut de playerId.
+ */
+export function getLegalNeutralTargetsForPlayer(
+  playerId: string,
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
+): string[] {
+  if (!playerId) return [];
+  return Object.values(territories)
+    .filter((t) => t.ownerId === null && isAdjacentToPlayer(t.id, playerId, territories))
+    .map((t) => t.id);
+}
+
+/**
  * Verifică dacă un jucător poate ținti un teritoriu în faza curentă:
  * - base_selection: neutru și neadiacent cu alte baze
  * - conquest: neutru și OBLIGATORIU adiacent cu un teritoriu deținut de jucător
- * - allocation: neutru
+ * - allocation: neutru și OBLIGATORIU adiacent cu un teritoriu deținut de jucător (conform grafului territory.neighbors)
  * - war: REGULĂ V4.0 / V5.0 ABSOLUTĂ:
  *   1. teritoriul aparține unui inamic (`target.ownerId !== null && target.ownerId !== player.id`)
  *   2. dacă există `assignedDefenderId`, teritoriul aparține apărătorului desemnat (`target.ownerId === assignedDefenderId`)
@@ -198,6 +211,12 @@ export function canTargetTerritory(
   if (phase === 'allocation') {
     if (target.ownerId !== null) {
       return { allowed: false, reason: 'Poți alege doar un teritoriu neutru (liber).' };
+    }
+    if (!isAdjacentToPlayer(territoryId, player.id, territories)) {
+      return {
+        allowed: false,
+        reason: 'Trebuie să alegi un teritoriu liber învecinat cu teritoriile tale!',
+      };
     }
     return { allowed: true };
   }
@@ -308,6 +327,45 @@ export function determineEstimationWinner(
   return {
     winnerId: rankings.length > 0 ? rankings[0].playerId : null,
     rankings,
+  };
+}
+
+/**
+ * Selectează primul participant din clasamentul estimării (`rankings`) care are cel puțin un
+ * teritoriu neutru direct învecinat cu teritoriile sale (pentru a preveni blocarea jocului dacă
+ * un jucător cu răspuns apropiat este complet înconjurat / enclavat).
+ */
+export function selectEligibleAllocationWinner(
+  rankings: Array<{ playerId: string; answer: number; diff: number; submitTime: number; rank: number }>,
+  activePlayerIds: string[],
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
+): {
+  winnerId: string | null;
+  bypassedEnclavedIds: string[];
+  noAdjacentNeutralInMatch: boolean;
+} {
+  const bypassedEnclavedIds: string[] = [];
+
+  for (const entry of rankings) {
+    const legalTargets = getLegalNeutralTargetsForPlayer(entry.playerId, territories);
+    if (legalTargets.length > 0) {
+      return {
+        winnerId: entry.playerId,
+        bypassedEnclavedIds,
+        noAdjacentNeutralInMatch: false,
+      };
+    }
+    bypassedEnclavedIds.push(entry.playerId);
+  }
+
+  const anyPlayerHasAdjacentNeutral = activePlayerIds.some(
+    (pid) => getLegalNeutralTargetsForPlayer(pid, territories).length > 0
+  );
+
+  return {
+    winnerId: null,
+    bypassedEnclavedIds,
+    noAdjacentNeutralInMatch: !anyPlayerHasAdjacentNeutral,
   };
 }
 
@@ -1081,6 +1139,8 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
     const subMode =
       wr?.status === 'selecting_targets'
         ? 'war_selecting'
+        : wr?.status === 'attack_preview'
+        ? 'war_preview'
         : wr?.status === 'choice_question' || wr?.status === 'numeric_tiebreak'
         ? 'war_question'
         : 'war_resolving';
@@ -1088,6 +1148,8 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
     const subModeLabel =
       wr?.status === 'selecting_targets'
         ? 'Alegere ținte'
+        : wr?.status === 'attack_preview'
+        ? 'Prezentare atac'
         : wr?.status === 'numeric_tiebreak'
         ? 'Departajare duel'
         : `Runda ${game.round}/${game.maxRounds}`;

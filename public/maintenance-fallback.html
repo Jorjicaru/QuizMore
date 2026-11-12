@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CONQUIZ România – Mentenanță Tehnică</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: radial-gradient(circle at top, rgba(245, 158, 11, 0.14), transparent 65%), #020617;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+    }
+    .card {
+      max-width: 500px;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 1rem;
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65);
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.375rem;
+      background: rgba(245, 158, 11, 0.14);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 900;
+      margin-bottom: 0.75rem;
+      color: #ffffff;
+    }
+    p {
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+    .info {
+      background: rgba(2, 6, 23, 0.75);
+      border: 1px solid #1e293b;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 1.5rem;
+      text-align: left;
+    }
+    button {
+      width: 100%;
+      padding: 0.9rem 1.25rem;
+      border: none;
+      border-radius: 0.75rem;
+      background: #f59e0b;
+      color: #020617;
+      font-weight: 800;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button:hover {
+      background: #fbbf24;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge">Mentenanță tehnică</div>
+    <h1>CONQUIZ România</h1>
+    <p>Aplicația este momentan în mentenanță sau oprită temporar. Vă rugăm să reveniți în curând.</p>
+    <div class="info">
+      Serviciul este în curs de actualizare sau repornire. Conturile, clasamentul și istoricul meciurilor sunt păstrate în siguranță.
+    </div>
+    <button type="button" onclick="window.location.reload()">Reîncearcă</button>
+  </main>
+</body>
+</html>

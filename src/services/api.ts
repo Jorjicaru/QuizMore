@@ -32,11 +32,31 @@ export const api = {
     });
 
     const data = await res.json().catch(() => ({}));
+    if (res.status === 503 && data?.maintenance === true && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('conquiz:maintenance', {
+          detail: { message: data.error || 'Aplicația este momentan în mentenanță.' },
+        })
+      );
+    }
     if (!res.ok) {
       throw new Error(data.error || 'A apărut o eroare de comunicare cu serverul.');
     }
 
     return data as T;
+  },
+
+  async getSystemStatus(): Promise<{ ok: boolean; maintenance: boolean; message: string | null; timestamp: string }> {
+    const res = await fetch('/api/status');
+    const data = await res.json().catch(() => ({ ok: true, maintenance: false, message: null, timestamp: new Date().toISOString() }));
+    if (data?.maintenance === true && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('conquiz:maintenance', {
+          detail: { message: data.message || 'Aplicația este momentan în mentenanță.' },
+        })
+      );
+    }
+    return data;
   },
 
   // Auth
@@ -101,6 +121,18 @@ export const api = {
   // Games & Rooms
   async getPublicRooms() {
     return this.request<{ rooms: Array<{ roomId: string; roomName: string; playersCount: number; maxPlayers: number; phase: string }> }>('/api/games/rooms');
+  },
+
+  async getMyActiveRoom() {
+    return this.request<{
+      activeRoom: {
+        roomId: string;
+        roomName: string;
+        phase: string;
+        isConnected: boolean;
+        botControlled: boolean;
+      } | null;
+    }>('/api/games/my-active-room');
   },
 
   async getLeaderboard(type: 'rating' | 'wins' | 'territories' | 'score' = 'rating') {
@@ -203,7 +235,85 @@ export const api = {
     });
   },
 
+  async adjustUserStats(
+    userId: string,
+    payload: {
+      rating?: number;
+      wins?: number;
+      losses?: number;
+      matchesPlayed?: number;
+      highestScore?: number;
+      title?: string;
+      reason?: string;
+    }
+  ) {
+    return this.request<{ success: boolean; message: string; user: any }>(
+      `/api/admin/users/${encodeURIComponent(userId)}/adjust-stats`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async getAdminRooms() {
+    return this.request<{ rooms: any[] }>('/api/admin/rooms');
+  },
+
+  async closeAdminRoom(roomId: string, reason?: string) {
+    return this.request<{ success: boolean; message: string }>(
+      `/api/admin/rooms/${encodeURIComponent(roomId)}/close`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }
+    );
+  },
+
+  async getAdminAuditLogs(limit = 100) {
+    return this.request<{ logs: any[] }>(`/api/admin/audit-logs?limit=${limit}`);
+  },
+
   async getAdminStats() {
-    return this.request<{ totalUsers: number; bannedUsers: number; totalGames: number; totalQuestions: number; activeRoomsCount: number }>('/api/admin/stats');
+    return this.request<{
+      totalUsers: number;
+      bannedUsers: number;
+      totalGames: number;
+      totalQuestions: number;
+      approvedQuestions: number;
+      activeRoomsCount: number;
+      waitingRoomsCount: number;
+      finishedRoomsCount: number;
+      roomsByPhase: Record<string, number>;
+      onlineAuthenticatedCount: number;
+      activeSocketsCount: number;
+      onlineUserIds: string[];
+      disconnectedPlayersCount: number;
+      botControlledPlayersCount: number;
+      rooms: Array<{
+        roomId: string;
+        roomName: string;
+        phase: string;
+        isPrivate: boolean;
+        round: number;
+        maxRounds: number;
+        playersCount: number;
+        maxPlayers: number;
+        humanPlayersCount: number;
+        connectedHumansCount: number;
+        disconnectedHumansCount: number;
+        botTakeoverCount: number;
+        aiBotsCount: number;
+      }>;
+      health: {
+        storageMode: string;
+        postgresConnected: boolean;
+        emailConfigured: boolean;
+        maintenanceMode: boolean;
+        recentErrors: Array<{ id: string; timestamp: string; source: string; message: string }>;
+        uptimeSeconds: number;
+        serverTime: string;
+      };
+    }>('/api/admin/stats');
   },
 };
