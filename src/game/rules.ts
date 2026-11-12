@@ -2,6 +2,9 @@ import {
   Territory,
   Player,
   GameState,
+  GamePhase,
+  WarRoundState,
+  WarBattleAssignment,
   RoundDisplayModel,
   RoundTrackerMarkerItem,
   RoundTrackerBattlePair,
@@ -1229,6 +1232,523 @@ export function selectBestClockOffset(samples: ClockOffsetSample[]): ClockOffset
  */
 export function estimateServerNow(clientWallClockMs: number, offsetMs: number): number {
   return clientWallClockMs + (Number.isFinite(offsetMs) ? offsetMs : 0);
+}
+
+// ============================================================================
+// SECȚIUNEA V9.5: ANIMAȚII DETERMINISTE PENTRU SELECȚIE, CUCERIRI ȘI ATACURI
+// ============================================================================
+
+export interface MapAnimationConfig {
+  prefersReducedMotion: boolean;
+  enabled: boolean;
+  selectionTransitionMs: number;
+  conquestSpreadMs: number;
+  conquestPulseMs: number;
+  attackVectorFlowMs: number;
+  defenseShieldMs: number;
+}
+
+/**
+ * Returnează configurația duratelor de animație în funcție de setarea `prefers-reduced-motion`.
+ */
+export function getMapAnimationConfig(prefersReducedMotion: boolean): MapAnimationConfig {
+  if (prefersReducedMotion) {
+    return {
+      prefersReducedMotion: true,
+      enabled: false,
+      selectionTransitionMs: 0,
+      conquestSpreadMs: 0,
+      conquestPulseMs: 0,
+      attackVectorFlowMs: 0,
+      defenseShieldMs: 0,
+    };
+  }
+  return {
+    prefersReducedMotion: false,
+    enabled: true,
+    selectionTransitionMs: 180,
+    conquestSpreadMs: 680,
+    conquestPulseMs: 320,
+    attackVectorFlowMs: 1100,
+    defenseShieldMs: 850,
+  };
+}
+
+export interface TerritorySelectionVisualState {
+  territoryId: string;
+  isHovered: boolean;
+  isSelected: boolean;
+  isTouchSelected: boolean;
+  isActionable: boolean;
+  isAttackOrigin: boolean;
+  isAttackTarget: boolean;
+  isHighlighted: boolean;
+  strokeColor: string;
+  strokeWidth: number;
+  filterId: string;
+  glowColor: string | null;
+}
+
+/**
+ * Calculează starea vizuală de evidențiere a unui teritoriu la hover, atingere (mobil),
+ * selectare sau implicare într-un atac (origine atacator / țintă).
+ */
+export function computeTerritorySelectionVisualState(params: {
+  territoryId: string;
+  hasOwner: boolean;
+  ownerColor?: string;
+  isHovered: boolean;
+  isSelected: boolean;
+  isTouchSelected: boolean;
+  isActionable: boolean;
+  isAttackOrigin: boolean;
+  isAttackTarget: boolean;
+  isAttackPreviewPhase?: boolean;
+}): TerritorySelectionVisualState {
+  const {
+    territoryId,
+    hasOwner,
+    ownerColor,
+    isHovered,
+    isSelected,
+    isTouchSelected,
+    isActionable,
+    isAttackOrigin,
+    isAttackTarget,
+    isAttackPreviewPhase = false,
+  } = params;
+
+  const isHighlighted =
+    isHovered || isSelected || isTouchSelected || isAttackOrigin || isAttackTarget;
+
+  let strokeColor = hasOwner ? '#fef08a' : '#6b4c28';
+  let strokeWidth = hasOwner ? 2.4 : 2.1;
+  let filterId = 'url(#border-relief)';
+  let glowColor: string | null = null;
+
+  if (isAttackTarget && isAttackPreviewPhase) {
+    strokeColor = '#f43f5e';
+    strokeWidth = 4.6;
+    filterId = 'url(#territory-attack-glow)';
+    glowColor = '#f43f5e';
+  } else if (isAttackTarget) {
+    strokeColor = '#38bdf8';
+    strokeWidth = 4.2;
+    filterId = 'url(#territory-select-glow)';
+    glowColor = '#38bdf8';
+  } else if (isAttackOrigin) {
+    strokeColor = '#fb923c';
+    strokeWidth = 3.8;
+    filterId = 'url(#territory-origin-glow)';
+    glowColor = ownerColor || '#fb923c';
+  } else if (isSelected) {
+    strokeColor = '#38bdf8';
+    strokeWidth = 4.0;
+    filterId = 'url(#territory-select-glow)';
+    glowColor = '#38bdf8';
+  } else if (isTouchSelected || isHovered) {
+    strokeColor = isActionable ? '#fde047' : '#f59e0b';
+    strokeWidth = isActionable ? 3.6 : 3.2;
+    filterId = 'url(#territory-hover-glow)';
+    glowColor = isActionable ? '#fde047' : '#f59e0b';
+  } else if (isActionable) {
+    strokeColor = '#fbbf24';
+    strokeWidth = 2.9;
+  }
+
+  return {
+    territoryId,
+    isHovered,
+    isSelected,
+    isTouchSelected,
+    isActionable,
+    isAttackOrigin,
+    isAttackTarget,
+    isHighlighted,
+    strokeColor,
+    strokeWidth,
+    filterId,
+    glowColor,
+  };
+}
+
+/**
+ * Determină în mod pur și determinist teritoriul de origine al atacatorului
+ * pentru o țintă vizată în faza de război (cel mai apropiat teritoriu deținut de atacator
+ * care este direct învecinat cu ținta). Toți clienții din cameră obțin același rezultat.
+ */
+export function resolveAttackOriginTerritory(
+  attackerId: string,
+  targetTerritoryId: string,
+  territories: Record<string, Territory>
+): Territory | null {
+  const target = territories[targetTerritoryId];
+  if (!target || !attackerId) return null;
+
+  const ownedByAttacker = Object.values(territories).filter((t) => t.ownerId === attackerId);
+  if (ownedByAttacker.length === 0) return null;
+
+  const adjacentOwned = ownedByAttacker.filter((t) =>
+    areTerritoriesAdjacent(t.id, targetTerritoryId, territories)
+  );
+
+  const pool = adjacentOwned.length > 0 ? adjacentOwned : ownedByAttacker;
+
+  const sorted = [...pool].sort((a, b) => {
+    const distA = Math.hypot(a.labelX - target.labelX, a.labelY - target.labelY);
+    const distB = Math.hypot(b.labelX - target.labelX, b.labelY - target.labelY);
+    if (Math.abs(distA - distB) > 0.5) {
+      return distA - distB;
+    }
+    if (Boolean(a.isBase) !== Boolean(b.isBase)) {
+      return a.isBase ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
+  return sorted[0] || null;
+}
+
+export interface AttackVectorVisual {
+  battleId: string;
+  attackerId: string;
+  attackerName: string;
+  attackerColor: string;
+  defenderId: string;
+  defenderName: string;
+  defenderColor: string;
+  sourceTerritoryId: string;
+  sourceTerritoryName: string;
+  targetTerritoryId: string;
+  targetTerritoryName: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  controlX: number;
+  controlY: number;
+  midX: number;
+  midY: number;
+  angleDeg: number;
+  roundStatus: WarRoundState['status'];
+  battleStatus: WarBattleAssignment['status'];
+  outcome?: WarBattleAssignment['outcome'];
+}
+
+/**
+ * Construiește vectorii vizuali de atac (origine -> țintă) pentru toate bătăliile active
+ * din runda de război, sincronizați din starea autoritativă a serverului.
+ */
+export function buildActiveAttackVectors(
+  territories: Record<string, Territory>,
+  players: Player[],
+  warRound?: WarRoundState | null,
+  gamePhase?: GamePhase
+): AttackVectorVisual[] {
+  if (gamePhase !== 'war' || !warRound || !Array.isArray(warRound.battles)) {
+    return [];
+  }
+
+  const playersById = new Map<string, Player>(players.map((p) => [p.id, p]));
+  const vectors: AttackVectorVisual[] = [];
+
+  for (const battle of warRound.battles) {
+    if (!battle.targetTerritoryId) continue;
+    const target = territories[battle.targetTerritoryId];
+    if (!target) continue;
+
+    const origin = resolveAttackOriginTerritory(
+      battle.attackerId,
+      battle.targetTerritoryId,
+      territories
+    );
+    if (!origin) continue;
+
+    const attacker = playersById.get(battle.attackerId);
+    const defender = playersById.get(battle.defenderId);
+
+    const fromX = origin.labelX;
+    const fromY = origin.labelY;
+    const toX = target.labelX;
+    const toY = target.labelY;
+
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    // Perpendicular offset for a clean tactical arc
+    const curveOffset = Math.min(34, Math.max(14, dist * 0.18));
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    const controlX = Number(((fromX + toX) / 2 + nx * curveOffset).toFixed(1));
+    const controlY = Number(((fromY + toY) / 2 + ny * curveOffset).toFixed(1));
+    // Point on quadratic Bezier at t = 0.5
+    const midX = Number((0.25 * fromX + 0.5 * controlX + 0.25 * toX).toFixed(1));
+    const midY = Number((0.25 * fromY + 0.5 * controlY + 0.25 * toY).toFixed(1));
+
+    // Tangent angle near the target end (from control point to target)
+    const angleDeg = Number(((Math.atan2(toY - controlY, toX - controlX) * 180) / Math.PI).toFixed(1));
+
+    vectors.push({
+      battleId: battle.battleId,
+      attackerId: battle.attackerId,
+      attackerName: attacker?.username || 'Atacator',
+      attackerColor: attacker?.color || '#f59e0b',
+      defenderId: battle.defenderId,
+      defenderName: defender?.username || 'Apărător',
+      defenderColor: defender?.color || '#38bdf8',
+      sourceTerritoryId: origin.id,
+      sourceTerritoryName: origin.name,
+      targetTerritoryId: target.id,
+      targetTerritoryName: target.name,
+      fromX,
+      fromY,
+      toX,
+      toY,
+      controlX,
+      controlY,
+      midX,
+      midY,
+      angleDeg,
+      roundStatus: warRound.status,
+      battleStatus: battle.status,
+      outcome: battle.outcome,
+    });
+  }
+
+  return vectors;
+}
+
+export type TerritoryMapTransitionType =
+  | 'neutral_conquest'
+  | 'war_conquest'
+  | 'war_defense'
+  | 'tower_hit';
+
+export interface TerritoryMapTransition {
+  id: string;
+  type: TerritoryMapTransitionType;
+  territoryId: string;
+  territoryName: string;
+  ownerId: string | null;
+  ownerName: string;
+  color: string;
+  previousOwnerId: string | null;
+  previousColor: string;
+  originX: number;
+  originY: number;
+  targetX: number;
+  targetY: number;
+  startedAt: number;
+  durationMs: number;
+  badgeTextRo: string;
+}
+
+/**
+ * Detectează tranzițiile vizuale autoritative dintre două stări succesive ale hărții:
+ * - cucerirea unui teritoriu neutru (`neutral_conquest`): culoarea echipei se răspândește + puls scurt
+ * - cucerirea unui teritoriu inamic în război (`war_conquest`): umplerea teritoriului în culoarea câștigătorului
+ * - apărarea reușită a unui teritoriu (`war_defense`): efect scurt de scut/impact fără schimbarea proprietarului
+ * - lovirea unui turn de cetate (`tower_hit`): impact pe cetate când scade `castleTowers`
+ */
+export function detectTerritoryMapTransitions(params: {
+  prevTerritories: Record<string, Territory> | null | undefined;
+  nextTerritories: Record<string, Territory>;
+  prevWarRound?: WarRoundState | null;
+  nextWarRound?: WarRoundState | null;
+  players: Player[];
+  nowMs?: number;
+  prefersReducedMotion?: boolean;
+}): TerritoryMapTransition[] {
+  const {
+    prevTerritories,
+    nextTerritories,
+    prevWarRound,
+    nextWarRound,
+    players,
+    nowMs = Date.now(),
+    prefersReducedMotion = false,
+  } = params;
+
+  if (!prevTerritories) return [];
+
+  const config = getMapAnimationConfig(prefersReducedMotion);
+  const playersById = new Map<string, Player>(players.map((p) => [p.id, p]));
+  const transitions: TerritoryMapTransition[] = [];
+  const handledTerritoryIds = new Set<string>();
+
+  for (const nextT of Object.values(nextTerritories)) {
+    const prevT = prevTerritories[nextT.id];
+    if (!prevT) continue;
+
+    // 1. Neutral territory conquered -> team color radial spread + completion pulse
+    if (prevT.ownerId === null && nextT.ownerId !== null) {
+      const winner = playersById.get(nextT.ownerId);
+      const originTerritory = resolveAttackOriginTerritory(
+        nextT.ownerId,
+        nextT.id,
+        prevTerritories
+      );
+      transitions.push({
+        id: `tr_neutral_${nextT.id}_${nowMs}`,
+        type: 'neutral_conquest',
+        territoryId: nextT.id,
+        territoryName: nextT.name,
+        ownerId: nextT.ownerId,
+        ownerName: winner?.username || 'Jucător',
+        color: winner?.color || '#22c55e',
+        previousOwnerId: null,
+        previousColor: '#d5c4a1',
+        originX: originTerritory ? originTerritory.labelX : nextT.labelX,
+        originY: originTerritory ? originTerritory.labelY : nextT.labelY,
+        targetX: nextT.labelX,
+        targetY: nextT.labelY,
+        startedAt: nowMs,
+        durationMs: config.conquestSpreadMs + config.conquestPulseMs,
+        badgeTextRo: nextT.isBase ? '🏰 Bază stabilită!' : '🚩 Teritoriu cucerit!',
+      });
+      handledTerritoryIds.add(nextT.id);
+      continue;
+    }
+
+    // 2. Enemy territory conquered in war -> fill territory in winner's color
+    if (
+      prevT.ownerId !== null &&
+      nextT.ownerId !== null &&
+      prevT.ownerId !== nextT.ownerId
+    ) {
+      const winner = playersById.get(nextT.ownerId);
+      const prevOwner = playersById.get(prevT.ownerId);
+      const originTerritory = resolveAttackOriginTerritory(
+        nextT.ownerId,
+        nextT.id,
+        prevTerritories
+      );
+      transitions.push({
+        id: `tr_war_conq_${nextT.id}_${nowMs}`,
+        type: 'war_conquest',
+        territoryId: nextT.id,
+        territoryName: nextT.name,
+        ownerId: nextT.ownerId,
+        ownerName: winner?.username || 'Câștigător',
+        color: winner?.color || '#f59e0b',
+        previousOwnerId: prevT.ownerId,
+        previousColor: prevOwner?.color || '#78716c',
+        originX: originTerritory ? originTerritory.labelX : nextT.labelX,
+        originY: originTerritory ? originTerritory.labelY : nextT.labelY,
+        targetX: nextT.labelX,
+        targetY: nextT.labelY,
+        startedAt: nowMs,
+        durationMs: config.conquestSpreadMs + config.conquestPulseMs,
+        badgeTextRo: `⚔️ Cucerit de ${winner?.username || 'Atacator'}!`,
+      });
+      handledTerritoryIds.add(nextT.id);
+      continue;
+    }
+
+    // 3. Base tower hit without changing owner
+    if (
+      prevT.ownerId !== null &&
+      nextT.ownerId === prevT.ownerId &&
+      (prevT.castleTowers ?? 0) > (nextT.castleTowers ?? 0)
+    ) {
+      const defender = playersById.get(nextT.ownerId);
+      transitions.push({
+        id: `tr_tower_${nextT.id}_${nowMs}`,
+        type: 'tower_hit',
+        territoryId: nextT.id,
+        territoryName: nextT.name,
+        ownerId: nextT.ownerId,
+        ownerName: defender?.username || 'Apărător',
+        color: '#f43f5e',
+        previousOwnerId: prevT.ownerId,
+        previousColor: defender?.color || '#ef4444',
+        originX: nextT.labelX,
+        originY: nextT.labelY,
+        targetX: nextT.labelX,
+        targetY: nextT.labelY,
+        startedAt: nowMs,
+        durationMs: config.defenseShieldMs,
+        badgeTextRo: '💥 Turn de cetate distrus!',
+      });
+      handledTerritoryIds.add(nextT.id);
+      continue;
+    }
+
+    // 4. Successful defense detected via defensiveBonus increase (+100) while owner stays unchanged
+    if (
+      prevT.ownerId !== null &&
+      nextT.ownerId === prevT.ownerId &&
+      (nextT.defensiveBonus ?? 0) > (prevT.defensiveBonus ?? 0)
+    ) {
+      const defender = playersById.get(nextT.ownerId);
+      transitions.push({
+        id: `tr_def_${nextT.id}_${nowMs}`,
+        type: 'war_defense',
+        territoryId: nextT.id,
+        territoryName: nextT.name,
+        ownerId: nextT.ownerId,
+        ownerName: defender?.username || 'Apărător',
+        color: defender?.color || '#10b981',
+        previousOwnerId: prevT.ownerId,
+        previousColor: defender?.color || '#10b981',
+        originX: nextT.labelX,
+        originY: nextT.labelY,
+        targetX: nextT.labelX,
+        targetY: nextT.labelY,
+        startedAt: nowMs,
+        durationMs: config.defenseShieldMs,
+        badgeTextRo: `🛡️ Apărat de ${defender?.username || 'Apărător'}!`,
+      });
+      handledTerritoryIds.add(nextT.id);
+    }
+  }
+
+  // 5. Also detect war_defense from warRound battles resolving as defender_won or draw_no_bonus
+  if (nextWarRound && Array.isArray(nextWarRound.battles)) {
+    const prevBattlesById = new Map(
+      (prevWarRound?.battles || []).map((b) => [b.battleId, b])
+    );
+
+    for (const nextB of nextWarRound.battles) {
+      if (!nextB.targetTerritoryId || handledTerritoryIds.has(nextB.targetTerritoryId)) {
+        continue;
+      }
+      const prevB = prevBattlesById.get(nextB.battleId);
+      const justResolved =
+        nextB.status === 'resolved' && (!prevB || prevB.status !== 'resolved');
+
+      if (
+        justResolved &&
+        (nextB.outcome === 'defender_won' || nextB.outcome === 'draw_no_bonus')
+      ) {
+        const targetT = nextTerritories[nextB.targetTerritoryId];
+        if (targetT && targetT.ownerId === nextB.defenderId) {
+          const defender = playersById.get(nextB.defenderId);
+          transitions.push({
+            id: `tr_def_battle_${targetT.id}_${nowMs}`,
+            type: 'war_defense',
+            territoryId: targetT.id,
+            territoryName: targetT.name,
+            ownerId: targetT.ownerId,
+            ownerName: defender?.username || 'Apărător',
+            color: defender?.color || '#10b981',
+            previousOwnerId: targetT.ownerId,
+            previousColor: defender?.color || '#10b981',
+            originX: targetT.labelX,
+            originY: targetT.labelY,
+            targetX: targetT.labelX,
+            targetY: targetT.labelY,
+            startedAt: nowMs,
+            durationMs: config.defenseShieldMs,
+            badgeTextRo: `🛡️ Apărat de ${defender?.username || 'Apărător'}!`,
+          });
+          handledTerritoryIds.add(targetT.id);
+        }
+      }
+    }
+  }
+
+  return transitions;
 }
 
 

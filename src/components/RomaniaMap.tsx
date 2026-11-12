@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Territory, Player, GamePhase, WarRoundState, GameState } from '../types/game';
-import { canTargetTerritory, canSelectBase } from '../game/rules';
+import {
+  canTargetTerritory,
+  canSelectBase,
+  getMapAnimationConfig,
+  computeTerritorySelectionVisualState,
+  buildActiveAttackVectors,
+  detectTerritoryMapTransitions,
+  TerritoryMapTransition,
+} from '../game/rules';
 import { RoundTracker } from './RoundTracker';
 import { sound } from '../services/audio';
 import { Crosshair, Award, ZoomIn, ZoomOut, RotateCcw, MapPin, Layers } from 'lucide-react';
@@ -46,6 +54,16 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(960);
   const [showInternalCounties, setShowInternalCounties] = useState<boolean>(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+  const [activeTransitions, setActiveTransitions] = useState<
+    Record<string, TerritoryMapTransition>
+  >({});
+
+  const prevTerritoriesRef = useRef<Record<string, Territory> | null>(null);
+  const prevWarRoundRef = useRef<WarRoundState | null | undefined>(null);
 
   // Zoom & Pan state (Initial state is Fit to Screen: zoom = 1, pan = 0,0)
   const [zoom, setZoom] = useState<number>(1);
@@ -54,6 +72,73 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const didDragRef = useRef<boolean>(false);
   const mapWrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    setPrefersReducedMotion(mql.matches);
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    }
+  }, []);
+
+  const animConfig = useMemo(
+    () => getMapAnimationConfig(prefersReducedMotion),
+    [prefersReducedMotion]
+  );
+
+  // Detect authoritative server updates for neutral conquest, war conquest, defense shield, and tower hits
+  useEffect(() => {
+    const prevT = prevTerritoriesRef.current;
+    const prevW = prevWarRoundRef.current;
+
+    if (prevT) {
+      const detected = detectTerritoryMapTransitions({
+        prevTerritories: prevT,
+        nextTerritories: territories,
+        prevWarRound: prevW,
+        nextWarRound: warRound,
+        players,
+        nowMs: Date.now(),
+        prefersReducedMotion,
+      });
+
+      if (detected.length > 0) {
+        setActiveTransitions((prev) => {
+          const next = { ...prev };
+          for (const tr of detected) {
+            next[tr.territoryId] = tr;
+          }
+          return next;
+        });
+
+        const cleanupDelay = Math.max(
+          650,
+          ...detected.map((d) => (d.durationMs > 0 ? d.durationMs + 120 : 650))
+        );
+        const timer = window.setTimeout(() => {
+          setActiveTransitions((current) => {
+            const copy = { ...current };
+            for (const tr of detected) {
+              if (copy[tr.territoryId]?.id === tr.id) {
+                delete copy[tr.territoryId];
+              }
+            }
+            return copy;
+          });
+        }, cleanupDelay);
+
+        prevTerritoriesRef.current = territories;
+        prevWarRoundRef.current = warRound;
+        return () => window.clearTimeout(timer);
+      }
+    }
+
+    prevTerritoriesRef.current = territories;
+    prevWarRoundRef.current = warRound;
+  }, [territories, warRound, players, prefersReducedMotion]);
 
   useEffect(() => {
     const el = mapWrapperRef.current;
@@ -108,6 +193,20 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     }
     return map;
   }, [gamePhase, warRound, players]);
+
+  // Deterministic attack vectors (attacker origin territory -> target territory) visible to all players
+  const activeAttackVectors = useMemo(
+    () => buildActiveAttackVectors(territories, players, warRound, gamePhase),
+    [territories, players, warRound, gamePhase]
+  );
+
+  const attackOriginByTerritoryId = useMemo(() => {
+    const map = new Map<string, (typeof activeAttackVectors)[number]>();
+    for (const vec of activeAttackVectors) {
+      map.set(vec.sourceTerritoryId, vec);
+    }
+    return map;
+  }, [activeAttackVectors]);
 
   const getOwner = (ownerId: string | null): Player | undefined => {
     if (!ownerId) return undefined;
@@ -463,6 +562,24 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               />
             </pattern>
 
+            <pattern
+              id="origin-hatch"
+              width="14"
+              height="14"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="14"
+                stroke="#fb923c"
+                strokeWidth="2.4"
+                strokeOpacity="0.38"
+              />
+            </pattern>
+
             <filter id="arrow-glow" x="-30%" y="-30%" width="160%" height="160%">
               <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#0284c7" floodOpacity="0.8" />
             </filter>
@@ -470,6 +587,32 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
             <filter id="border-relief" x="-10%" y="-10%" width="120%" height="120%">
               <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#000000" floodOpacity="0.8" />
             </filter>
+
+            <filter id="territory-hover-glow" x="-18%" y="-18%" width="136%" height="136%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3.5" floodColor="#f59e0b" floodOpacity="0.72" />
+            </filter>
+
+            <filter id="territory-select-glow" x="-22%" y="-22%" width="144%" height="144%">
+              <feDropShadow dx="0" dy="2" stdDeviation="4.5" floodColor="#38bdf8" floodOpacity="0.85" />
+            </filter>
+
+            <filter id="territory-origin-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#fb923c" floodOpacity="0.8" />
+            </filter>
+
+            <filter id="territory-attack-glow" x="-25%" y="-25%" width="150%" height="150%">
+              <feDropShadow dx="0" dy="2" stdDeviation="5" floodColor="#f43f5e" floodOpacity="0.9" />
+            </filter>
+
+            {/* Clip paths for each territory so conquest radial spread fills the exact polygon */}
+            {territoryList.map((t) => {
+              const isPath = t.svgPath.startsWith('M');
+              return (
+                <clipPath key={`clip_${t.id}`} id={`clip-territory-${t.id}`}>
+                  {isPath ? <path d={t.svgPath} /> : <polygon points={t.svgPath} />}
+                </clipPath>
+              );
+            })}
           </defs>
 
           {/* ============================================================
@@ -479,8 +622,12 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
             {territoryList.map((t) => {
               const owner = getOwner(t.ownerId);
               const warTargetEntry = warTargetedByTerritoryId.get(t.id);
-              const isSelected = targetedId === t.id || Boolean(warTargetEntry);
+              const attackOriginEntry = attackOriginByTerritoryId.get(t.id);
+              const isAttackTarget = Boolean(warTargetEntry);
+              const isAttackOrigin = Boolean(attackOriginEntry);
+              const isSelected = targetedId === t.id || isAttackTarget;
               const isInspected = inspectedId === t.id;
+              const transition = activeTransitions[t.id];
 
               let isActionable = false;
               let isForbiddenBase = false;
@@ -504,10 +651,21 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 }
               }
 
+              const isConquestSpreadActive =
+                animConfig.enabled &&
+                Boolean(
+                  transition &&
+                    (transition.type === 'neutral_conquest' || transition.type === 'war_conquest')
+                );
+
               let fillColor = '#d5c4a1';
               let fillOpacity = 0.88;
 
-              if (owner) {
+              if (isConquestSpreadActive && transition) {
+                // Show previous surface color underneath while the new team color spreads radially over it
+                fillColor = transition.previousColor || '#d5c4a1';
+                fillOpacity = 0.9;
+              } else if (owner) {
                 fillColor = owner.color;
                 fillOpacity =
                   isMyTurn && !isActionable && t.ownerId !== currentUserId ? 0.62 : 0.92;
@@ -519,36 +677,30 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 fillOpacity = 0.45;
               }
 
-              const isAttackPreviewTarget =
-                gamePhase === 'war' &&
-                warRound?.status === 'attack_preview' &&
-                Boolean(warTargetEntry);
-
+              const isAttackPreviewPhase =
+                gamePhase === 'war' && warRound?.status === 'attack_preview';
               const isHovered = hoveredId === t.id;
-              const strokeColor = isAttackPreviewTarget
-                ? '#f43f5e'
-                : isSelected
-                ? '#38bdf8'
-                : isInspected || isHovered
-                ? '#f59e0b'
-                : isActionable
-                ? '#fbbf24'
-                : owner
-                ? '#fef08a'
-                : '#6b4c28';
 
-              const strokeWidth = isAttackPreviewTarget
-                ? 4.5
-                : isSelected
-                ? 4.0
-                : isInspected || isHovered
-                ? 3.2
-                : isActionable
-                ? 2.9
-                : owner
-                ? 2.4
-                : 2.1;
+              const visualState = computeTerritorySelectionVisualState({
+                territoryId: t.id,
+                hasOwner: Boolean(owner),
+                ownerColor: owner?.color,
+                isHovered,
+                isSelected,
+                isTouchSelected: isInspected,
+                isActionable,
+                isAttackOrigin,
+                isAttackTarget,
+                isAttackPreviewPhase,
+              });
+
               const isPath = t.svgPath.startsWith('M');
+              const shouldElevate =
+                animConfig.enabled &&
+                (visualState.isHovered ||
+                  visualState.isTouchSelected ||
+                  visualState.isSelected ||
+                  visualState.isAttackOrigin);
 
               return (
                 <g
@@ -556,7 +708,11 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   data-testid={`territory-${t.id}`}
                   data-owner={t.ownerId || 'neutral'}
                   data-actionable={isActionable ? 'true' : 'false'}
-                  className={`transition-opacity duration-150 motion-reduce:transition-none ${
+                  data-selected={visualState.isHighlighted ? 'true' : 'false'}
+                  data-attack-origin={isAttackOrigin ? 'true' : 'false'}
+                  data-attack-target={isAttackTarget ? 'true' : 'false'}
+                  data-transition={transition?.type || 'none'}
+                  className={`territory-interactive ${shouldElevate ? 'territory-elevated' : ''} ${
                     isActionable
                       ? 'cursor-pointer hover:brightness-110'
                       : isMyTurn
@@ -565,6 +721,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   }`}
                   onMouseEnter={() => setHoveredId(t.id)}
                   onMouseLeave={() => setHoveredId(null)}
+                  onTouchStart={() => setInspectedId(t.id)}
                   onClick={() => handleTerritoryClick(t)}
                 >
                   {isPath ? (
@@ -572,25 +729,49 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       d={t.svgPath}
                       fill={fillColor}
                       fillOpacity={fillOpacity}
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
+                      stroke={visualState.strokeColor}
+                      strokeWidth={visualState.strokeWidth}
                       strokeLinejoin="round"
                       strokeLinecap="round"
-                      strokeDasharray={isSelected ? '6 4' : undefined}
-                      filter="url(#border-relief)"
+                      strokeDasharray={
+                        isSelected ? '6 4' : isAttackOrigin ? '8 3' : undefined
+                      }
+                      filter={visualState.filterId}
+                      className="territory-shape"
                     />
                   ) : (
                     <polygon
                       points={t.svgPath}
                       fill={fillColor}
                       fillOpacity={fillOpacity}
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
+                      stroke={visualState.strokeColor}
+                      strokeWidth={visualState.strokeWidth}
                       strokeLinejoin="round"
                       strokeLinecap="round"
-                      strokeDasharray={isSelected ? '6 4' : undefined}
-                      filter="url(#border-relief)"
+                      strokeDasharray={
+                        isSelected ? '6 4' : isAttackOrigin ? '8 3' : undefined
+                      }
+                      filter={visualState.filterId}
+                      className="territory-shape"
                     />
+                  )}
+
+                  {/* Conquest Radial Color Spread inside Territory ClipPath */}
+                  {isConquestSpreadActive && transition && (
+                    <g
+                      clipPath={`url(#clip-territory-${t.id})`}
+                      className="pointer-events-none"
+                      data-testid={`conquest-spread-${t.id}`}
+                    >
+                      <circle
+                        cx={transition.targetX}
+                        cy={transition.targetY}
+                        r={240}
+                        fill={transition.color}
+                        fillOpacity={0.94}
+                        className="animate-conquest-spread"
+                      />
+                    </g>
                   )}
 
                   {/* Subtle decorative internal county lines (Section 48: very thin, low opacity, non-interactive) */}
@@ -622,6 +803,24 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       />
                     ))}
 
+                  {isAttackOrigin &&
+                    !isSelected &&
+                    (isPath ? (
+                      <path
+                        d={t.svgPath}
+                        fill="url(#origin-hatch)"
+                        stroke="none"
+                        className="pointer-events-none"
+                      />
+                    ) : (
+                      <polygon
+                        points={t.svgPath}
+                        fill="url(#origin-hatch)"
+                        stroke="none"
+                        className="pointer-events-none"
+                      />
+                    ))}
+
                   {isSelected &&
                     (isPath ? (
                       <path
@@ -636,6 +835,30 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                         fill="url(#selected-hatch)"
                         stroke="none"
                         className="pointer-events-none animate-pulse motion-reduce:animate-none"
+                      />
+                    ))}
+
+                  {/* Luminous outline pulse at the end of a conquest */}
+                  {transition &&
+                    (transition.type === 'neutral_conquest' ||
+                      transition.type === 'war_conquest') &&
+                    (isPath ? (
+                      <path
+                        d={t.svgPath}
+                        fill="none"
+                        stroke="#fef08a"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        className="pointer-events-none animate-conquest-pulse"
+                      />
+                    ) : (
+                      <polygon
+                        points={t.svgPath}
+                        fill="none"
+                        stroke="#fef08a"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        className="pointer-events-none animate-conquest-pulse"
                       />
                     ))}
                 </g>
@@ -732,8 +955,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           </g>
 
           {/* ============================================================
-              LAYER 3: CASTLE MEDALLIONS, TOWERS, 1000 SCORES,
-                       COLLISION-FREE NAMEPLATES & SIMULTANEOUS ATTACK ARROWS
+              LAYER 3: CASTLE MEDALLIONS, TOWERS, 1000 SCORES & NAMEPLATES
           ============================================================ */}
           <g id="layer-castles" className="pointer-events-none">
             {territoryList.map((t) => {
@@ -877,6 +1099,128 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 </g>
               );
             })}
+          </g>
+
+          {/* ============================================================
+              LAYER 4: WAR ATTACK VECTORS (ORIGIN -> TARGET ARROWS & CALLOUTS)
+          ============================================================ */}
+          <g id="layer-attack-vectors" className="pointer-events-none">
+            {activeAttackVectors.map((vec) => {
+              const pathD = `M ${vec.fromX} ${vec.fromY} Q ${vec.controlX} ${vec.controlY} ${vec.toX} ${vec.toY}`;
+              const calloutText = `${vec.attackerName} ⚔️ ${vec.defenderName}`;
+              const calloutW = Math.max(92, Math.min(200, calloutText.length * 5.8 + 20));
+
+              return (
+                <g
+                  key={`attack_vec_${vec.battleId}`}
+                  data-testid={`attack-vector-${vec.battleId}`}
+                  data-source-territory={vec.sourceTerritoryId}
+                  data-target-territory={vec.targetTerritoryId}
+                >
+                  {/* Attacker Origin Territory Beacon Ring */}
+                  <g transform={`translate(${vec.fromX}, ${vec.fromY})`}>
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="20"
+                      fill="none"
+                      stroke={vec.attackerColor}
+                      strokeWidth="2.6"
+                      className="animate-attack-beacon"
+                    />
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="6"
+                      fill={vec.attackerColor}
+                      stroke="#fef08a"
+                      strokeWidth="1.6"
+                    />
+                  </g>
+
+                  {/* Curved Tactical Vector Casing & Glowing Base Line */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="#090d16"
+                    strokeWidth="6.5"
+                    strokeLinecap="round"
+                    opacity="0.78"
+                  />
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={vec.attackerColor}
+                    strokeWidth="3.8"
+                    strokeLinecap="round"
+                    opacity="0.92"
+                  />
+                  {/* Marching Energy Dashes Flowing from Attacker to Target */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="#fef08a"
+                    strokeWidth="2.4"
+                    strokeDasharray="10 8"
+                    strokeLinecap="round"
+                    className="animate-attack-dash"
+                  />
+
+                  {/* Directional Arrowhead at Target End */}
+                  <g
+                    transform={`translate(${vec.toX}, ${vec.toY}) rotate(${vec.angleDeg})`}
+                    filter="url(#arrow-glow)"
+                  >
+                    <polygon
+                      points="0,0 -15,-7.5 -11,0 -15,7.5"
+                      fill={vec.attackerColor}
+                      stroke="#fef08a"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                  </g>
+
+                  {/* Target Crosshair Ring */}
+                  <g transform={`translate(${vec.toX}, ${vec.toY})`}>
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="22"
+                      fill="none"
+                      stroke="#f43f5e"
+                      strokeWidth="2.2"
+                      strokeDasharray="5 4"
+                    />
+                  </g>
+
+                  {/* Mid-Vector Battle Callout Pill (Attacker ⚔️ Defender) */}
+                  <g transform={`translate(${vec.midX}, ${vec.midY - 12})`}>
+                    <rect
+                      x={-calloutW / 2}
+                      y="-10"
+                      width={calloutW}
+                      height="20"
+                      rx="6"
+                      fill="#0f172a"
+                      fillOpacity="0.92"
+                      stroke={vec.attackerColor}
+                      strokeWidth="1.4"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fontSize="9.5"
+                      fontWeight="800"
+                      fill="#fef08a"
+                      fontFamily="sans-serif"
+                    >
+                      {calloutText}
+                    </text>
+                  </g>
+                </g>
+              );
+            })}
 
             {/* Downward Pointer Arrows over All Simultaneous War Targets or Selected Territory */}
             {territoryList.map((t) => {
@@ -914,6 +1258,136 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     fill="#ffffff"
                     opacity="0.35"
                   />
+                </g>
+              );
+            })}
+          </g>
+
+          {/* ============================================================
+              LAYER 5: POST-BATTLE OUTCOME EFFECTS (CONQUEST PULSE & DEFENSE SHIELD)
+          ============================================================ */}
+          <g id="layer-battle-outcomes" className="pointer-events-none">
+            {Object.values(activeTransitions).map((tr) => {
+              const badgeW = Math.max(96, tr.badgeTextRo.length * 5.8 + 18);
+
+              if (tr.type === 'neutral_conquest' || tr.type === 'war_conquest') {
+                return (
+                  <g
+                    key={tr.id}
+                    data-testid={`transition-effect-${tr.territoryId}`}
+                    data-transition-type={tr.type}
+                    transform={`translate(${tr.targetX}, ${tr.targetY})`}
+                  >
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="26"
+                      fill="none"
+                      stroke={tr.color}
+                      strokeWidth="3.5"
+                      className="animate-conquest-ring"
+                    />
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="18"
+                      fill="none"
+                      stroke="#fef08a"
+                      strokeWidth="2.2"
+                      className="animate-conquest-ring"
+                    />
+                    <g transform="translate(0, -26)">
+                      <rect
+                        x={-badgeW / 2}
+                        y="-10"
+                        width={badgeW}
+                        height="20"
+                        rx="6"
+                        fill="#1c1109"
+                        fillOpacity="0.94"
+                        stroke={tr.color}
+                        strokeWidth="1.6"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fontSize="9.5"
+                        fontWeight="800"
+                        fill="#fef08a"
+                        fontFamily="sans-serif"
+                      >
+                        {tr.badgeTextRo}
+                      </text>
+                    </g>
+                  </g>
+                );
+              }
+
+              // war_defense or tower_hit
+              const isShield = tr.type === 'war_defense';
+              const ringStroke = isShield ? '#34d399' : '#fb7185';
+              const emblemFill = isShield ? '#059669' : '#e11d48';
+
+              return (
+                <g
+                  key={tr.id}
+                  data-testid={`transition-effect-${tr.territoryId}`}
+                  data-transition-type={tr.type}
+                  transform={`translate(${tr.targetX}, ${tr.targetY})`}
+                >
+                  <circle
+                    cx="0"
+                    cy="0"
+                    r="28"
+                    fill="none"
+                    stroke={ringStroke}
+                    strokeWidth="3.5"
+                    className="animate-defense-ripple"
+                  />
+                  <g className="animate-defense-shield">
+                    <path
+                      d="M 0 -18 L 15 -11 L 15 2 C 15 12 0 19 0 19 C 0 19 -15 12 -15 2 L -15 -11 Z"
+                      fill={emblemFill}
+                      fillOpacity="0.92"
+                      stroke="#fef08a"
+                      strokeWidth="2"
+                    />
+                    <text
+                      x="0"
+                      y="5"
+                      textAnchor="middle"
+                      fontSize="13"
+                      fontWeight="900"
+                      fill="#ffffff"
+                    >
+                      {isShield ? '🛡️' : '💥'}
+                    </text>
+                  </g>
+                  <g transform="translate(0, -28)">
+                    <rect
+                      x={-badgeW / 2}
+                      y="-10"
+                      width={badgeW}
+                      height="20"
+                      rx="6"
+                      fill="#064e3b"
+                      fillOpacity="0.95"
+                      stroke={ringStroke}
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fontSize="9.5"
+                      fontWeight="800"
+                      fill="#ecfdf5"
+                      fontFamily="sans-serif"
+                    >
+                      {tr.badgeTextRo}
+                    </text>
+                  </g>
                 </g>
               );
             })}

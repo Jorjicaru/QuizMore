@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, UserProfile } from '../types/game';
-import { canTargetTerritory } from '../game/rules';
+import { canTargetTerritory, resolveAttackOriginTerritory } from '../game/rules';
 import { GameHUD, PlayerSidebar } from '../components/GameHUD';
 import { RomaniaMap } from '../components/RomaniaMap';
 import { QuestionModal } from '../components/QuestionModal';
@@ -155,16 +155,29 @@ export const GameView: React.FC<GameViewProps> = ({
                 const attacker = game.players.find((p) => p.id === b.attackerId);
                 const defender = game.players.find((p) => p.id === b.defenderId);
                 const terr = b.targetTerritoryId ? game.territories[b.targetTerritoryId] : null;
+                const originTerr =
+                  b.targetTerritoryId
+                    ? resolveAttackOriginTerritory(
+                        b.attackerId,
+                        b.targetTerritoryId,
+                        game.territories
+                      )
+                    : null;
                 if (!attacker || !defender || !terr) return null;
                 return (
                   <div
                     key={b.battleId}
-                    className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-stone-950/90 px-3 py-1.5 text-xs shadow-md"
+                    className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-400/40 bg-stone-950/90 px-3 py-1.5 text-xs shadow-md"
                   >
                     <span className="inline-flex items-center gap-1 font-bold" style={{ color: attacker.color }}>
                       <Swords className="h-3.5 w-3.5" />
                       {attacker.username}
                     </span>
+                    {originTerr && (
+                      <span className="text-[11px] text-amber-200/90 font-semibold">
+                        ({originTerr.name})
+                      </span>
+                    )}
                     <span className="text-stone-400 font-black">atacă</span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/20 border border-rose-400/40 px-2 py-0.5 font-serif font-black text-amber-200">
                       <Crosshair className="h-3 w-3 text-rose-400" />

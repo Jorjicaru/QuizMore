@@ -26,6 +26,11 @@ import {
   computeClockOffsetSample,
   selectBestClockOffset,
   estimateServerNow,
+  getMapAnimationConfig,
+  computeTerritorySelectionVisualState,
+  resolveAttackOriginTerritory,
+  buildActiveAttackVectors,
+  detectTerritoryMapTransitions,
   SCORING,
 } from './rules';
 import { Territory, Player, GameState } from '../types/game';
@@ -2815,5 +2820,263 @@ test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (
 
   (gm as any).clearRoomTimers(room.roomId);
 });
+
+test('V9.5 Test 37: Animații și stări vizuale pentru selectarea teritoriilor (hover + mobil), cuceriri neutre/război, vectori de atac origine->țintă, scut apărare și prefers-reduced-motion', () => {
+  // 1. Test prefers-reduced-motion configuration
+  const normalAnim = getMapAnimationConfig(false);
+  assert.equal(normalAnim.prefersReducedMotion, false);
+  assert.equal(normalAnim.enabled, true);
+  assert.ok(normalAnim.selectionTransitionMs > 0);
+  assert.ok(normalAnim.conquestSpreadMs > 0);
+  assert.ok(normalAnim.conquestPulseMs > 0);
+  assert.ok(normalAnim.attackVectorFlowMs > 0);
+  assert.ok(normalAnim.defenseShieldMs > 0);
+
+  const reducedAnim = getMapAnimationConfig(true);
+  assert.equal(reducedAnim.prefersReducedMotion, true);
+  assert.equal(reducedAnim.enabled, false);
+  assert.equal(reducedAnim.selectionTransitionMs, 0);
+  assert.equal(reducedAnim.conquestSpreadMs, 0);
+  assert.equal(reducedAnim.conquestPulseMs, 0);
+  assert.equal(reducedAnim.attackVectorFlowMs, 0);
+  assert.equal(reducedAnim.defenseShieldMs, 0);
+
+  // 2. Test selection visual states (hover, mobile touch selection, attack origin, attack target)
+  const neutralIdle = computeTerritorySelectionVisualState({
+    territoryId: 'cluj',
+    hasOwner: false,
+    isHovered: false,
+    isSelected: false,
+    isTouchSelected: false,
+    isActionable: false,
+    isAttackOrigin: false,
+    isAttackTarget: false,
+  });
+  assert.equal(neutralIdle.isHighlighted, false);
+  assert.equal(neutralIdle.filterId, 'url(#border-relief)');
+
+  const desktopHover = computeTerritorySelectionVisualState({
+    territoryId: 'cluj',
+    hasOwner: false,
+    isHovered: true,
+    isSelected: false,
+    isTouchSelected: false,
+    isActionable: true,
+    isAttackOrigin: false,
+    isAttackTarget: false,
+  });
+  assert.equal(desktopHover.isHighlighted, true);
+  assert.equal(desktopHover.filterId, 'url(#territory-hover-glow)');
+  assert.ok(desktopHover.strokeWidth > neutralIdle.strokeWidth);
+
+  const mobileTouchSelect = computeTerritorySelectionVisualState({
+    territoryId: 'cluj',
+    hasOwner: true,
+    ownerColor: '#22c55e',
+    isHovered: false,
+    isSelected: false,
+    isTouchSelected: true,
+    isActionable: true,
+    isAttackOrigin: false,
+    isAttackTarget: false,
+  });
+  assert.equal(mobileTouchSelect.isHighlighted, true, 'Selecția la atingere pe mobil rămâne clar evidențiată');
+  assert.equal(mobileTouchSelect.filterId, 'url(#territory-hover-glow)');
+
+  const attackOriginVisual = computeTerritorySelectionVisualState({
+    territoryId: 'maramures',
+    hasOwner: true,
+    ownerColor: '#ef4444',
+    isHovered: false,
+    isSelected: false,
+    isTouchSelected: false,
+    isActionable: false,
+    isAttackOrigin: true,
+    isAttackTarget: false,
+  });
+  assert.equal(attackOriginVisual.isHighlighted, true);
+  assert.equal(attackOriginVisual.filterId, 'url(#territory-origin-glow)');
+
+  const attackTargetPreviewVisual = computeTerritorySelectionVisualState({
+    territoryId: 'cluj',
+    hasOwner: true,
+    ownerColor: '#3b82f6',
+    isHovered: false,
+    isSelected: true,
+    isTouchSelected: false,
+    isActionable: false,
+    isAttackOrigin: false,
+    isAttackTarget: true,
+    isAttackPreviewPhase: true,
+  });
+  assert.equal(attackTargetPreviewVisual.isHighlighted, true);
+  assert.equal(attackTargetPreviewVisual.filterId, 'url(#territory-attack-glow)');
+  assert.equal(attackTargetPreviewVisual.strokeColor, '#f43f5e');
+
+  // 3. Test deterministic attacker origin territory & active attack vectors across all clients
+  const map2p = createMapForPlayerCount(2);
+  const tIds = Object.keys(map2p);
+  const firstId = tIds[0];
+  const neighborId = map2p[firstId].neighbors[0];
+  assert.ok(neighborId, 'Primul teritoriu trebuie să aibă cel puțin un vecin');
+
+  map2p[firstId].ownerId = 'p_attacker';
+  map2p[firstId].isBase = true;
+  map2p[neighborId].ownerId = 'p_defender';
+
+  const players: Player[] = [
+    {
+      id: 'p_attacker',
+      username: 'VladAtacator',
+      avatar: 'av_vlad',
+      color: '#ef4444',
+      score: 1300,
+      isHost: true,
+      isReady: true,
+      isAi: false,
+      isConnected: true,
+      baseTerritoryId: firstId,
+      castleTowers: 3,
+      defensiveBonus: 0,
+      territoriesCount: 1,
+      correctAnswers: 2,
+      wrongAnswers: 0,
+      isEliminated: false,
+    },
+    {
+      id: 'p_defender',
+      username: 'StefanAparator',
+      avatar: 'av_stefan',
+      color: '#3b82f6',
+      score: 1300,
+      isHost: false,
+      isReady: true,
+      isAi: false,
+      isConnected: true,
+      baseTerritoryId: neighborId,
+      castleTowers: 3,
+      defensiveBonus: 0,
+      territoriesCount: 1,
+      correctAnswers: 2,
+      wrongAnswers: 0,
+      isEliminated: false,
+    },
+  ];
+
+  const resolvedOrigin = resolveAttackOriginTerritory('p_attacker', neighborId, map2p);
+  assert.ok(resolvedOrigin);
+  assert.equal(
+    resolvedOrigin.id,
+    firstId,
+    'Teritoriul de origine al atacatorului trebuie să fie teritoriul învecinat deținut de atacator'
+  );
+
+  const warRound: GameState['warRound'] = {
+    roundId: 'wr_anim_1',
+    roundNumber: 1,
+    status: 'attack_preview',
+    selectionDeadline: 0,
+    questionDeadline: 0,
+    attackerIds: ['p_attacker'],
+    defenderIds: ['p_defender'],
+    byePlayerIds: [],
+    battles: [
+      {
+        battleId: 'battle_anim_1',
+        attackerId: 'p_attacker',
+        defenderId: 'p_defender',
+        targetTerritoryId: neighborId,
+        status: 'ready',
+      },
+    ],
+  };
+
+  // Both Player 1 and Player 2 compute the exact same attack vectors from authoritative server state
+  const vectorsClient1 = buildActiveAttackVectors(map2p, players, warRound, 'war');
+  const vectorsClient2 = buildActiveAttackVectors(map2p, players, warRound, 'war');
+  assert.equal(vectorsClient1.length, 1);
+  assert.deepEqual(
+    vectorsClient1,
+    vectorsClient2,
+    'Toți jucătorii din cameră văd exact același vector de atac, teritoriu sursă și țintă'
+  );
+  assert.equal(vectorsClient1[0].sourceTerritoryId, firstId);
+  assert.equal(vectorsClient1[0].targetTerritoryId, neighborId);
+  assert.equal(vectorsClient1[0].attackerName, 'VladAtacator');
+  assert.equal(vectorsClient1[0].defenderName, 'StefanAparator');
+
+  // 4. Test authoritative territory transition detection:
+  //    (a) Neutral territory conquest -> neutral_conquest spread + pulse
+  const neutralId = tIds.find((id) => id !== firstId && id !== neighborId)!;
+  const prevSnap1 = JSON.parse(JSON.stringify(map2p)) as Record<string, Territory>;
+  const nextSnap1 = JSON.parse(JSON.stringify(map2p)) as Record<string, Territory>;
+  nextSnap1[neutralId].ownerId = 'p_attacker';
+  nextSnap1[neutralId].points = SCORING.CONQUEST;
+
+  const trNeutral = detectTerritoryMapTransitions({
+    prevTerritories: prevSnap1,
+    nextTerritories: nextSnap1,
+    players,
+    nowMs: 1000,
+    prefersReducedMotion: false,
+  });
+  assert.equal(trNeutral.length, 1);
+  assert.equal(trNeutral[0].type, 'neutral_conquest');
+  assert.equal(trNeutral[0].territoryId, neutralId);
+  assert.equal(trNeutral[0].color, '#ef4444');
+  assert.ok(trNeutral[0].durationMs > 0);
+
+  //    (b) War conquest (attacker wins territory) -> war_conquest fill in winner's color
+  const prevSnap2 = JSON.parse(JSON.stringify(nextSnap1)) as Record<string, Territory>;
+  const nextSnap2 = JSON.parse(JSON.stringify(nextSnap1)) as Record<string, Territory>;
+  nextSnap2[neighborId].ownerId = 'p_attacker';
+  nextSnap2[neighborId].points = SCORING.WAR_DUEL;
+
+  const trWarConquest = detectTerritoryMapTransitions({
+    prevTerritories: prevSnap2,
+    nextTerritories: nextSnap2,
+    players,
+    nowMs: 2000,
+    prefersReducedMotion: false,
+  });
+  assert.equal(trWarConquest.length, 1);
+  assert.equal(trWarConquest[0].type, 'war_conquest');
+  assert.equal(trWarConquest[0].territoryId, neighborId);
+  assert.equal(trWarConquest[0].color, '#ef4444', 'Umplerea se face în culoarea câștigătorului');
+  assert.equal(trWarConquest[0].previousColor, '#3b82f6', 'Păstrează culoarea anterioară pentru tranziția graduală');
+
+  //    (c) Successful war defense -> war_defense shield effect without changing owner
+  const prevSnap3 = JSON.parse(JSON.stringify(prevSnap1)) as Record<string, Territory>;
+  const nextSnap3 = JSON.parse(JSON.stringify(prevSnap1)) as Record<string, Territory>;
+  nextSnap3[neighborId].defensiveBonus = (prevSnap3[neighborId].defensiveBonus || 0) + 100;
+
+  const trWarDefense = detectTerritoryMapTransitions({
+    prevTerritories: prevSnap3,
+    nextTerritories: nextSnap3,
+    players,
+    nowMs: 3000,
+    prefersReducedMotion: false,
+  });
+  assert.equal(trWarDefense.length, 1);
+  assert.equal(trWarDefense[0].type, 'war_defense');
+  assert.equal(trWarDefense[0].territoryId, neighborId);
+  assert.equal(
+    nextSnap3[neighborId].ownerId,
+    'p_defender',
+    'La apărare reușită proprietarul teritoriului rămâne neschimbat'
+  );
+
+  //    (d) Reduced motion sets transition durationMs to 0
+  const trReduced = detectTerritoryMapTransitions({
+    prevTerritories: prevSnap1,
+    nextTerritories: nextSnap1,
+    players,
+    nowMs: 4000,
+    prefersReducedMotion: true,
+  });
+  assert.equal(trReduced.length, 1);
+  assert.equal(trReduced[0].durationMs, 0, 'Cu prefers-reduced-motion activ, durata animației este 0ms');
+});
+
 
 
