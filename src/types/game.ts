@@ -133,6 +133,24 @@ export interface WarBattleAssignment {
   outcome?: 'attacker_won' | 'defender_won' | 'draw_no_bonus' | 'needs_tiebreak' | 'skipped';
 }
 
+export interface WarBattleResultSummary {
+  battleId: string;
+  attackerId: string;
+  attackerName: string;
+  attackerColor: string;
+  defenderId: string;
+  defenderName: string;
+  defenderColor: string;
+  targetTerritoryId: string;
+  territoryName: string;
+  isBaseTarget: boolean;
+  outcome: 'attacker_won' | 'defender_won' | 'draw_no_bonus';
+  headline: string;
+  details: string;
+  effectBadge: string;
+  expiresAt: number;
+}
+
 export interface WarRoundState {
   roundId: string;
   roundNumber: number;
@@ -151,6 +169,7 @@ export interface WarRoundState {
   questionDeadline: number | null;
   attackPreviewDurationMs?: number;
   attackPreviewExpiresAt?: number | null;
+  lastBattleResult?: WarBattleResultSummary | null;
 }
 
 export type RoundTrackerMarkerState =
@@ -236,12 +255,14 @@ export interface GameState {
   usedFactKeys?: string[];
   categoryUsageCounts?: Record<string, number>;
   allocationNoResponseRetries?: number;
+  conquestStallRounds?: number;
   pendingTerritoryId?: string | null;
   conquestPickQueue?: string[];
   conquestPickerId?: string | null;
   unallocatedTerritoriesQueue?: string[];
   allocationWinnerId?: string | null;
   allocationPickReady?: boolean;
+  warTurnQueue?: string[];
   warRound?: WarRoundState | null;
   warRoleHistory?: Record<string, Array<'attacker' | 'defender' | 'bye'>>;
   winner?: Player;

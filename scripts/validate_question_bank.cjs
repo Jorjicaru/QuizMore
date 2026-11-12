@@ -113,8 +113,11 @@ function validateQuestionBank() {
     } else {
       const wordCount = q.question.trim().split(/\s+/).filter(Boolean).length;
       if (wordCount > maxWordCount) maxWordCount = wordCount;
-      if (wordCount < 4 || wordCount > 15) {
-        errors.push(`ID ${q.id}: Întrebarea activă are ${wordCount} cuvinte (permis 4..15: "${q.question}").`);
+      if (wordCount < 4 || wordCount > 14) {
+        errors.push(`ID ${q.id}: Întrebarea activă are ${wordCount} cuvinte (permis 4..14: "${q.question}").`);
+      }
+      if (q.question.trim().length > 95) {
+        errors.push(`ID ${q.id}: Întrebarea activă are ${q.question.trim().length} caractere (maxim permis 95: "${q.question}").`);
       }
       if (!q.question.trim().endsWith('?')) {
         errors.push(`ID ${q.id}: Întrebarea activă nu se termină cu '?': "${q.question}"`);
@@ -150,6 +153,15 @@ function validateQuestionBank() {
     if (!Array.isArray(q.options) || q.options.length !== 4) {
       errors.push(`ID ${q.id}: Întrebarea choice trebuie să aibă exact 4 opțiuni.`);
     } else {
+      for (const opt of q.options) {
+        const optText = String(opt || '').trim();
+        const optWords = optText.split(/\s+/).filter(Boolean).length;
+        if (!optText || optText.length > 36 || optWords > 5) {
+          errors.push(
+            `ID ${q.id}: Opțiunea "${optText}" este prea lungă pentru mobil (${optText.length} caractere, ${optWords} cuvinte; maxim permis 36 caractere / 5 cuvinte).`
+          );
+        }
+      }
       const normOpts = new Set(q.options.map((o) => normalizeQuestionText(o)));
       if (normOpts.size !== 4) {
         errors.push(`ID ${q.id}: Opțiunile de răspuns conțin duplicate.`);

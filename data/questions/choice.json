@@ -15417,8 +15417,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Răscoala din Transilvania condusă de Horea, Cloșca și Crișan (1784)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_19",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -15527,8 +15527,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Adunarea Națională de la Blaj pe Câmpia Libertății în timpul Revoluției pașoptiste (1848)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_21",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -15637,8 +15637,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Mica Unire a Principatelor Române prin dubla alegere a lui Alexandru Ioan Cuza (1859)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_22",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -15879,8 +15879,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Proclamarea Independenței de Stat a României în Parlament de către Mihail Kogălniceanu (1877)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_leader_26",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -16033,8 +16033,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Inaugurarea Podului Regele Carol I de la Cernavodă, proiectat de inginerul Anghel Saligny (1895)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_28",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -16165,8 +16165,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Marile bătălii de apărare de la Mărăști, Mărășești și Oituz (1917)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_30",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -16253,8 +16253,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Încoronarea Regelui Ferdinand I și a Reginei Maria la Alba Iulia ca suverani ai României Mari (1922)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_32",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -17397,8 +17397,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Debarcarea aliaților în Normandia (Ziua Z / Operation Overlord) (1944)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_49",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -17573,8 +17573,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Primul zbor al omului în spațiul cosmic realizat de cosmonautul Iuri Gagarin (1961)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_leader_52",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -17837,8 +17837,8 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Semnarea Tratatului de la Maastricht privind constituirea Uniunii Europene (1992)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_56",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -18277,8 +18277,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Pădurea spânzuraților” de Liviu Rebreanu (1922)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -18519,8 +18519,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Ultima noapte de dragoste, întâia noapte de război” de Camil Petrescu (1930)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_11",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -18585,8 +18585,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Patul lui Procust” de Camil Petrescu (1933)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_12",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -18783,8 +18783,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Moromeții (Volumul I)” de Marin Preda (1955)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_15",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -18915,8 +18915,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Plumb” de George Bacovia (1916)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_17",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -19487,8 +19487,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Don Quijote de la Mancha (Partea I)” de Miguel de Cervantes (1605)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_26",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -19531,8 +19531,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Hamlet” de William Shakespeare (1601)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_27",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -19729,8 +19729,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Război și pace” de Lev Tolstoi (1869)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_30",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -19795,8 +19795,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „O mie nouă sute optzeci și patru (1984)” de George Orwell (1949)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_31",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -19839,8 +19839,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Un veac de singurătate” de Gabriel Garcia Marquez (1967)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_32",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20059,8 +20059,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Stăpânul Inelelor: Frăția Inelului (carte)” de J. R. R. Tolkien (1954)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_35",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20763,8 +20763,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „4 luni, 3 săptămâni și 2 zile (distins cu Palme d'Or)” de Cristian Mungiu (2007)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_46",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20785,8 +20785,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „4 luni, 3 săptămâni și 2 zile (distins cu Palme d'Or)” de Cristian Mungiu (2007)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_46",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20829,8 +20829,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Moartea domnului Lăzărescu” de Cristi Puiu (2005)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_47",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20895,8 +20895,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Poziția copilului (distins cu Ursul de Aur la Berlin)” de Călin Peter Netzer (2013)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_48",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -20961,8 +20961,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Aferim! (distins cu Ursul de Argint la Berlin)” de Radu Jude (2015)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_49",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -21027,8 +21027,8 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Oppenheimer (distins cu Oscarul pentru cel mai bun film)” de Christopher Nolan (2023)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_author_50",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -22501,8 +22501,8 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Siret (pe teritoriul României) (Siret - Galați)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_34",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -22963,8 +22963,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Simona Halep (Paris, 2018)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_5",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23051,8 +23051,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Ilie Năstase (Paris, 1973)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_champ_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23227,8 +23227,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – David Popovici (Paris, 2024)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_9",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23557,8 +23557,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Usain Bolt (Berlin, 2009)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_host_15",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23579,8 +23579,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Usain Bolt (Berlin, 2009)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_15",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23865,8 +23865,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – România (Handbal) (Berlin, 1974)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_champ_20",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -23953,8 +23953,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare C (creat de Dennis Ritchie la Bell Labs) (Dennis Ritchie)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_1",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24019,8 +24019,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – World Wide Web (WWW), propus și dezvoltat la CERN (Tim Berners-Lee)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24085,8 +24085,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Nucleul sistemului de operare Linux (versiunea 0.01) (Linus Torvalds)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_3",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24195,8 +24195,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare Java (lansat de Sun Microsystems) (James Gosling)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_5",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24327,8 +24327,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul C++ (C cu clase, creat la Bell Labs) (Bjarne Stroustrup)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24525,8 +24525,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Motorul de căutare Google fondat în California (Larry Page și Sergey Brin)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_11",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24657,8 +24657,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Descoperirea penicilinei, primul antibiotic modern (Alexander Fleming)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_13",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24701,8 +24701,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Descoperirea efectului antidiabetic al extractului pancreatic (pancreina) (Nicolae Paulescu)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_14",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24767,8 +24767,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Determinarea structurii dublu-elicoidale a moleculei de ADN (James Watson și Francis Crick)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_15",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24833,8 +24833,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea Teoriei Restrânse a Relativității (E = mc²) (Albert Einstein)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_16",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24899,8 +24899,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea lucrării Principia Mathematica și legea atracției universale (Isaac Newton)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_17",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -24965,8 +24965,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Elaborarea Tabelului Periodic al Elementelor Chimice (Dmitri Mendeleev)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_18",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -25031,8 +25031,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Construirea aparatului experimental cu motor cu reacție Coandă-1910 (Henri Coandă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_19",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -25097,8 +25097,8 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Inventarea stiloului cu rezervor (condeiul portăreț fără sfârșit) (Petrache Poenaru)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_creator_20",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -39881,8 +39881,8 @@
     "sourceTitle": "Tratat de Anatomie și Fiziologie Umană & Zoologie Comparată – Fondarea Institutului de Speologie din Cluj de către Emil Racoviță (primul din lume) (Istoria biologiei)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_biologie_25",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -44457,8 +44457,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Ansamblul monumental „Calea Eroilor” realizat de Constantin Brâncuși la Târgu Jiu (Sculptură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_1",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -44479,8 +44479,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Ansamblul monumental „Calea Eroilor” realizat de Constantin Brâncuși la Târgu Jiu (Sculptură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_1",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -44655,8 +44655,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Masa Tăcerii din ansamblul lui Constantin Brâncuși de la Târgu Jiu (Sculptură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -45535,8 +45535,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Tabloul „Impresie, răsărit de soare” de Claude Monet (care a dat numele impresionismului) (Impresionism)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -46349,8 +46349,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Tabloul „Carul cu boi” (versiunea de la Muzeul Național de Artă) de Nicolae Grigorescu (Pictură românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_12",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -46833,8 +46833,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Pictorul român Ion Andreescu („Stejarul”, „Iarna la Barbizon”) (Pictură românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_15",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -47163,8 +47163,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Piramida de sticlă și metal din curtea Muzeului Luvru din Paris (arhitect I. M. Pei) (Arhitectură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_17",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -47185,8 +47185,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Piramida de sticlă și metal din curtea Muzeului Luvru din Paris (arhitect I. M. Pei) (Arhitectură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_17",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -47713,8 +47713,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Ateneul Român din București, edificiu simbol al culturii naționale (Arhitectură neoclasică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_20",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -48395,8 +48395,8 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Muzeul Național Brukenthal din Sibiu, primul muzeu deschis publicului pe teritoriul României (Muzee de artă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_24",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -48923,8 +48923,8 @@
     "sourceTitle": "Enciclopedia Muzicii Clasice, Operelor Lirice și Organologiei – Festivalul Internațional „George Enescu” de la București (Muzică clasică românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_muzica_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -49099,8 +49099,8 @@
     "sourceTitle": "Enciclopedia Muzicii Clasice, Operelor Lirice și Organologiei – Ciprian Porumbescu, compozitorul „Baladei” și al operetei „Crai Nou” (Muzică romantică românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_muzica_3",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -52971,8 +52971,8 @@
     "sourceTitle": "Enciclopedia Muzicii Clasice, Operelor Lirice și Organologiei – Oratoriul „Mesia” (cu celebrul cor „Hallelujah”) compus de Georg Friedrich Händel (Baroc muzical)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_muzica_25",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -53323,8 +53323,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Prima gală a Premiilor Academiei Americane de Film (Premiile Oscar) (Premiile Oscar)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -53499,8 +53499,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Trilogia record „Ben-Hur” (1959), „Titanic” (1997) și „Stăpânul Inelelor: Întoarcerea Regelui” (2003) (Recorduri Oscar)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_3",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -53675,8 +53675,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul istoric românesc „Independența României” regizat de Aristide Demetriade (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_4",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -53829,8 +53829,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul „Pădurea spânzuraților” regizat de Liviu Ciulei (Premiul pentru regie la Cannes) (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_5",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -54005,8 +54005,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Scurtmetrajul de animație „Scurtă istorie” realizat de Ion Popescu-Gopo (Palme d'Or la Cannes) (Animație românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_6",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -54313,8 +54313,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul „Moromeții” regizat de Stere Gulea cu Victor Rebengiuc în rolul lui Ilie Moromete (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_8",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -54973,8 +54973,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul clasic „Cetățeanul Kane” (Citizen Kane) regizat și interpretat de Orson Welles (Cinema clasic mondial)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_12",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -55127,8 +55127,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul „Casablanca” regizat de Michael Curtiz cu Humphrey Bogart și Ingrid Bergman (Cinema clasic mondial)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_13",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -55281,8 +55281,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul „Cei șapte samurai” regizat de maestrul japonez Akira Kurosawa (Cinema asiatic)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_14",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -56315,8 +56315,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul sud-coreean „Parazit” (Parasite) regizat de Bong Joon-ho (Palme d'Or și Oscar pentru cel mai bun film) (Cinema contemporan)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_20",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -56821,8 +56821,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Seria de filme de comedie „Brigada Diverse” (B.D. intră în acțiune) regizată de Mircea Drăgan (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_23",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -57371,8 +57371,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Primul zbor mecanic autopropulsat din lume cu un aparat mai greu decât aerul (Kitty Hawk, frații Wright) (Istoria aviației)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_1",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -57723,8 +57723,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Construirea și zborul avionului „Vlaicu I” proiectat de inginerul român Aurel Vlaicu (Aviație românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_3",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -57877,8 +57877,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Lucrarea de pionierat „Racheta spre spațiile interplanetare” publicată de fizicianul sibian Hermann Oberth (Astronautică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_4",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -57899,8 +57899,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Lucrarea de pionierat „Racheta spre spațiile interplanetare” publicată de fizicianul sibian Hermann Oberth (Astronautică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_4",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -58053,8 +58053,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Inventarea pilei electrice cu combustie internă și electrozi inatacabili (Pila Karpen) de către Nicolae Vasilescu-Karpen (Inginerie electrică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_5",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -58229,8 +58229,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Brevetarea scaunului ejectabil pentru piloți de către inventatorul român Anastase Dragomir (Siguranță aviatică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_6",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -58251,8 +58251,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Brevetarea scaunului ejectabil pentru piloți de către inventatorul român Anastase Dragomir (Siguranță aviatică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_6",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -58405,8 +58405,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Lansarea pe orbită a primului satelit artificial al Pământului (Sputnik 1) (Explorare spațială)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -58933,8 +58933,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Lansarea primului microprocesor comercial pe un singur cip din lume (Intel 4004) (Microelectronică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_10",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -59637,8 +59637,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Construirea primului automobil modern cu motor cu ardere internă pe benzină (Benz Patent-Motorwagen) (Inginerie auto)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_14",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -60693,8 +60693,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Punerea în funcțiune a Unității 1 a Centralei Nuclearelectrice de la Cernavodă (reactor CANDU) (Energie nucleară)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_20",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -61419,8 +61419,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Introducerea iluminatului public electric stradal la Timișoara (primul oraș iluminat electric din Europa continentală) (Electrotehnică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_24",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -61573,8 +61573,8 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Teoria sonicității formulată de inginerul și savantul român Gogu Constantinescu (Inginerie mecanică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_25",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -62255,8 +62255,8 @@
     "sourceTitle": "Comitetul Olimpic și Sportiv Român & Regulamente Oficiale Sportive – Jocul de baschet olimpic și FIBA (echipa pe parchet) (Baschet)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_sport_4",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -65577,8 +65577,8 @@
     "sourceTitle": "Comitetul Olimpic și Sportiv Român & Regulamente Oficiale Sportive – Lia Manoliu, campioană olimpică la aruncarea discului la JO din Ciudad de Mexico (1968) (Olimpism românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_sport_24",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -69273,8 +69273,8 @@
     "sourceTitle": "Dicționarul General al Literaturii Române (Academia Română) – Scrisoarea lui Neacșu din Câmpulung către judelui Brașovului Johannes Benkner (primul text păstrat în limba română) (Istoria limbii române)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_literatura_21",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -70329,8 +70329,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Banca Națională a României (BNR), instituție fondată cu aportul lui Eugeniu Carada și Ion C. Brătianu (Instituții naționale)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -70901,8 +70901,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Includerea Cetății Medievale a Sighișoarei în Patrimoniul Mondial UNESCO (Patrimoniu UNESCO)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_6",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -71033,8 +71033,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Includerea cetăților dacice din Munții Orăștiei (Sarmizegetusa Regia ș.a.) în Patrimoniul UNESCO (Patrimoniu UNESCO)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_7",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -71187,8 +71187,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Includerea Peisajului Cultural Minier Roșia Montană în Patrimoniul Mondial UNESCO (Patrimoniu UNESCO)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_8",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -71649,8 +71649,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Premiile Nobel acordate pentru prima dată la Stockholm și Oslo conform testamentului lui Alfred Nobel (Premiile Nobel)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_11",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -72705,8 +72705,8 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Minunile Lumii Antice menționate în izvoarele elenistice (Marea Piramidă din Giza fiind singura păstrată) (Istorie și cultură)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_18",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -73255,8 +73255,8 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Steaua București (Sevilla, 1986)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_2",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -73629,8 +73629,8 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Scurtmetrajul de animație „Scurtă istorie” realizat de Ion Popescu-Gopo (Palme d'Or la Cannes) (Animație românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_6",
-    "reviewStatus": "approved",
-    "isDisabled": false,
+    "reviewStatus": "disabled",
+    "isDisabled": true,
     "verified": true
   },
   {

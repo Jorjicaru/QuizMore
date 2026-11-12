@@ -505,35 +505,43 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
     }
     if (isMyTurn) {
       return (
-        <div className="flex items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-500/20 px-2.5 py-1 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
+        <div className="flex items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-500/20 px-2 sm:px-2.5 py-1 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
           <Swords className="h-3.5 w-3.5 text-amber-300 shrink-0" />
-          <span className="font-serif text-[11px] sm:text-xs font-black tracking-wide text-amber-200 whitespace-nowrap">
+          <span className="font-serif text-[10px] sm:text-xs font-black tracking-wide text-amber-200 whitespace-nowrap">
             RÂNDUL TĂU PE HARTĂ!
           </span>
         </div>
       );
     }
     if (game.phase === 'war' && game.warRound) {
+      const battle = game.warRound.battles[0];
+      const atk = battle ? game.players.find((p) => p.id === battle.attackerId) : activePlayer;
+      const def =
+        battle && battle.defenderId
+          ? game.players.find((p) => p.id === battle.defenderId)
+          : undefined;
       return (
-        <div className="flex items-center gap-1.5 rounded-lg border border-stone-700/80 bg-stone-900/90 px-2.5 py-1">
+        <div className="flex items-center gap-1.5 rounded-lg border border-stone-700/80 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
           <Swords className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[180px] sm:max-w-[240px]">
+          <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[155px] sm:max-w-[260px]">
             {game.warRound.status === 'selecting_targets'
-              ? 'Atacatorii aleg țintele...'
-              : game.warRound.status === 'attack_preview'
-              ? '⚔️ Prezentare atac și țintă...'
-              : 'Dueluri simultane active'}
+              ? `${atk?.username || 'Atacatorul'} alege ținta...`
+              : game.warRound.status === 'attack_preview' && atk && def
+              ? `⚔️ ${atk.username} atacă ${def.username}`
+              : atk && def
+              ? `⚔️ ${atk.username} vs ${def.username}`
+              : 'Atac în desfășurare'}
           </span>
         </div>
       );
     }
     return (
-      <div className="flex items-center gap-1.5 rounded-lg border border-stone-800 bg-stone-900/90 px-2.5 py-1 min-w-0">
+      <div className="flex items-center gap-1.5 rounded-lg border border-stone-800 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
         <span
           className="h-2.5 w-2.5 rounded-full shrink-0"
           style={{ backgroundColor: activePlayer?.color }}
         />
-        <span className="text-[11px] sm:text-xs text-stone-300 truncate max-w-[160px] sm:max-w-[220px]">
+        <span className="text-[11px] sm:text-xs text-stone-300 truncate max-w-[140px] sm:max-w-[220px]">
           Mută: <strong className="text-white">{activePlayer?.username}</strong>
         </span>
       </div>
@@ -541,11 +549,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
   };
 
   const renderUtilityButtons = () => (
-    <div className="flex items-center gap-1.5 shrink-0">
+    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
       <button
         type="button"
         onClick={() => setShowLogDrawer(true)}
-        className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-stone-900/90 px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-stone-800 transition"
+        className="flex min-h-[36px] items-center gap-1 rounded-lg border border-amber-500/30 bg-stone-900/90 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-stone-800 transition"
         title="Deschide Jurnalul de Război"
       >
         <ScrollText className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -558,7 +566,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       <button
         type="button"
         onClick={toggleMute}
-        className="flex items-center justify-center rounded-lg border border-stone-700/80 bg-stone-900/90 p-1.5 text-stone-300 hover:bg-stone-800 hover:text-white transition"
+        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-stone-700/80 bg-stone-900/90 p-1.5 text-stone-300 hover:bg-stone-800 hover:text-white transition"
         title={muted ? 'Activează sunetul' : 'Oprește sunetul'}
         aria-label={muted ? 'Activează sunetul' : 'Oprește sunetul'}
       >
@@ -572,7 +580,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       <button
         type="button"
         onClick={onLeaveGame}
-        className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 transition"
+        className="flex min-h-[36px] items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 transition"
+        title="Părăsește Meciul"
+        aria-label="Părăsește Meciul"
       >
         <LogOut className="h-3.5 w-3.5 shrink-0" />
         <span className="hidden sm:inline">Părăsește</span>
@@ -581,19 +591,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
   );
 
   return (
-    <div className="flex flex-col gap-1.5 shrink-0">
+    <div className="flex flex-col gap-1 sm:gap-1.5 shrink-0 w-full max-w-full overflow-hidden">
       {/* COMPACT TOP COMMAND BAR (Desktop & Mobile) */}
-      <div className="rounded-xl border border-stone-800/90 bg-stone-950/95 px-2.5 py-1.5 shadow-xl backdrop-blur-xl flex flex-col gap-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="rounded-xl border border-stone-800/90 bg-stone-950/95 px-2 sm:px-2.5 py-1.5 shadow-xl backdrop-blur-xl flex flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
           {/* Left: Turn Status Pill */}
-          <div className="flex items-center gap-2 min-w-0">{renderTurnStatusPill()}</div>
+          <div className="flex items-center gap-1.5 min-w-0">{renderTurnStatusPill()}</div>
 
-          {/* Center: Clean Phase & Round Title (No huge N x N slash box!) */}
-          <div className="flex items-center gap-2">
-            <span className="font-serif text-xs sm:text-sm font-black tracking-wider text-amber-100 uppercase">
+          {/* Center: Clean Phase & Round Title */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="font-serif text-[11px] sm:text-sm font-black tracking-wider text-amber-100 uppercase">
               {trackerModel.phaseLabel}
             </span>
-            <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] sm:text-xs font-bold text-amber-300">
+            <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 sm:px-2 py-0.5 font-mono text-[10px] sm:text-xs font-bold text-amber-300">
               {trackerModel.subModeLabel}
             </span>
           </div>
@@ -604,19 +614,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
 
         {/* Sleek Integrated Selection Timer Bar (Smooth RAF Animation) */}
         {showSelectionTimer && (
-          <div className="flex items-center gap-2 pt-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 whitespace-nowrap">
+          <div className="flex items-center gap-2 pt-0.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 truncate">
               {game.phase === 'base_selection'
                 ? 'Alege Baza (1000 pct)'
                 : game.phase === 'conquest'
                 ? 'Cucerește teritoriu vecin (200 pct)'
                 : game.phase === 'allocation'
-                ? 'Revendică zonă vecină (300 pct)'
+                ? 'Revendică teritoriu liber (300 pct)'
                 : game.warRound?.status === 'attack_preview'
                 ? 'Prezentare atac înainte de întrebare'
                 : 'Alege ținta de atac (400 pct)'}
             </span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">
+            <div className="h-1.5 flex-1 min-w-[48px] overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">
               <div
                 ref={timerBarRef}
                 className="h-full w-full origin-left will-change-transform bg-emerald-500"
@@ -624,7 +634,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
               />
             </div>
             <span
-              className={`font-mono text-[11px] font-black tabular-nums ${
+              className={`font-mono text-[11px] font-black tabular-nums shrink-0 ${
                 timeLeft <= 4 ? 'text-red-400 animate-pulse' : 'text-amber-300'
               }`}
             >

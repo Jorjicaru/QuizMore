@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ActiveQuestionState, Player, WarRoundState } from '../types/game';
+import { ActiveQuestionState, Player, Territory, WarRoundState } from '../types/game';
+import { formatWarAttackAnnouncement } from '../game/rules';
 import { sound } from '../services/audio';
 import { socketService } from '../services/socket';
 import {
@@ -8,6 +9,7 @@ import {
   CheckCircle2,
   XCircle,
   Swords,
+  Shield,
   Trophy,
   AlertCircle,
 } from 'lucide-react';
@@ -15,6 +17,7 @@ import {
 interface QuestionModalProps {
   activeQuestion: ActiveQuestionState;
   players: Player[];
+  territories?: Record<string, Territory>;
   currentUserId?: string;
   warRound?: WarRoundState | null;
   onSubmitAnswer: (
@@ -41,6 +44,7 @@ function formatSubmitTimeSeconds(ms: number | null | undefined): string {
 export const QuestionModal: React.FC<QuestionModalProps> = ({
   activeQuestion,
   players,
+  territories,
   currentUserId,
   warRound,
   onSubmitAnswer,
@@ -52,6 +56,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     durationSeconds,
     attackerId,
     defenderId,
+    targetTerritoryId,
     phaseContext,
     participantIds,
     winnerIds,
@@ -218,8 +223,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       index,
       (res) => {
         if (activeInstanceKeyRef.current !== currentKey) return;
-        // Strict ACK contract: never assume success if res is missing or timedOut.
-        // Keep lock in 'submitting' state and reconcile via game_state_update (hasServerRecord).
         if (!res || res.timedOut || res.code === 'ACK_TIMEOUT') {
           setSubmitStatus('submitting');
           return;
@@ -251,16 +254,43 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       : phaseContext === 'allocation'
       ? 'Departajare (+300 pct)'
       : activeQuestion.isTiebreak
-      ? 'Departajare Război (+400 pct)'
-      : 'Duel Război (+400 pct)';
+      ? 'Departajare Atac (+400 pct)'
+      : 'Atac (+400 pct)';
 
   // Count how many participants have answered so far
   const answeredCount = effectiveParticipants.filter((pid) => {
     const sub = playerAnswers[pid];
     if (!sub) return false;
-    if (!resolved) return true; // In unresolved state, presence in playerAnswers means submitted
+    if (!resolved) return true;
     return sub.answer !== null && sub.answerStatus !== 'NO_RESPONSE';
   }).length;
+
+  // Individual war duel details (1 attacker, 1 defender, 1 target territory)
+  const activeWarBattle =
+    phaseContext === 'war' && warRound?.battles
+      ? warRound.battles.find((b) => b.targetTerritoryId !== null) || warRound.battles[0] || null
+      : null;
+
+  const warAttacker =
+    phaseContext === 'war'
+      ? players.find((p) => p.id === (activeWarBattle?.attackerId || attackerId))
+      : undefined;
+  const warDefender =
+    phaseContext === 'war'
+      ? players.find((p) => p.id === (activeWarBattle?.defenderId || defenderId))
+      : undefined;
+  const warTargetId = activeWarBattle?.targetTerritoryId || targetTerritoryId;
+  const warTargetTerritory = warTargetId && territories ? territories[warTargetId] : undefined;
+
+  const warAttackAnnouncement =
+    phaseContext === 'war' && warAttacker && warDefender
+      ? formatWarAttackAnnouncement({
+          attacker: warAttacker,
+          defender: warDefender,
+          targetTerritory: warTargetTerritory || null,
+          lastBattleResult: warRound?.lastBattleResult || null,
+        })
+      : null;
 
   // Determine personal outcome banner when resolved
   const renderPersonalOutcomeBanner = () => {
@@ -272,7 +302,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
     if (isNoResponse) {
       return (
-        <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-stone-600 bg-stone-900/90 px-3.5 py-2 text-xs sm:text-sm font-bold text-stone-300">
+        <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-stone-600 bg-stone-900/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-stone-300">
           <Clock className="h-4 w-4 text-amber-400 shrink-0" />
           <span>TIMP EXPIRAT — Nu ai trimis niciun răspuns la această întrebare.</span>
         </div>
@@ -282,24 +312,24 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     if (phaseContext === 'allocation') {
       if (isWinner) {
         return (
-          <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-amber-400 bg-amber-950/90 px-3.5 py-2 text-xs sm:text-sm font-bold text-amber-200 shadow-lg">
+          <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-amber-400 bg-amber-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-amber-200 shadow-lg">
             <Trophy className="h-4 w-4 text-amber-400 shrink-0" />
             <span>
-              RĂSPUNS CORECT ȘI CEL MAI RAPID! Urmează să alegi un teritoriu învecinat (+300 PCT)!
+              RĂSPUNS CORECT ȘI CEL MAI RAPID! Urmează să alegi un teritoriu liber (+300 PCT)!
             </span>
           </div>
         );
       }
       if (isCorr) {
         return (
-          <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/60 bg-emerald-950/80 px-3.5 py-2 text-xs sm:text-sm font-semibold text-emerald-200">
+          <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/60 bg-emerald-950/80 px-3 py-1.5 text-xs sm:text-sm font-semibold text-emerald-200">
             <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
             <span>Răspuns corect, dar alt jucător eligibil a răspuns mai rapid.</span>
           </div>
         );
       }
       return (
-        <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-red-500/70 bg-red-950/90 px-3.5 py-2 text-xs sm:text-sm font-bold text-red-200">
+        <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-red-500/70 bg-red-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-200">
           <XCircle className="h-4 w-4 text-red-400 shrink-0" />
           <span>RĂSPUNS GREȘIT! Alt jucător primește dreptul de alegere în departajare.</span>
         </div>
@@ -308,7 +338,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
     if (isCorr) {
       return (
-        <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/80 bg-emerald-950/90 px-3.5 py-2 text-xs sm:text-sm font-bold text-emerald-200 shadow-lg">
+        <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/80 bg-emerald-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-emerald-200 shadow-lg">
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           <span>
             {phaseContext === 'conquest'
@@ -322,7 +352,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     }
 
     return (
-      <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-red-500/70 bg-red-950/90 px-3.5 py-2 text-xs sm:text-sm font-bold text-red-200">
+      <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-red-500/70 bg-red-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-200">
         <XCircle className="h-4 w-4 text-red-400 shrink-0" />
         <span>
           {phaseContext === 'conquest'
@@ -333,43 +363,31 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     );
   };
 
-  // Active battles to display in War mode
-  const activeWarBattles =
-    phaseContext === 'war' && warRound?.battles
-      ? warRound.battles.filter((b) => {
-          if (activeQuestion.isTiebreak) {
-            return (
-              effectiveParticipants.includes(b.attackerId) ||
-              effectiveParticipants.includes(b.defenderId)
-            );
-          }
-          return b.targetTerritoryId !== null;
-        })
-      : [];
-
   return (
     <div
       data-testid="question-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/85 p-2 sm:p-4 backdrop-blur-md select-none animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/85 p-1.5 sm:p-4 backdrop-blur-md select-none animate-fadeIn overflow-x-hidden"
     >
-      <div className="relative flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border-2 border-amber-500/50 bg-[#2b1810]/98 shadow-[0_0_60px_rgba(0,0,0,0.95)] backdrop-blur-2xl">
+      <div className="relative flex max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border-2 border-amber-500/50 bg-[#2b1810]/98 shadow-[0_0_60px_rgba(0,0,0,0.95)] backdrop-blur-2xl">
         {/* Top Header */}
-        <div className="shrink-0 border-b border-amber-900/60 bg-gradient-to-r from-[#1e100a] via-[#2d1910] to-[#1e100a] px-3.5 sm:px-6 py-2.5 sm:py-3">
+        <div className="shrink-0 border-b border-amber-900/60 bg-gradient-to-r from-[#1e100a] via-[#2d1910] to-[#1e100a] px-3 sm:px-6 py-2 sm:py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <span
                 data-testid="question-phase-badge"
-                className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 font-serif text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-300"
+                className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-serif text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-300"
               >
                 {phaseBadgeLabel}
               </span>
-              <span className="rounded-lg border border-stone-700 bg-stone-900/80 px-2 py-0.5 text-[11px] sm:text-xs font-medium text-stone-300">
-                {answeredCount} / {effectiveParticipants.length} răspunsuri
-              </span>
+              {phaseContext !== 'war' && (
+                <span className="rounded-lg border border-stone-700 bg-stone-900/80 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-stone-300">
+                  {answeredCount} / {effectiveParticipants.length} răspunsuri
+                </span>
+              )}
             </div>
 
             {/* Timer Badge */}
-            <div className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-950 px-3 py-0.5 font-mono text-xs sm:text-sm font-bold shadow-inner shrink-0 tabular-nums">
+            <div className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-950 px-2.5 sm:px-3 py-0.5 font-mono text-xs sm:text-sm font-bold shadow-inner shrink-0 tabular-nums">
               <Clock
                 className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
                   timeLeft <= 4 && !resolved ? 'text-red-500 animate-pulse' : 'text-amber-400'
@@ -385,54 +403,52 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             </div>
           </div>
 
-          {/* Confrontation row(s) if War Phase */}
-          {phaseContext === 'war' && activeWarBattles.length > 0 && (
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {activeWarBattles.map((b) => {
-                const atk = players.find((p) => p.id === b.attackerId);
-                const def = players.find((p) => p.id === b.defenderId);
-                const isMyDuel =
-                  currentUserId === b.attackerId || currentUserId === b.defenderId;
-                return (
-                  <div
-                    key={b.battleId}
-                    className={`flex items-center justify-between rounded-xl border px-2.5 py-1.5 text-xs ${
-                      isMyDuel
-                        ? 'border-amber-400/70 bg-stone-950/90 ring-1 ring-amber-400/30'
-                        : 'border-stone-800 bg-stone-950/65'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: atk?.color }}
-                      />
-                      <span className="font-bold text-stone-100 truncate">
-                        {atk?.username || 'Atacator'}
-                      </span>
-                      <span className="text-[9px] text-amber-400 font-bold shrink-0">⚔️</span>
-                    </div>
+          {/* Individual War Attack Banner (Always visible during the question, showing who attacks whom and who must answer) */}
+          {phaseContext === 'war' && warAttackAnnouncement && warAttacker && warDefender && (
+            <div
+              data-testid="war-modal-attack-banner"
+              className="mt-2 rounded-xl border border-amber-400/60 bg-stone-950/90 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-left"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Swords className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400 shrink-0" />
+                  <p className="font-serif text-xs sm:text-sm font-black text-amber-100 leading-snug break-words">
+                    {warAttackAnnouncement.headline}
+                  </p>
+                </div>
 
-                    <Swords className="h-3.5 w-3.5 text-red-400 shrink-0 mx-1" />
-
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[9px] text-sky-400 font-bold shrink-0">🛡️</span>
-                      <span className="font-bold text-stone-100 truncate">
-                        {def?.username || 'Apărător'}
-                      </span>
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: def?.color }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                <span
+                  data-testid="war-modal-responder-badge"
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-bold shrink-0 ${
+                    currentUserId === warAttacker.id
+                      ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                      : currentUserId === warDefender.id
+                      ? 'border-sky-400 bg-sky-500/20 text-sky-200'
+                      : 'border-stone-700 bg-stone-900 text-stone-300'
+                  }`}
+                >
+                  {currentUserId === warAttacker.id ? (
+                    <>
+                      <Swords className="h-3 w-3 text-amber-300" />
+                      <span>Tu ataci — răspunde acum!</span>
+                    </>
+                  ) : currentUserId === warDefender.id ? (
+                    <>
+                      <Shield className="h-3 w-3 text-sky-300" />
+                      <span>Tu te aperi — răspunde acum!</span>
+                    </>
+                  ) : (
+                    <span>
+                      Răspund doar {warAttacker.username} și {warDefender.username}
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
           )}
 
           {/* Progress Timer Line (Smooth RAF Animation) */}
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-stone-950 border border-stone-800/80">
+          <div className="mt-2 h-1.5 sm:h-2 w-full overflow-hidden rounded-full bg-stone-950 border border-stone-800/80">
             <div
               ref={progressBarRef}
               className="h-full w-full origin-left will-change-transform bg-emerald-500"
@@ -442,13 +458,55 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
         </div>
 
         {/* Scrollable Inner Content Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-3.5 sm:px-6 py-3 sm:py-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-2.5 sm:py-4">
           {/* Personal Outcome Banner on Resolution */}
           {renderPersonalOutcomeBanner()}
 
+          {/* Individual War Duel Outcome Banner when Resolved */}
+          {resolved && phaseContext === 'war' && (warRound?.lastBattleResult || activeWarBattle) && (
+            <div
+              data-testid="war-modal-outcome-box"
+              className={`mb-3 rounded-xl border-2 px-3 py-2 text-left shadow-lg ${
+                warRound?.lastBattleResult?.headline === 'Atac reușit' ||
+                activeWarBattle?.outcome === 'attacker_won'
+                  ? 'border-emerald-400/80 bg-emerald-950/90'
+                  : warRound?.lastBattleResult?.headline === 'Apărare reușită' ||
+                    activeWarBattle?.outcome === 'defender_won' ||
+                    activeWarBattle?.outcome === 'draw_no_bonus'
+                  ? 'border-sky-400/80 bg-sky-950/90'
+                  : 'border-amber-400/80 bg-amber-950/90'
+              }`}
+            >
+              {warRound?.lastBattleResult ? (
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5">
+                    {warRound.lastBattleResult.headline === 'Atac reușit' ? (
+                      <Swords className="h-4 w-4 text-emerald-300 shrink-0" />
+                    ) : (
+                      <Shield className="h-4 w-4 text-sky-300 shrink-0" />
+                    )}
+                    <span className="font-serif text-xs sm:text-sm font-black uppercase tracking-wide text-white">
+                      {warRound.lastBattleResult.headline} — {warRound.lastBattleResult.attackerName} vs {warRound.lastBattleResult.defenderName}
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-stone-100">
+                    {warRound.lastBattleResult.details}
+                  </p>
+                </div>
+              ) : activeWarBattle?.outcome === 'needs_tiebreak' ? (
+                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-amber-200">
+                  <Swords className="h-4 w-4 text-amber-300 shrink-0" />
+                  <span>
+                    Egalitate între {warAttacker?.username} și {warDefender?.username}! Urmează întrebarea de departajare!
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {/* Question Banner */}
-          <div className="mb-4 rounded-2xl border border-amber-900/70 bg-gradient-to-b from-[#4a2618] to-[#361b10] p-3.5 sm:p-5 shadow-inner text-center">
-            <h3 className="font-serif text-base sm:text-xl font-bold leading-snug sm:leading-relaxed text-amber-50">
+          <div className="mb-3 rounded-xl sm:rounded-2xl border border-amber-900/70 bg-gradient-to-b from-[#4a2618] to-[#361b10] p-3 sm:p-4 shadow-inner text-center">
+            <h3 className="font-serif text-sm sm:text-xl font-bold leading-snug sm:leading-relaxed text-amber-50 break-words">
               {question.question}
             </h3>
             {(phaseContext === 'allocation' || activeQuestion.isTiebreak) && !resolved && (
@@ -462,7 +520,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
           {question.options && (
             <div
               data-testid={resolved ? 'choice-resolved-options' : 'choice-options'}
-              className="space-y-2.5 sm:space-y-3 max-w-xl mx-auto"
+              className="space-y-2 sm:space-y-2.5 max-w-xl mx-auto"
             >
               {question.options.map((option, index) => {
                 const myAnswer =
@@ -537,7 +595,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                     disabled={isLocked}
                     onClick={() => handleSelectChoice(index)}
                     style={customBgStyle}
-                    className={`relative flex w-full min-h-[50px] flex-col justify-center rounded-xl sm:rounded-2xl border-2 px-4 py-2.5 sm:py-3 text-center transition-all ${frameClasses} ${
+                    className={`relative flex w-full min-h-[48px] flex-col justify-center rounded-xl sm:rounded-2xl border-2 px-3 sm:px-4 py-2 sm:py-2.5 text-center transition-all ${frameClasses} ${
                       isLocked ? 'cursor-default' : 'cursor-pointer active:scale-[0.99]'
                     }`}
                   >
@@ -546,7 +604,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                         {String.fromCharCode(65 + index)}
                       </span>
 
-                      <span className="flex-1 text-center font-serif text-sm sm:text-base font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                      <span className="flex-1 text-center font-serif text-sm sm:text-base font-bold leading-snug break-words drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
                         {option}
                       </span>
 
@@ -627,53 +685,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             </div>
           )}
 
-          {/* Simultaneous War Duel Outcomes Summary when Resolved */}
-          {resolved && phaseContext === 'war' && activeWarBattles.length > 0 && (
-            <div className="mt-4 space-y-1.5 rounded-2xl border border-amber-500/30 bg-stone-950/85 p-3">
-              <div className="text-[11px] font-serif font-bold uppercase tracking-wider text-amber-300">
-                Rezultatul Duelurilor din Această Rundă
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                {activeWarBattles.map((b) => {
-                  const atk = players.find((p) => p.id === b.attackerId);
-                  const def = players.find((p) => p.id === b.defenderId);
-                  let statusLabel = 'În desfășurare';
-                  let statusColor = 'text-stone-300';
-                  if (b.outcome === 'attacker_won') {
-                    statusLabel = `⚔️ ${atk?.username} a cucerit ținta (+400 pct)!`;
-                    statusColor = 'text-emerald-300';
-                  } else if (b.outcome === 'defender_won') {
-                    statusLabel = `🛡️ ${def?.username} a apărat ținta (+100 pct)!`;
-                    statusColor = 'text-sky-300';
-                  } else if (b.outcome === 'needs_tiebreak') {
-                    statusLabel = '🎯 Egalitate! Urmează întrebarea de departajare!';
-                    statusColor = 'text-amber-300';
-                  } else if (b.outcome === 'draw_no_bonus') {
-                    statusLabel = `⚖️ Remiză — ${def?.username} păstrează teritoriul`;
-                    statusColor = 'text-stone-400';
-                  }
-
-                  return (
-                    <div
-                      key={b.battleId}
-                      className="rounded-xl border border-stone-800 bg-stone-900/90 px-2.5 py-1.5 text-xs"
-                    >
-                      <div className="font-bold text-stone-200">
-                        {atk?.username} <span className="text-amber-400">vs</span> {def?.username}
-                      </div>
-                      <div className={`text-[11px] font-semibold ${statusColor}`}>
-                        {statusLabel}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Explanation if question resolved */}
           {resolved && question.explanation && (
-            <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/70 p-3 text-xs text-stone-300 text-left flex items-start gap-2">
+            <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5 sm:p-3 text-xs text-stone-300 text-left flex items-start gap-2">
               <HelpCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-stone-200">Știai că? </span>
@@ -684,7 +698,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
           {/* Error message if rejected */}
           {submitError && !resolved && (
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-bold text-red-400">
+            <div className="mt-2.5 flex items-center justify-center gap-1.5 text-xs font-bold text-red-400">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{submitError}</span>
             </div>
@@ -692,8 +706,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
           {/* Observer notice */}
           {!isParticipant && !resolved && (
-            <div className="mt-3 text-center text-xs text-stone-400 italic">
-              Ești observator la această întrebare (nu ești implicat în duelul curent).
+            <div className="mt-2.5 text-center text-xs text-stone-300 italic">
+              {phaseContext === 'war' && warAttacker && warDefender
+                ? `Ești observator la acest atac — răspund doar ${warAttacker.username} și ${warDefender.username}.`
+                : 'Ești observator la această întrebare.'}
             </div>
           )}
 
@@ -702,7 +718,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             !resolved && (
               <div
                 data-testid="answer-locked-banner"
-                className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-stone-950/80 px-3 py-2 text-xs font-bold text-amber-300"
+                className="mt-2.5 flex items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-stone-950/80 px-3 py-2 text-xs font-bold text-amber-300"
               >
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
@@ -711,7 +727,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                 <span>
                   {submitStatus === 'submitting'
                     ? 'Se trimite răspunsul...'
-                    : 'Răspuns înregistrat! Se așteaptă ceilalți jucători...'}
+                    : 'Răspuns înregistrat! Se așteaptă rezultatul...'}
                 </span>
               </div>
             )}

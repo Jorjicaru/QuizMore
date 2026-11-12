@@ -15,11 +15,17 @@ import {
   resolveBattle,
   getTerritoryCountForPlayers,
   calculateConquestRounds,
+  shouldContinueConquestPhase,
   buildSimultaneousWarPairings,
+  buildIndividualWarTurnOrder,
+  getLegalWarTargetsForAttacker,
+  formatWarAttackAnnouncement,
+  isShortReadableChoiceQuestion,
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
   getLegalNeutralTargetsForPlayer,
+  getLegalAllocationTargetsForPlayer,
   selectEligibleAllocationWinner,
   sanitizeNumericInput,
   buildRoundDisplayItems,
@@ -521,7 +527,7 @@ test('Test 6: evaluateWarBattleChoiceOutcome și evaluateWarBattleTiebreakOutcom
   assert.equal(tb2.defenderNumericDiff, 3);
 });
 
-test('Test 7: fluxul complet de Război Simultan pentru 4 jucători (2 atacatori aleg ținte -> 1 întrebare comună -> aplicare atomică scoruri)', () => {
+test('Test 7: fluxul complet de Război Individual (1 contra 1 pe rând) pentru 4 jucători (atacatorul activ alege ținta -> prezentare atac -> întrebare duel -> rezultat Atac reușit / Apărare reușită)', () => {
   const gm = new GameManager();
   const room = gm.createRoom({
     hostUser: { id: 'p1', username: 'P1', avatar: 'av_vlad' },
@@ -550,53 +556,54 @@ test('Test 7: fluxul complet de Război Simultan pentru 4 jucători (2 atacatori
     game.territories[tid].castleTowers = idx < 4 ? 3 : 0;
   });
 
-  // Enter simultaneous war phase
+  // Enter individual war phase
   (gm as any).enterWarPhase(game);
 
   assert.equal(game.phase, 'war');
   assert.ok(game.warRound);
   assert.equal(game.warRound.status, 'selecting_targets');
-  assert.equal(game.warRound.battles.length, 2);
+  assert.equal(game.warRound.battles.length, 1, 'Fiecare atac din Război este un duel individual 1 contra 1');
+  assert.equal(game.warTurnQueue?.length, 3, 'Ceilalți 3 jucători așteaptă în coada secvențială a rundei');
 
-  const [battle1, battle2] = game.warRound.battles;
+  const battle1 = game.warRound.battles[0];
+  assert.equal(battle1.attackerId, 'p1');
 
-  // Defender cannot select a target
-  const defAttempt = gm.selectTerritory(room.roomId, battle1.defenderId, tIds[0]);
-  assert.equal(defAttempt.success, false);
+  // Non-attacker cannot select a target during p1's attack turn
+  const nonAtkAttempt = gm.selectTerritory(room.roomId, 'p2', tIds[0]);
+  assert.equal(nonAtkAttempt.success, false);
 
-  // Attacker 1 cannot target Defender 2's territory
-  const def2Territory = Object.values(game.territories).find(
-    (t) => t.ownerId === battle2.defenderId
-  )!;
-  const wrongDefAttempt = gm.selectTerritory(room.roomId, battle1.attackerId, def2Territory.id);
-  assert.equal(wrongDefAttempt.success, false);
+  // Attacker 1 cannot target a non-adjacent territory
+  const legal1 = getLegalWarTargetsForAttacker(battle1.attackerId, game.territories);
+  assert.ok(legal1.length > 0);
+  const nonAdjacentEnemy = Object.values(game.territories).find(
+    (t) => t.ownerId !== battle1.attackerId && !legal1.includes(t.id)
+  );
+  if (nonAdjacentEnemy) {
+    const remoteAttempt = gm.selectTerritory(room.roomId, battle1.attackerId, nonAdjacentEnemy.id);
+    assert.equal(remoteAttempt.success, false);
+  }
 
-  // Both attackers pick legal targets from their assigned defenders
-  const legal1 = getLegalWarTargetsForPair(battle1.attackerId, battle1.defenderId, game.territories);
-  const legal2 = getLegalWarTargetsForPair(battle2.attackerId, battle2.defenderId, game.territories);
-  assert.ok(legal1.length > 0 && legal2.length > 0);
-
-  const sel1 = gm.selectTerritory(room.roomId, battle1.attackerId, legal1[0]);
+  // Attacker 1 picks a legal adjacent enemy territory -> defenderId is determined from the target territory owner
+  const target1Id = legal1[0];
+  const expectedDefender1Id = game.territories[target1Id].ownerId!;
+  const sel1 = gm.selectTerritory(room.roomId, battle1.attackerId, target1Id);
   assert.equal(sel1.success, true);
-  // Question should NOT start until Attacker 2 also selects a target
-  assert.equal(game.currentQuestion, null);
+  assert.equal(battle1.defenderId, expectedDefender1Id);
+  assert.match(sel1.message || '', /^ATAC: P1 atacă .+ apărat de P\d$/);
 
-  const sel2 = gm.selectTerritory(room.roomId, battle2.attackerId, legal2[0]);
-  assert.equal(sel2.success, true);
-
-  // Immediately after all attackers select targets, warRound enters 'attack_preview' before the question appears!
+  // Immediately after attacker selects target, warRound enters 'attack_preview' before the question appears!
   assert.equal(game.warRound.status, 'attack_preview');
   assert.equal(game.currentQuestion, null, 'Întrebarea nu pornește înainte de etapa de prezentare a atacului');
 
   // Complete the pre-question attack presentation stage
   (gm as any).launchSimultaneousWarChoiceQuestion(game);
 
-  // Now common choice question must be active for all 4 participants with 15s timer!
+  // Now choice question is active for the 2 duelists (attacker + defender) with 15s timer!
   const activeCq = gm.getRoom(room.roomId)!.currentQuestion;
   assert.ok(activeCq);
   assert.equal(game.warRound.status, 'choice_question');
   assert.equal(activeCq.durationSeconds, 15);
-  assert.equal(activeCq.participantIds?.length, 4);
+  assert.deepEqual(activeCq.participantIds, [battle1.attackerId, battle1.defenderId]);
 
   const correctIdx = activeCq.question.correctAnswerIndex!;
   const wrongIdx = (correctIdx + 1) % 4;
@@ -605,21 +612,23 @@ test('Test 7: fluxul complet de Război Simultan pentru 4 jucători (2 atacatori
   gm.submitAnswer(room.roomId, battle1.attackerId, correctIdx);
   gm.submitAnswer(room.roomId, battle1.defenderId, wrongIdx);
 
-  // Battle 2: Attacker 2 answers wrong, Defender 2 answers right
-  gm.submitAnswer(room.roomId, battle2.attackerId, wrongIdx);
-  gm.submitAnswer(room.roomId, battle2.defenderId, correctIdx);
-
-  // Question resolves immediately once all 4 participants answered
+  // Question resolves immediately once both duelists answered
   assert.equal(activeCq.resolved, true);
   assert.equal(battle1.outcome, 'attacker_won');
-  assert.equal(battle2.outcome, 'defender_won');
+  assert.ok(game.warRound.lastBattleResult);
+  assert.equal(game.warRound.lastBattleResult?.headline, 'Atac reușit');
+
+  // Advance to the next player's attack turn in the same round
+  (gm as any).advanceToNextWarTurnOrRound(game);
+  assert.equal(game.round, 1, 'Runda rămâne 1 până când toți jucătorii din coadă își efectuează atacul');
+  assert.equal(game.warRound?.battles.length, 1);
+  assert.equal(game.warRound?.battles[0].attackerId, 'p2', 'Următorul jucător la rând devine atacator');
 
   // Verify score invariant holds for all players
   for (const p of game.players) {
     const mapSum = Object.values(game.territories)
       .filter((t) => t.ownerId === p.id)
       .reduce((acc, t) => acc + (t.points || 0) + (t.defensiveBonus || 0), 0);
-    // Note: if battle1 hit a base tower (+400 bonus without ownership change), p.score equals mapSum; otherwise recalculatePlayerScores matches mapSum
     assert.ok(p.score >= mapSum);
   }
   (gm as any).clearRoomTimers(room.roomId);
@@ -789,17 +798,26 @@ test('Teste V5.0 RoundTracker (buildRoundDisplayItems): fără multiplicare N x 
   });
   (gm as any).enterWarPhase(game10);
 
-  const model10War = buildRoundDisplayItems(game10);
-  assert.equal(model10War.items.length, 10, 'În Război 10p totalul markerilor este exact 10');
+  const model10WarBeforeTarget = buildRoundDisplayItems(game10);
+  assert.equal(model10WarBeforeTarget.items.length, 10, 'În Război 10p totalul markerilor este exact 10');
   assert.equal(
-    model10War.battlePairs.length,
-    game10.warRound!.battles.length,
-    'Numărul de perechi din tracker corespunde exact cu warRound.battles'
+    model10WarBeforeTarget.battlePairs.length,
+    0,
+    'Înainte de alegerea țintei nu se afișează nicio pereche'
   );
-  model10War.battlePairs.forEach((pair, idx) => {
-    assert.equal(pair.attacker.playerId, game10.warRound!.battles[idx].attackerId);
-    assert.equal(pair.defender.playerId, game10.warRound!.battles[idx].defenderId);
-  });
+
+  const activeAtk10 = game10.warRound!.battles[0].attackerId;
+  const validTargets10 = getLegalWarTargetsForAttacker(activeAtk10, game10.territories);
+  gm.selectTerritory(room10.roomId, activeAtk10, validTargets10[0]);
+
+  const model10WarAfterTarget = buildRoundDisplayItems(game10);
+  assert.equal(model10WarAfterTarget.items.length, 10, 'După alegerea țintei rămân exact 10 markeri individuali');
+  assert.equal(model10WarAfterTarget.battlePairs.length, 1, 'Există exact 1 duel activ (1 atacator vs 1 apărător)');
+  assert.equal(model10WarAfterTarget.battlePairs[0].attacker.playerId, activeAtk10);
+  assert.equal(
+    model10WarAfterTarget.battlePairs[0].defender.playerId,
+    game10.warRound!.battles[0].defenderId
+  );
 
   (gm as any).clearRoomTimers(room10.roomId);
 });
@@ -872,7 +890,7 @@ test('V7: Smooth Timer - calcul continuu al raportului scaleX și gestionarea de
 // SECȚIUNEA V8.0: BANCA CANONICĂ DE ÎNTREBĂRI, NON-REPETIȚIE, CEAS SERVER & SOCKET.IO
 // ============================================================================
 
-test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1.167 întrebări active choice verificate + 5.074 dezactivate), 0 duplicate și acoperă toate cele 14 categorii', () => {
+test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1.070 întrebări active choice scurte verificate + 5.171 dezactivate), 0 duplicate și acoperă toate categoriile', () => {
   assert.equal(
     INITIAL_QUESTIONS.length,
     6241,
@@ -882,8 +900,8 @@ test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1
   const activeList = INITIAL_QUESTIONS.filter((q) => q.reviewStatus === 'approved' && !q.isDisabled);
   const disabledList = INITIAL_QUESTIONS.filter((q) => q.isDisabled || q.reviewStatus === 'disabled');
 
-  assert.equal(activeList.length, 1167, `Exact 1167 întrebări active aprobate (actual: ${activeList.length})`);
-  assert.equal(disabledList.length, 5074, `Exact 5074 întrebări dezactivate (actual: ${disabledList.length})`);
+  assert.equal(activeList.length, 1070, `Exact 1070 întrebări active aprobate (actual: ${activeList.length})`);
+  assert.equal(disabledList.length, 5171, `Exact 5171 întrebări dezactivate (actual: ${disabledList.length})`);
   assert.equal(
     activeList.every((q) => q.type === 'choice'),
     true,
@@ -1307,7 +1325,7 @@ test('V9 Test 23: Audit editorial V9 (întrebări active reviewStatus === approv
   const activeQuestions = INITIAL_QUESTIONS.filter(
     (q) => q.reviewStatus === 'approved' && !q.isDisabled
   );
-  assert.equal(activeQuestions.length, 1167);
+  assert.equal(activeQuestions.length, 1070);
 
   for (const q of activeQuestions) {
     assert.equal(q.reviewStatus, 'approved', `Întrebarea ${q.id} trebuie să aibă reviewStatus=approved`);
@@ -1467,12 +1485,17 @@ test('V9 Test 26: Simulare deterministă a fluxului complet pentru 2, 3, 4, 6, 8
     (gm as any).recalculatePlayerScores(game);
     (gm as any).enterWarPhase(game);
 
-    assert.equal(game.phase, 'war', `${playerCount}p intră în faza de război simultan`);
+    assert.equal(game.phase, 'war', `${playerCount}p intră în faza de război`);
     assert.ok(game.warRound);
     assert.equal(
       game.warRound.battles.length,
-      Math.floor(playerCount / 2),
-      `${playerCount}p formează ${Math.floor(playerCount / 2)} bătălii simultane`
+      1,
+      `${playerCount}p inițiază câte 1 atac individual pe rând`
+    );
+    assert.equal(
+      (game.warTurnQueue?.length || 0) + game.warRound.battles.length,
+      playerCount,
+      `Toți cei ${playerCount} jucători sunt programați secvențial în runda de război`
     );
 
     // Verify question extraction uniqueness across the simulated match
@@ -2565,13 +2588,13 @@ test('V9.3 Test 33: Preluarea jocului de către bot la deconectare și revenirea
   (gm as any).clearRoomTimers(lobbyRoom.roomId);
 });
 
-test('V9.3 Test 34: Toate întrebările aprobate sunt scurte (<= 15 cuvinte, o singură propoziție) și timerul întrebărilor trivia este de 15 secunde', async () => {
+test('V9.3 Test 34: Toate întrebările aprobate sunt scurte (<= 14 cuvinte, <= 95 caractere, opțiuni <= 36 caractere) și timerul întrebărilor trivia este de 15 secunde', async () => {
   assert.equal(INITIAL_QUESTIONS.length, 6241, 'Banca canonică păstrează exact 6.241 de înregistrări');
 
   const activeQuestions = INITIAL_QUESTIONS.filter(
     (q) => q.reviewStatus === 'approved' && !q.isDisabled
   );
-  assert.equal(activeQuestions.length, 1167, 'Există 1.167 de întrebări active aprobate');
+  assert.equal(activeQuestions.length, 1070, 'Există 1.070 de întrebări active aprobate');
 
   const countWords = (text: string) =>
     text
@@ -2579,17 +2602,17 @@ test('V9.3 Test 34: Toate întrebările aprobate sunt scurte (<= 15 cuvinte, o s
       .split(/\s+/)
       .filter(Boolean).length;
 
-  let over15Count = 0;
+  let over14Count = 0;
   for (const q of activeQuestions) {
     const wc = countWords(q.question);
-    if (wc > 15) {
-      over15Count++;
+    if (wc > 14) {
+      over14Count++;
     }
   }
   assert.equal(
-    over15Count,
+    over14Count,
     0,
-    `Nicio întrebare aprobată nu trebuie să depășească 15 cuvinte (găsite peste 15 cuvinte: ${over15Count})`
+    `Nicio întrebare aprobată nu trebuie să depășească 14 cuvinte (găsite peste 14 cuvinte: ${over14Count})`
   );
 
   // Verify startQuestion uses 15 seconds timer after completing base selection and waiting for the 1.5s transition timer
@@ -2654,7 +2677,7 @@ test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (
   const activeQuestions = INITIAL_QUESTIONS.filter(
     (q) => q.reviewStatus === 'approved' && !q.isDisabled
   );
-  assert.equal(activeQuestions.length, 1167, 'Există exact 1.167 de întrebări active aprobate');
+  assert.equal(activeQuestions.length, 1070, 'Există exact 1.070 de întrebări active aprobate');
 
   const STOPWORDS = new Set([
     'care', 'este', 'sunt', 'fost', 'pentru', 'prin', 'dintre', 'dupa', 'peste',
@@ -3077,6 +3100,208 @@ test('V9.5 Test 37: Animații și stări vizuale pentru selectarea teritoriilor 
   assert.equal(trReduced.length, 1);
   assert.equal(trReduced[0].durationMs, 0, 'Cu prefers-reduced-motion activ, durata animației este 0ms');
 });
+
+test('V9.6 Test 38: Flux de atac individual (ATAC: [Atacator] atacă [Teritoriu] apărat de [Apărător]), durată completă faza conquest (neutralCount >= activePlayers), fallback neadiacent în allocation doar la 0 vecini liberi și filtrare întrebări scurte (<= 14 cuvinte)', () => {
+  // 1. Formatul anunțului de atac individual și vizibilitatea teritoriilor atacatorului & apărătorului
+  const announcement = formatWarAttackAnnouncement({
+    attacker: { id: 'p1', username: 'StefanCelMare', color: '#ef4444' },
+    defender: { id: 'p2', username: 'MihaiViteazul', color: '#3b82f6' },
+    targetTerritory: { id: 'cluj', name: 'Cluj', isBase: false, castleTowers: 0 },
+    originTerritory: { id: 'maramures', name: 'Maramureș' },
+  });
+  assert.equal(
+    announcement.headline,
+    'ATAC: StefanCelMare atacă Cluj apărat de MihaiViteazul',
+    'Mesajul de atac are exact formatul cerut'
+  );
+  assert.match(announcement.responderText, /StefanCelMare \(Atacator\) și MihaiViteazul \(Apărător\)/);
+
+  const atkTerrVisual = computeTerritorySelectionVisualState({
+    territoryId: 'maramures',
+    hasOwner: true,
+    ownerColor: '#ef4444',
+    isHovered: false,
+    isSelected: false,
+    isTouchSelected: false,
+    isActionable: false,
+    isAttackOrigin: false,
+    isAttackTarget: false,
+    isAttackerTerritory: true,
+    isDefenderTerritory: false,
+  });
+  assert.equal(atkTerrVisual.isHighlighted, true, 'Teritoriile atacatorului rămân evidențiate în timpul atacului');
+
+  const defTerrVisual = computeTerritorySelectionVisualState({
+    territoryId: 'alba',
+    hasOwner: true,
+    ownerColor: '#3b82f6',
+    isHovered: false,
+    isSelected: false,
+    isTouchSelected: false,
+    isActionable: false,
+    isAttackOrigin: false,
+    isAttackTarget: false,
+    isAttackerTerritory: false,
+    isDefenderTerritory: true,
+  });
+  assert.equal(defTerrVisual.isHighlighted, true, 'Teritoriile apărătorului rămân evidențiate în timpul atacului');
+
+  // 2. Durata primei faze de cucerire (conquest): continuă cât timp neutralCount >= activePlayers.length,
+  //    trece în allocation DOAR când 0 < neutralCount < activePlayers.length, și direct în war când neutralCount === 0
+  const map3p = createMapForPlayerCount(3); // 15 teritorii
+  const tIds3 = Object.keys(map3p);
+  const pIds3 = ['p1', 'p2', 'p3'];
+
+  // Fiecare dintre cei 3 jucători își alege baza -> rămân 12 teritorii neutre
+  map3p[tIds3[0]].ownerId = 'p1';
+  map3p[tIds3[5]].ownerId = 'p2';
+  map3p[tIds3[10]].ownerId = 'p3';
+
+  const check12Neutrals = shouldContinueConquestPhase(map3p, pIds3, 0);
+  assert.equal(check12Neutrals.shouldContinue, true, 'La 12 teritorii neutre și 3 jucători, conquest continuă');
+  assert.equal(check12Neutrals.nextPhase, 'conquest');
+
+  // După 3 runde (9 teritorii cucerite) mai rămân exact 3 teritorii neutre (= 3 jucători activi) -> conquest ÎNCĂ continuă!
+  let claimed = 0;
+  for (const tid of tIds3) {
+    if (map3p[tid].ownerId === null && claimed < 9) {
+      map3p[tid].ownerId = pIds3[claimed % 3];
+      claimed++;
+    }
+  }
+  const check3Neutrals = shouldContinueConquestPhase(map3p, pIds3, 0);
+  assert.equal(
+    check3Neutrals.neutralCount,
+    3,
+    'Au rămas exact 3 teritorii neutre pentru 3 jucători activi'
+  );
+  assert.equal(
+    check3Neutrals.shouldContinue,
+    true,
+    'Când neutralCount (3) >= activePlayers (3), faza conquest continuă și nu se oprește prematur!'
+  );
+
+  // Când mai rămân doar 2 teritorii neutre (< 3 jucători activi) -> trece în allocation!
+  const remainingNeutralIds = tIds3.filter((id) => map3p[id].ownerId === null);
+  map3p[remainingNeutralIds[0]].ownerId = 'p1';
+  const check2Neutrals = shouldContinueConquestPhase(map3p, pIds3, 0);
+  assert.equal(check2Neutrals.neutralCount, 2);
+  assert.equal(check2Neutrals.shouldContinue, false);
+  assert.equal(
+    check2Neutrals.nextPhase,
+    'allocation',
+    'Trecerea la allocation se face doar când neutralCount < activePlayers.length'
+  );
+  assert.equal(check2Neutrals.reason, 'fewer_neutrals_than_players');
+
+  // Când toate teritoriile neutre sunt ocupate (neutralCount === 0) -> trece direct în war!
+  map3p[remainingNeutralIds[1]].ownerId = 'p2';
+  map3p[remainingNeutralIds[2]].ownerId = 'p3';
+  const check0Neutrals = shouldContinueConquestPhase(map3p, pIds3, 0);
+  assert.equal(check0Neutrals.neutralCount, 0);
+  assert.equal(check0Neutrals.shouldContinue, false);
+  assert.equal(check0Neutrals.nextPhase, 'war');
+  assert.equal(check0Neutrals.reason, 'all_occupied');
+
+  // 3. Regula de selecție în allocation: adiacent obligatoriu dacă există vecin liber,
+  //    și fallback neadiacent DOAR dacă jucătorul nu mai are niciun teritoriu liber adiacent
+  const allocMap: Record<string, Territory> = JSON.parse(JSON.stringify(mockTerritories));
+  // În mockTerritories, player1 deține maramures (vecini: satu_mare [neutru], cluj [neutru]); bihor și alba sunt neutre neadiacente
+  assert.equal(
+    canTargetTerritory('satu_mare', player1, allocMap, 'allocation').allowed,
+    true,
+    'Când player1 are vecini neutri, poate alege un teritoriu neutru adiacent (satu_mare)'
+  );
+  assert.equal(
+    canTargetTerritory('bihor', player1, allocMap, 'allocation').allowed,
+    false,
+    'Când player1 are vecini neutri, NU poate alege un teritoriu neutru neadiacent (bihor)'
+  );
+  assert.equal(
+    canTargetTerritory('arad', player1, allocMap, 'allocation').allowed,
+    false,
+    'Nu poate alege niciodată un teritoriu deja ocupat (arad)'
+  );
+
+  // Acum blocăm toți vecinii lui player1 (satu_mare și cluj devin ocupate de player2), lăsând doar bihor și alba neutre (neadiacente cu player1)
+  allocMap.satu_mare.ownerId = 'player2';
+  allocMap.cluj.ownerId = 'player2';
+  assert.equal(
+    getLegalNeutralTargetsForPlayer('player1', allocMap).length,
+    0,
+    'player1 nu mai are niciun teritoriu neutru adiacent'
+  );
+  assert.deepEqual(
+    getLegalAllocationTargetsForPlayer('player1', allocMap).sort(),
+    ['alba', 'bihor'],
+    'Fallback-ul din allocation permite lui player1 să aleagă dintre teritoriile neutre neadiacente rămase'
+  );
+  assert.equal(
+    canTargetTerritory('bihor', player1, allocMap, 'allocation').allowed,
+    true,
+    'Când player1 are 0 teritorii neutre adiacente, poate alege teritoriul neutru neadiacent bihor'
+  );
+
+  // Dacă niciun jucător nu mai are vecini neutri (de ex. doar bihor e neutru, iar satu_mare și cluj sunt ale lui player1, dar testăm pentru player2 care are doar arad și timis):
+  allocMap.satu_mare.ownerId = 'player1';
+  allocMap.cluj.ownerId = 'player1';
+  allocMap.alba.ownerId = 'player1';
+  // Acum singurul teritoriu neutru este bihor (vecin cu satu_mare și cluj -> doar player1 are vecin neutru, player2 NU are vecin neutru)
+  // Dacă doar player2 a răspuns corect la departajare:
+  const fallbackWinner = selectEligibleAllocationWinner(
+    [{ playerId: 'player2', answer: 1, diff: 0, submitTime: 1200, rank: 1 }],
+    ['player1', 'player2'],
+    allocMap
+  );
+  assert.equal(
+    fallbackWinner.winnerId,
+    'player2',
+    'Dacă singurul respondent corect (player2) nu are vecin neutru, primește dreptul de a alege teritoriul neutru neadiacent rămas'
+  );
+  assert.equal(fallbackWinner.usedNonAdjacentFallback, true);
+
+  // 4. Filtrarea întrebărilor prea lungi sau invalide prin isShortReadableChoiceQuestion
+  const validShortQ = INITIAL_QUESTIONS.find((q) => !q.isDisabled && q.reviewStatus === 'approved')!;
+  assert.equal(isShortReadableChoiceQuestion(validShortQ), true);
+
+  const tooManyWordsQ = {
+    ...validShortQ,
+    question:
+      'Care este numele complet al marelui domnitor român care a realizat prima unire politică a celor trei principate?',
+  };
+  assert.equal(
+    isShortReadableChoiceQuestion(tooManyWordsQ),
+    false,
+    'Întrebările cu peste 14 cuvinte sunt respinse de filtrul de lizibilitate rapidă'
+  );
+
+  const tooLongOptionQ = {
+    ...validShortQ,
+    options: [
+      'O variantă de răspuns mult prea lungă pentru ecranul de mobil',
+      'B',
+      'C',
+      'D',
+    ],
+  };
+  assert.equal(
+    isShortReadableChoiceQuestion(tooLongOptionQ),
+    false,
+    'Întrebările cu variante peste 36 caractere sau 5 cuvinte sunt respinse'
+  );
+
+  // 5. Verificare că interfața nu conține etichete de tipul „Dueluri simultane active”
+  const hudSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/GameHUD.tsx'),
+    'utf-8'
+  );
+  assert.equal(
+    hudSource.includes('Dueluri simultane'),
+    false,
+    'GameHUD.tsx nu mai afișează eticheta Dueluri simultane'
+  );
+});
+
 
 
 

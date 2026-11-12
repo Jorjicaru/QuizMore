@@ -3,8 +3,10 @@ import {
   Player,
   GameState,
   GamePhase,
+  Question,
   WarRoundState,
   WarBattleAssignment,
+  WarBattleResultSummary,
   RoundDisplayModel,
   RoundTrackerMarkerItem,
   RoundTrackerBattlePair,
@@ -51,10 +53,16 @@ export function getTerritoryCountForPlayers(playerCount: number): number {
   return PLAYER_COUNT_TERRITORIES[clamped] || 20;
 }
 
+/**
+ * Calculează numărul minim teoretic de runde complete de cucerire în care toți jucătorii activi
+ * pot primi câte un teritoriu neutru (`floor((territoryCount - playerCount) / playerCount)`).
+ * Faza de cucerire NU se oprește însă artificial la o limită fixă de 4–5 runde dacă mai există
+ * cel puțin `activePlayers.length` teritorii neutre disponibile (vezi `shouldContinueConquestPhase`).
+ */
 export function calculateConquestRounds(territoryCount: number, playerCount: number): number {
   const clampedPlayers = Math.max(2, playerCount);
-  const raw = Math.ceil((territoryCount - clampedPlayers) / clampedPlayers);
-  return Math.max(4, Math.min(5, raw));
+  const raw = Math.floor(Math.max(0, territoryCount - clampedPlayers) / clampedPlayers);
+  return Math.max(1, raw);
 }
 
 /**
@@ -169,13 +177,120 @@ export function getLegalNeutralTargetsForPlayer(
 }
 
 /**
+ * Returnează teritoriile neutre eligibile pentru `playerId` în faza de departajare (`allocation`):
+ * - Dacă jucătorul are cel puțin un teritoriu neutru adiacent, returnează DOAR acele teritorii neutre adiacente.
+ * - Numai dacă jucătorul NU mai are niciun teritoriu neutru adiacent propriilor teritorii,
+ *   returnează toate teritoriile neutre rămase pe hartă.
+ */
+export function getLegalAllocationTargetsForPlayer(
+  playerId: string,
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
+): string[] {
+  if (!playerId) return [];
+  const adjacentNeutrals = getLegalNeutralTargetsForPlayer(playerId, territories);
+  if (adjacentNeutrals.length > 0) {
+    return adjacentNeutrals;
+  }
+  return Object.values(territories)
+    .filter((t) => t.ownerId === null)
+    .map((t) => t.id);
+}
+
+/**
+ * Decide dacă faza inițială de cucerire (`conquest`) trebuie să continue sau să treacă în `allocation` / `war`:
+ * - Dacă nu mai există teritorii neutre (`neutralCount === 0`), trece direct în `war`.
+ * - Dacă numărul de teritorii neutre rămase este strict mai mic decât numărul de jucători activi
+ *   (`neutralCount < activePlayerCount`), trece în `allocation`.
+ * - Dacă niciun jucător activ nu mai are vreun teritoriu neutru adiacent sau s-a atins limita de runde fără progres,
+ *   trece în `allocation` (unde regula de fallback neadiacent permite alocarea ultimelor teritorii izolate).
+ * - Altfel (`neutralCount >= activePlayerCount`), faza `conquest` continuă!
+ */
+export function shouldContinueConquestPhase(
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>,
+  activePlayerIds: string[],
+  consecutiveStallRounds: number = 0
+): {
+  shouldContinue: boolean;
+  nextPhase: 'conquest' | 'allocation' | 'war';
+  neutralCount: number;
+  activePlayerCount: number;
+  anyPlayerHasAdjacentNeutral: boolean;
+  reason:
+    | 'all_occupied'
+    | 'fewer_neutrals_than_players'
+    | 'no_adjacent_neutrals'
+    | 'stall_limit_reached'
+    | 'continue_conquest';
+} {
+  const neutralCount = Object.values(territories).filter((t) => t.ownerId === null).length;
+  const activePlayerCount = Math.max(1, activePlayerIds.length);
+  const anyPlayerHasAdjacentNeutral = activePlayerIds.some(
+    (pid) => getLegalNeutralTargetsForPlayer(pid, territories).length > 0
+  );
+
+  if (neutralCount === 0) {
+    return {
+      shouldContinue: false,
+      nextPhase: 'war',
+      neutralCount,
+      activePlayerCount,
+      anyPlayerHasAdjacentNeutral,
+      reason: 'all_occupied',
+    };
+  }
+
+  if (neutralCount < activePlayerCount) {
+    return {
+      shouldContinue: false,
+      nextPhase: 'allocation',
+      neutralCount,
+      activePlayerCount,
+      anyPlayerHasAdjacentNeutral,
+      reason: 'fewer_neutrals_than_players',
+    };
+  }
+
+  if (!anyPlayerHasAdjacentNeutral) {
+    return {
+      shouldContinue: false,
+      nextPhase: 'allocation',
+      neutralCount,
+      activePlayerCount,
+      anyPlayerHasAdjacentNeutral,
+      reason: 'no_adjacent_neutrals',
+    };
+  }
+
+  if (consecutiveStallRounds >= 3) {
+    return {
+      shouldContinue: false,
+      nextPhase: 'allocation',
+      neutralCount,
+      activePlayerCount,
+      anyPlayerHasAdjacentNeutral,
+      reason: 'stall_limit_reached',
+    };
+  }
+
+  return {
+    shouldContinue: true,
+    nextPhase: 'conquest',
+    neutralCount,
+    activePlayerCount,
+    anyPlayerHasAdjacentNeutral,
+    reason: 'continue_conquest',
+  };
+}
+
+/**
  * Verifică dacă un jucător poate ținti un teritoriu în faza curentă:
  * - base_selection: neutru și neadiacent cu alte baze
  * - conquest: neutru și OBLIGATORIU adiacent cu un teritoriu deținut de jucător
- * - allocation: neutru și OBLIGATORIU adiacent cu un teritoriu deținut de jucător (conform grafului territory.neighbors)
- * - war: REGULĂ V4.0 / V5.0 ABSOLUTĂ:
+ * - allocation: neutru; OBLIGATORIU adiacent dacă jucătorul are cel puțin un teritoriu neutru adiacent,
+ *   sau orice teritoriu neutru NUMAI dacă jucătorul nu mai are niciun teritoriu neutru adiacent propriilor teritorii.
+ * - war:
  *   1. teritoriul aparține unui inamic (`target.ownerId !== null && target.ownerId !== player.id`)
- *   2. dacă există `assignedDefenderId`, teritoriul aparține apărătorului desemnat (`target.ownerId === assignedDefenderId`)
+ *   2. dacă există `assignedDefenderId` nevid, teritoriul aparține apărătorului desemnat (`target.ownerId === assignedDefenderId`)
  *   3. teritoriul este OBLIGATORIU direct învecinat cu cel puțin un teritoriu deținut de atacator (`isAdjacentToPlayer === true`),
  *      inclusiv pentru Cetăți/Baze (`isBase`). Niciun atac la distanță nu este permis!
  */
@@ -215,7 +330,8 @@ export function canTargetTerritory(
     if (target.ownerId !== null) {
       return { allowed: false, reason: 'Poți alege doar un teritoriu neutru (liber).' };
     }
-    if (!isAdjacentToPlayer(territoryId, player.id, territories)) {
+    const adjacentNeutrals = getLegalNeutralTargetsForPlayer(player.id, territories);
+    if (adjacentNeutrals.length > 0 && !isAdjacentToPlayer(territoryId, player.id, territories)) {
       return {
         allowed: false,
         reason: 'Trebuie să alegi un teritoriu liber învecinat cu teritoriile tale!',
@@ -229,7 +345,11 @@ export function canTargetTerritory(
       return { allowed: false, reason: 'Poți ataca doar teritoriile inamice!' };
     }
 
-    if (assignedDefenderId && target.ownerId !== assignedDefenderId) {
+    if (
+      typeof assignedDefenderId === 'string' &&
+      assignedDefenderId.trim().length > 0 &&
+      target.ownerId !== assignedDefenderId
+    ) {
       return {
         allowed: false,
         reason: 'În această rundă poți ataca doar teritoriile apărătorului desemnat!',
@@ -293,7 +413,7 @@ export function resolveBattle(params: {
     attackerWon: false,
     pointsAwarded: 0,
     defensiveBonusAwarded: 0,
-    message: `Niciun războinic nu a câștigat duelul pentru ${targetTerritory.name}. Teritoriul rămâne la apărător fără bonus.`,
+    message: `Apărare reușită în ${targetTerritory.name}! Teritoriul rămâne la apărător fără bonus.`,
   };
 }
 
@@ -334,9 +454,12 @@ export function determineEstimationWinner(
 }
 
 /**
- * Selectează primul participant din clasamentul estimării (`rankings`) care are cel puțin un
- * teritoriu neutru direct învecinat cu teritoriile sale (pentru a preveni blocarea jocului dacă
- * un jucător cu răspuns apropiat este complet înconjurat / enclavat).
+ * Selectează câștigătorul eligibil din clasamentul departajării (`rankings`):
+ * - Preferă primul participant din clasament care are cel puțin un teritoriu neutru adiacent.
+ * - Dacă NICIUN participant din `rankings` nu mai are vreun teritoriu neutru adiacent, dar există
+ *   încă teritorii neutre pe hartă, permite câștigătorului de pe locul 1 (`rankings[0].playerId`)
+ *   să revendice un teritoriu neutru neadiacent (`usedNonAdjacentFallback: true`), astfel încât
+ *   jocul să nu se blocheze și să nu rămână teritorii nealocate.
  */
 export function selectEligibleAllocationWinner(
   rankings: Array<{ playerId: string; answer: number; diff: number; submitTime: number; rank: number }>,
@@ -346,7 +469,22 @@ export function selectEligibleAllocationWinner(
   winnerId: string | null;
   bypassedEnclavedIds: string[];
   noAdjacentNeutralInMatch: boolean;
+  usedNonAdjacentFallback?: boolean;
 } {
+  const neutralCount = Object.values(territories).filter((t) => t.ownerId === null).length;
+  const anyPlayerHasAdjacentNeutral = activePlayerIds.some(
+    (pid) => getLegalNeutralTargetsForPlayer(pid, territories).length > 0
+  );
+
+  if (neutralCount === 0 || rankings.length === 0) {
+    return {
+      winnerId: null,
+      bypassedEnclavedIds: [],
+      noAdjacentNeutralInMatch: !anyPlayerHasAdjacentNeutral,
+      usedNonAdjacentFallback: false,
+    };
+  }
+
   const bypassedEnclavedIds: string[] = [];
 
   for (const entry of rankings) {
@@ -355,20 +493,19 @@ export function selectEligibleAllocationWinner(
       return {
         winnerId: entry.playerId,
         bypassedEnclavedIds,
-        noAdjacentNeutralInMatch: false,
+        noAdjacentNeutralInMatch: !anyPlayerHasAdjacentNeutral,
+        usedNonAdjacentFallback: false,
       };
     }
     bypassedEnclavedIds.push(entry.playerId);
   }
 
-  const anyPlayerHasAdjacentNeutral = activePlayerIds.some(
-    (pid) => getLegalNeutralTargetsForPlayer(pid, territories).length > 0
-  );
-
+  // Fallback: nenhum respondent nu are teritoriu neutru adiacent -> primul clasat poate alege un teritoriu neutru neadiacent
   return {
-    winnerId: null,
-    bypassedEnclavedIds,
+    winnerId: rankings[0].playerId,
+    bypassedEnclavedIds: [],
     noAdjacentNeutralInMatch: !anyPlayerHasAdjacentNeutral,
+    usedNonAdjacentFallback: true,
   };
 }
 
@@ -389,9 +526,6 @@ export function playersShareBorder(
 
 /**
  * Returnează teritoriile valide pe care attackerId le poate ataca de la defenderId în runda de război.
- * REGULĂ V4.0 / V5.0 ABSOLUTĂ:
- * Returnează DOAR teritoriile apărătorului care sunt direct învecinate cu cel puțin un teritoriu al atacatorului.
- * Dacă nu există nicio țintă adiacentă, returnează `[]` (NICIODATĂ fallback la toate teritoriile apărătorului!).
  */
 export function getLegalWarTargetsForPair(
   attackerId: string,
@@ -407,6 +541,144 @@ export function getLegalWarTargetsForPair(
     myTerritories.some((mt) => mt.neighbors.includes(dt.id))
   );
   return adjacentTargets.map((t) => t.id);
+}
+
+/**
+ * Returnează toate teritoriile inamice direct învecinate cu teritoriile deținute de `attackerId`.
+ * Folosit în fluxul de atac individual (1 atacator -> 1 apărător -> 1 teritoriu țintă).
+ */
+export function getLegalWarTargetsForAttacker(
+  attackerId: string,
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>
+): string[] {
+  if (!attackerId) return [];
+  const myTerritories = Object.values(territories).filter((t) => t.ownerId === attackerId);
+  if (myTerritories.length === 0) return [];
+
+  return Object.values(territories)
+    .filter(
+      (t) =>
+        t.ownerId !== null &&
+        t.ownerId !== attackerId &&
+        myTerritories.some((mt) => mt.neighbors.includes(t.id))
+    )
+    .map((t) => t.id);
+}
+
+/**
+ * Construiește ordinea secvențială de atacuri individuale pentru o rundă de Război:
+ * - Fiecare jucător activ care deține teritorii și are cel puțin un teritoriu inamic adiacent
+ *   primește rândul să inițieze un atac individual (un atacator, un apărător, o țintă).
+ * - Ordinea de start se rotește echitabil în funcție de `roundNumber`.
+ */
+export function buildIndividualWarTurnOrder(
+  activePlayerIds: string[],
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>,
+  roundNumber: number
+): string[] {
+  const n = activePlayerIds.length;
+  if (n < 2) return [];
+  const shift = Math.max(0, (roundNumber - 1) % n);
+  const rotated = [...activePlayerIds.slice(shift), ...activePlayerIds.slice(0, shift)];
+  return rotated.filter((pid) => getLegalWarTargetsForAttacker(pid, territories).length > 0);
+}
+
+export interface WarAttackAnnouncement {
+  headline: string;
+  originSubtext: string;
+  responderText: string;
+  observerText: string;
+  targetName: string;
+  attackerName: string;
+  defenderName: string;
+  isBaseTarget: boolean;
+  resultHeadline: string | null;
+  resultDetails: string | null;
+}
+
+/**
+ * Construiește mesajul autoritativ și clar al atacului curent, afișat identic tuturor jucătorilor din cameră:
+ * „ATAC: [numele atacatorului] atacă [teritoriul] apărat de [numele apărătorului]”
+ */
+export function formatWarAttackAnnouncement(params: {
+  attacker?: Pick<Player, 'id' | 'username' | 'color'> | null;
+  defender?: Pick<Player, 'id' | 'username' | 'color'> | null;
+  targetTerritory?: Pick<Territory, 'id' | 'name' | 'isBase' | 'castleTowers'> | null;
+  originTerritory?: Pick<Territory, 'id' | 'name'> | null;
+  lastBattleResult?: WarBattleResultSummary | null;
+}): WarAttackAnnouncement {
+  const attackerName = params.attacker?.username || params.lastBattleResult?.attackerName || 'Atacator';
+  const defenderName = params.defender?.username || params.lastBattleResult?.defenderName || 'Apărător';
+  const targetName =
+    params.targetTerritory?.name || params.lastBattleResult?.territoryName || 'teritoriul vizat';
+  const isBaseTarget = Boolean(
+    params.targetTerritory?.isBase ?? params.lastBattleResult?.isBaseTarget
+  );
+
+  const headline = `ATAC: ${attackerName} atacă ${targetName} apărat de ${defenderName}`;
+  const originSubtext = params.originTerritory
+    ? `Asediu lansat din ${params.originTerritory.name} asupra ${isBaseTarget ? `Cetății ${targetName}` : targetName}`
+    : isBaseTarget
+    ? `Țintă: Cetatea de bază ${targetName}`
+    : `Țintă: Teritoriul ${targetName}`;
+
+  const responderText = `Trebuie să răspundă la întrebare: ${attackerName} (Atacator) și ${defenderName} (Apărător).`;
+  const observerText = `Ceilalți jucători din cameră urmăresc în direct acest duel.`;
+
+  return {
+    headline,
+    originSubtext,
+    responderText,
+    observerText,
+    targetName,
+    attackerName,
+    defenderName,
+    isBaseTarget,
+    resultHeadline: params.lastBattleResult ? params.lastBattleResult.headline : null,
+    resultDetails: params.lastBattleResult ? params.lastBattleResult.details : null,
+  };
+}
+
+/**
+ * Verifică dacă o întrebare grilă respectă toate regulile de lizibilitate rapidă (15 secunde) și pe mobil:
+ * - tip 'choice', aprobată și activă
+ * - enunț între 4 și 14 cuvinte, maximum 95 de caractere, terminat cu '?'
+ * - fără scurgeri de metadate/numere în paranteză
+ * - 4 variante distincte, fiecare de maximum 36 de caractere și maximum 5 cuvinte
+ */
+export function isShortReadableChoiceQuestion(q: Question | null | undefined): boolean {
+  if (!q) return false;
+  if (q.isDisabled || q.reviewStatus !== 'approved') return false;
+  if (q.type !== 'choice') return false;
+  if (!Array.isArray(q.options) || q.options.length !== 4) return false;
+  if (
+    typeof q.correctAnswerIndex !== 'number' ||
+    !Number.isInteger(q.correctAnswerIndex) ||
+    q.correctAnswerIndex < 0 ||
+    q.correctAnswerIndex > 3
+  ) {
+    return false;
+  }
+  const text = String(q.question || '').trim();
+  if (text.length < 10 || text.length > 95 || !text.endsWith('?')) return false;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 4 || wordCount > 14) return false;
+  if (
+    /\(\d+(?:\.\d+)?\)/.test(text) ||
+    /\(#\d+\)/.test(text) ||
+    /\(set\s+/i.test(text) ||
+    /\(seria\s+/i.test(text)
+  ) {
+    return false;
+  }
+  for (const opt of q.options) {
+    const optText = String(opt || '').trim();
+    const optWords = optText.split(/\s+/).filter(Boolean).length;
+    if (!optText || optText.length > 36 || optWords > 5) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -1058,18 +1330,19 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
     };
   }
 
-  // 4. WAR (RĂZBOI SIMULTAN)
+  // 4. WAR (ATAC INDIVIDUAL 1 CONTRA 1)
   if (game.phase === 'war') {
     const wr = game.warRound;
     const battlePairs: RoundTrackerBattlePair[] = [];
     const byeItems: RoundTrackerMarkerItem[] = [];
     const items: RoundTrackerMarkerItem[] = [];
+    const seenPlayerIds = new Set<string>();
 
     if (wr) {
-      wr.battles.forEach((b, idx) => {
+      wr.battles.forEach((b) => {
         const atk = playersById.get(b.attackerId);
-        const def = playersById.get(b.defenderId);
-        if (!atk || !def) return;
+        const def = b.defenderId ? playersById.get(b.defenderId) : undefined;
+        if (!atk) return;
 
         const atkItem: RoundTrackerMarkerItem = {
           playerId: atk.id,
@@ -1085,45 +1358,70 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
             b.status === 'skipped'
               ? 'Fără graniță comună'
               : b.targetTerritoryId
-              ? 'Țintă fixată'
+              ? 'Atacă acum'
               : 'Alege ținta de atac',
-          orderIndex: idx * 2 + 1,
+          orderIndex: items.length + 1,
         };
 
-        const defItem: RoundTrackerMarkerItem = {
-          playerId: def.id,
-          username: def.username,
-          color: def.color,
-          state: b.status === 'skipped' ? 'bye' : 'defender',
-          label: `Apără împotriva ${atk.username}`,
-          orderIndex: idx * 2 + 2,
-        };
+        if (!seenPlayerIds.has(atk.id)) {
+          seenPlayerIds.add(atk.id);
+          items.push(atkItem);
+        }
 
-        battlePairs.push({
-          battleId: b.battleId,
-          attacker: atkItem,
-          defender: defItem,
-          targetTerritoryId: b.targetTerritoryId,
-          status: b.status,
-        });
+        if (def) {
+          const defItem: RoundTrackerMarkerItem = {
+            playerId: def.id,
+            username: def.username,
+            color: def.color,
+            state: b.status === 'skipped' ? 'bye' : 'defender',
+            label: `Apără împotriva ${atk.username}`,
+            orderIndex: items.length + 1,
+          };
 
-        items.push(atkItem, defItem);
+          battlePairs.push({
+            battleId: b.battleId,
+            attacker: atkItem,
+            defender: defItem,
+            targetTerritoryId: b.targetTerritoryId,
+            status: b.status,
+          });
+
+          if (!seenPlayerIds.has(def.id)) {
+            seenPlayerIds.add(def.id);
+            items.push(defItem);
+          }
+        }
       });
 
       wr.byePlayerIds.forEach((id) => {
         const p = playersById.get(id);
-        if (!p) return;
+        if (!p || seenPlayerIds.has(p.id)) return;
+        seenPlayerIds.add(p.id);
         const byeItem: RoundTrackerMarkerItem = {
           playerId: p.id,
           username: p.username,
           color: p.color,
           state: 'bye',
-          label: 'Rămas fără duel în această rundă',
+          label: 'În așteptarea rândului',
           orderIndex: items.length + 1,
         };
         byeItems.push(byeItem);
         items.push(byeItem);
       });
+
+      const queueSet = new Set(game.warTurnQueue || []);
+      for (const p of game.players) {
+        if (p.isEliminated || seenPlayerIds.has(p.id)) continue;
+        seenPlayerIds.add(p.id);
+        items.push({
+          playerId: p.id,
+          username: p.username,
+          color: p.color,
+          state: queueSet.has(p.id) ? 'pending' : 'done',
+          label: queueSet.has(p.id) ? 'Urmează la atac' : 'Activ în rundă',
+          orderIndex: items.length + 1,
+        });
+      }
     } else {
       game.players
         .filter((p) => !p.isEliminated)
@@ -1150,7 +1448,7 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
 
     const subModeLabel =
       wr?.status === 'selecting_targets'
-        ? 'Alegere ținte'
+        ? 'Alegere țintă atac'
         : wr?.status === 'attack_preview'
         ? 'Prezentare atac'
         : wr?.status === 'numeric_tiebreak'
@@ -1282,6 +1580,8 @@ export interface TerritorySelectionVisualState {
   isActionable: boolean;
   isAttackOrigin: boolean;
   isAttackTarget: boolean;
+  isAttackerTerritory: boolean;
+  isDefenderTerritory: boolean;
   isHighlighted: boolean;
   strokeColor: string;
   strokeWidth: number;
@@ -1291,7 +1591,7 @@ export interface TerritorySelectionVisualState {
 
 /**
  * Calculează starea vizuală de evidențiere a unui teritoriu la hover, atingere (mobil),
- * selectare sau implicare într-un atac (origine atacator / țintă).
+ * selectare sau implicare într-un atac (origine atacator / țintă / teritorii atacator & apărător).
  */
 export function computeTerritorySelectionVisualState(params: {
   territoryId: string;
@@ -1303,6 +1603,8 @@ export function computeTerritorySelectionVisualState(params: {
   isActionable: boolean;
   isAttackOrigin: boolean;
   isAttackTarget: boolean;
+  isAttackerTerritory?: boolean;
+  isDefenderTerritory?: boolean;
   isAttackPreviewPhase?: boolean;
 }): TerritorySelectionVisualState {
   const {
@@ -1315,11 +1617,19 @@ export function computeTerritorySelectionVisualState(params: {
     isActionable,
     isAttackOrigin,
     isAttackTarget,
+    isAttackerTerritory = false,
+    isDefenderTerritory = false,
     isAttackPreviewPhase = false,
   } = params;
 
   const isHighlighted =
-    isHovered || isSelected || isTouchSelected || isAttackOrigin || isAttackTarget;
+    isHovered ||
+    isSelected ||
+    isTouchSelected ||
+    isAttackOrigin ||
+    isAttackTarget ||
+    isAttackerTerritory ||
+    isDefenderTerritory;
 
   let strokeColor = hasOwner ? '#fef08a' : '#6b4c28';
   let strokeWidth = hasOwner ? 2.4 : 2.1;
@@ -1351,6 +1661,14 @@ export function computeTerritorySelectionVisualState(params: {
     strokeWidth = isActionable ? 3.6 : 3.2;
     filterId = 'url(#territory-hover-glow)';
     glowColor = isActionable ? '#fde047' : '#f59e0b';
+  } else if (isAttackerTerritory) {
+    strokeColor = '#f59e0b';
+    strokeWidth = 3.1;
+    glowColor = ownerColor || '#f59e0b';
+  } else if (isDefenderTerritory) {
+    strokeColor = '#38bdf8';
+    strokeWidth = 3.1;
+    glowColor = ownerColor || '#38bdf8';
   } else if (isActionable) {
     strokeColor = '#fbbf24';
     strokeWidth = 2.9;
@@ -1364,6 +1682,8 @@ export function computeTerritorySelectionVisualState(params: {
     isActionable,
     isAttackOrigin,
     isAttackTarget,
+    isAttackerTerritory,
+    isDefenderTerritory,
     isHighlighted,
     strokeColor,
     strokeWidth,

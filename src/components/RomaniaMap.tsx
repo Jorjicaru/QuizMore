@@ -432,26 +432,26 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       }}
     >
       {/* Top Overlay Header: Preset & Zone Count + Current Phase Action Prompt */}
-      <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2">
+      <div className="pointer-events-none absolute top-1.5 sm:top-2 left-2 right-2 z-10 flex flex-wrap items-center justify-between gap-1.5">
         <div
           data-testid="map-preset-badge"
-          className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-stone-950/85 px-2.5 py-1 text-[10px] sm:text-[11px] shadow-lg backdrop-blur-md"
+          className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-stone-950/85 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] sm:text-[11px] shadow-lg backdrop-blur-md max-w-full"
         >
           <Crosshair className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-400 shrink-0" />
-          <span className="font-serif font-bold tracking-wider text-amber-200 whitespace-nowrap">
+          <span className="font-serif font-bold tracking-wider text-amber-200 truncate">
             Harta României &bull; {effectivePlayerPreset} Jucători &bull; {territoryList.length} Teritorii
           </span>
         </div>
 
         {isMyTurn && (
-          <div className="flex items-center gap-1.5 rounded-full border border-amber-400/60 bg-amber-500/25 px-2.5 py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md">
-            <span className="text-[10px] sm:text-[11px] font-serif font-black tracking-wide text-amber-200 whitespace-nowrap">
+          <div className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/25 px-2 py-0.5 sm:px-2.5 sm:py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md max-w-full">
+            <span className="text-[9px] sm:text-[11px] font-serif font-black tracking-wide text-amber-200 truncate">
               {gamePhase === 'base_selection'
                 ? 'ALEGE BAZA TA (1000 PCT)'
                 : gamePhase === 'conquest'
                 ? 'CUCEREȘTE ZONĂ ÎNVECINATĂ (200 PCT)'
                 : gamePhase === 'allocation'
-                ? 'ALEGE TERITORIU VECIN (300 PCT)'
+                ? 'ALEGE TERITORIU LIBER (300 PCT)'
                 : 'ATACĂ ȚINTA INAMICĂ (400 PCT)'}
             </span>
           </div>
@@ -459,15 +459,15 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       </div>
 
       {/* Bottom-Left Controls: Zoom & Fit-to-Screen + Discrete County Lines Toggle */}
-      <div className="absolute bottom-10 left-2.5 z-20 flex items-center gap-1 rounded-xl border border-stone-700/80 bg-stone-950/85 p-1 shadow-xl backdrop-blur-md">
+      <div className="absolute bottom-9 sm:bottom-10 left-2 z-20 flex items-center gap-1 rounded-xl border border-stone-700/80 bg-stone-950/90 p-1 shadow-xl backdrop-blur-md">
         <button
           type="button"
           onClick={handleZoomIn}
           title="Mărește Harta (Zoom In)"
           aria-label="Zoom In"
-          className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
+          className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
         >
-          <ZoomIn className="h-3.5 w-3.5" />
+          <ZoomIn className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -475,9 +475,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           disabled={zoom <= 1}
           title="Micșorează Harta (Zoom Out)"
           aria-label="Zoom Out"
-          className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
+          className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
         >
-          <ZoomOut className="h-3.5 w-3.5" />
+          <ZoomOut className="h-4 w-4" />
         </button>
         {zoom > 1 && (
           <button
@@ -485,9 +485,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
             onClick={handleResetZoom}
             title="Încadrează toată harta (Fit to Screen)"
             aria-label="Reset Zoom"
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
+            className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="h-4 w-4" />
           </button>
         )}
         <button
@@ -499,20 +499,20 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               : 'Afișează conturul județelor componente'
           }
           data-testid="toggle-county-lines"
-          className={`flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-semibold transition ${
+          className={`flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-semibold transition ${
             showInternalCounties
               ? 'bg-stone-900 text-stone-300 hover:bg-stone-800'
               : 'bg-stone-900/50 text-stone-500 hover:bg-stone-800/70'
           }`}
         >
-          <Layers className="h-3 w-3 text-amber-400/80" />
+          <Layers className="h-3.5 w-3.5 text-amber-400/80" />
           <span className="hidden sm:inline">Județe</span>
         </button>
       </div>
 
-      {/* Bottom-Right Compact Round Tracker Overlay (Section 46 & 49 of TODO V5.0) */}
+      {/* Bottom-Right Compact Round Tracker Overlay */}
       {game && (
-        <div className="pointer-events-none absolute bottom-10 right-2.5 z-20">
+        <div className="pointer-events-none absolute bottom-9 sm:bottom-10 right-2 z-20">
           <RoundTracker game={game} />
         </div>
       )}
@@ -625,6 +625,22 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               const attackOriginEntry = attackOriginByTerritoryId.get(t.id);
               const isAttackTarget = Boolean(warTargetEntry);
               const isAttackOrigin = Boolean(attackOriginEntry);
+
+              const activeBattleWithTarget =
+                gamePhase === 'war' && warRound?.battles
+                  ? warRound.battles.find((b) => Boolean(b.targetTerritoryId))
+                  : undefined;
+              const isAttackerTerritory = Boolean(
+                activeBattleWithTarget &&
+                  t.ownerId &&
+                  t.ownerId === activeBattleWithTarget.attackerId
+              );
+              const isDefenderTerritory = Boolean(
+                activeBattleWithTarget &&
+                  t.ownerId &&
+                  t.ownerId === activeBattleWithTarget.defenderId
+              );
+
               const isSelected = targetedId === t.id || isAttackTarget;
               const isInspected = inspectedId === t.id;
               const transition = activeTransitions[t.id];
@@ -667,8 +683,12 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 fillOpacity = 0.9;
               } else if (owner) {
                 fillColor = owner.color;
-                fillOpacity =
-                  isMyTurn && !isActionable && t.ownerId !== currentUserId ? 0.62 : 0.92;
+                if (activeBattleWithTarget) {
+                  fillOpacity = isAttackerTerritory || isDefenderTerritory ? 0.96 : 0.48;
+                } else {
+                  fillOpacity =
+                    isMyTurn && !isActionable && t.ownerId !== currentUserId ? 0.62 : 0.92;
+                }
               } else if (isForbiddenBase) {
                 fillColor = '#78716c';
                 fillOpacity = 0.5;
@@ -691,6 +711,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                 isActionable,
                 isAttackOrigin,
                 isAttackTarget,
+                isAttackerTerritory,
+                isDefenderTerritory,
                 isAttackPreviewPhase,
               });
 
@@ -711,6 +733,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   data-selected={visualState.isHighlighted ? 'true' : 'false'}
                   data-attack-origin={isAttackOrigin ? 'true' : 'false'}
                   data-attack-target={isAttackTarget ? 'true' : 'false'}
+                  data-attacker-territory={isAttackerTerritory ? 'true' : 'false'}
+                  data-defender-territory={isDefenderTerritory ? 'true' : 'false'}
                   data-transition={transition?.type || 'none'}
                   className={`territory-interactive ${shouldElevate ? 'territory-elevated' : ''} ${
                     isActionable
@@ -1107,8 +1131,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           <g id="layer-attack-vectors" className="pointer-events-none">
             {activeAttackVectors.map((vec) => {
               const pathD = `M ${vec.fromX} ${vec.fromY} Q ${vec.controlX} ${vec.controlY} ${vec.toX} ${vec.toY}`;
-              const calloutText = `${vec.attackerName} ⚔️ ${vec.defenderName}`;
-              const calloutW = Math.max(92, Math.min(200, calloutText.length * 5.8 + 20));
+              const calloutText = `${vec.attackerName} ⚔️ ${vec.targetTerritoryName} (${vec.defenderName})`;
+              const calloutW = Math.max(110, Math.min(240, calloutText.length * 5.6 + 22));
 
               return (
                 <g
@@ -1180,8 +1204,20 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     />
                   </g>
 
-                  {/* Target Crosshair Ring */}
-                  <g transform={`translate(${vec.toX}, ${vec.toY})`}>
+                  {/* Target Siege / Impact Ring */}
+                  <g
+                    transform={`translate(${vec.toX}, ${vec.toY})`}
+                    data-testid={`attack-siege-ring-${vec.battleId}`}
+                  >
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="26"
+                      fill="none"
+                      stroke="#f43f5e"
+                      strokeWidth="3"
+                      className="animate-conquest-ring"
+                    />
                     <circle
                       cx="0"
                       cy="0"
@@ -1193,7 +1229,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     />
                   </g>
 
-                  {/* Mid-Vector Battle Callout Pill (Attacker ⚔️ Defender) */}
+                  {/* Mid-Vector Battle Callout Pill (Attacker ⚔️ Target (Defender)) */}
                   <g transform={`translate(${vec.midX}, ${vec.midY - 12})`}>
                     <rect
                       x={-calloutW / 2}
@@ -1202,9 +1238,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       height="20"
                       rx="6"
                       fill="#0f172a"
-                      fillOpacity="0.92"
+                      fillOpacity="0.94"
                       stroke={vec.attackerColor}
-                      strokeWidth="1.4"
+                      strokeWidth="1.5"
                     />
                     <text
                       x="0"

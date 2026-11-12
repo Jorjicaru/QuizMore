@@ -6,6 +6,7 @@ import {
   ActiveQuestionState,
   GamePhase,
   WarBattleAssignment,
+  WarBattleResultSummary,
 } from '../src/types/game';
 import { createMapForPlayerCount, getMapMetadata } from './romaniaMapData';
 import { shuffleArray } from './questionsData';
@@ -17,8 +18,15 @@ import {
   determineEstimationWinner,
   selectEligibleAllocationWinner,
   getLegalNeutralTargetsForPlayer,
+  getLegalAllocationTargetsForPlayer,
+  shouldContinueConquestPhase,
   calculateConquestRounds,
   buildSimultaneousWarPairings,
+  buildIndividualWarTurnOrder,
+  getLegalWarTargetsForAttacker,
+  formatWarAttackAnnouncement,
+  isShortReadableChoiceQuestion,
+  resolveAttackOriginTerritory,
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
@@ -180,14 +188,12 @@ export class GameManager {
     const usedFacts = new Set(game.usedFactKeys || []);
     game.categoryUsageCounts = game.categoryUsageCounts || {};
 
-    // Trivia gameplay uses exclusively approved multiple-choice ('choice') questions
+    // Trivia gameplay uses exclusively short, readable, approved multiple-choice ('choice') questions
     const allAvailable = db
       .getAllQuestions()
       .filter(
         (question) =>
-          !question.isDisabled &&
-          question.reviewStatus === 'approved' &&
-          question.type === 'choice' &&
+          isShortReadableChoiceQuestion(question) &&
           !usedIds.has(question.id) &&
           (!question.factKey || !usedFacts.has(question.factKey))
       );
@@ -695,9 +701,7 @@ export class GameManager {
       .getAllQuestions()
       .filter(
         (q) =>
-          !q.isDisabled &&
-          q.reviewStatus === 'approved' &&
-          q.type === 'choice' &&
+          isShortReadableChoiceQuestion(q) &&
           (!game.selectedCategories?.length || game.selectedCategories.includes(q.category))
       );
     const availableChoice = roomQuestions.length;
@@ -783,24 +787,46 @@ export class GameManager {
     const game = this.games.get(roomId);
     if (!game || game.phase === 'finished' || game.currentQuestion) return;
 
-    // SIMULTANEOUS WAR TARGET SELECTION TIMEOUT
+    // INDIVIDUAL WAR TARGET SELECTION TIMEOUT
     if (game.phase === 'war' && game.warRound && game.warRound.status === 'selecting_targets') {
       for (const battle of game.warRound.battles) {
         if (!battle.targetTerritoryId && battle.status !== 'skipped') {
-          const validIds = getLegalWarTargetsForPair(
-            battle.attackerId,
-            battle.defenderId,
-            game.territories
-          );
+          const validIds = battle.defenderId
+            ? getLegalWarTargetsForPair(battle.attackerId, battle.defenderId, game.territories)
+            : getLegalWarTargetsForAttacker(battle.attackerId, game.territories);
           const atk = game.players.find((p) => p.id === battle.attackerId);
           if (validIds.length > 0) {
             const pickId = validIds[Math.floor(Math.random() * validIds.length)];
+            const targetTerr = game.territories[pickId];
             battle.targetTerritoryId = pickId;
+            if (targetTerr?.ownerId) {
+              battle.defenderId = targetTerr.ownerId;
+            }
             battle.status = 'auto_selected';
-            const tName = game.territories[pickId]?.name || pickId;
+            game.pendingTerritoryId = pickId;
+            if (battle.defenderId) {
+              game.warRound.defenderIds = [battle.defenderId];
+              game.warRound.byePlayerIds = game.players
+                .filter(
+                  (p) =>
+                    !p.isEliminated && p.id !== battle.attackerId && p.id !== battle.defenderId
+                )
+                .map((p) => p.id);
+            }
+            const def = game.players.find((p) => p.id === battle.defenderId);
+            const announcement = formatWarAttackAnnouncement({
+              attacker: atk,
+              defender: def,
+              targetTerritory: targetTerr,
+              originTerritory: resolveAttackOriginTerritory(
+                battle.attackerId,
+                pickId,
+                game.territories
+              ),
+            });
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `⏱️ Timpul a expirat pentru ${atk?.username || 'Atacator'}! S-a selectat automat ținta învecinată ${tName}.`,
+              text: `⏱️ Timpul a expirat pentru ${atk?.username || 'Atacator'}! ${announcement.headline}`,
               timestamp: Date.now(),
               type: 'battle',
             });
@@ -809,7 +835,7 @@ export class GameManager {
             battle.outcome = 'skipped';
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `⚖️ Duelul pentru ${atk?.username || 'Atacator'} a fost omis: nu există niciun teritoriu inamic direct învecinat.`,
+              text: `⚖️ Rândul de atac pentru ${atk?.username || 'Atacator'} a fost omis: nu există niciun teritoriu inamic direct învecinat.`,
               timestamp: Date.now(),
               type: 'info',
             });
@@ -828,22 +854,21 @@ export class GameManager {
 
     if (game.phase === 'allocation' && game.allocationWinnerId) {
       const winnerPlayer = game.players.find((p) => p.id === game.allocationWinnerId);
-      const adjacentIds = winnerPlayer
-        ? getLegalNeutralTargetsForPlayer(winnerPlayer.id, game.territories)
+      const legalAllocIds = winnerPlayer
+        ? getLegalAllocationTargetsForPlayer(winnerPlayer.id, game.territories)
         : [];
-      if (adjacentIds.length > 0) {
-        const pickId = adjacentIds[Math.floor(Math.random() * adjacentIds.length)];
+      if (legalAllocIds.length > 0) {
+        const pickId = legalAllocIds[Math.floor(Math.random() * legalAllocIds.length)];
         const pickName = game.territories[pickId]?.name || pickId;
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `⏱️ Timpul a expirat pentru ${activePlayer.username}! S-a selectat automat teritoriul învecinat ${pickName}.`,
+          text: `⏱️ Timpul a expirat pentru ${activePlayer.username}! S-a selectat automat teritoriul ${pickName}.`,
           timestamp: Date.now(),
           type: 'info',
         });
         this.selectTerritory(roomId, game.allocationWinnerId, pickId);
         return;
       } else {
-        // Winner has no adjacent neutral territory (enclaved): advance cleanly without violating adjacency
         game.allocationWinnerId = null;
         game.allocationPickReady = false;
         this.triggerNextAllocationQuestion(game);
@@ -965,54 +990,86 @@ export class GameManager {
     if (!territory) return { success: false, message: 'Teritoriul nu există.' };
 
     // ==========================================
-    // 4. FAZA: RĂZBOI SIMULTAN (WAR)
+    // 4. FAZA: RĂZBOI (ATAC INDIVIDUAL 1 CONTRA 1)
     // ==========================================
     if (game.phase === 'war') {
       if (!game.warRound || game.warRound.status !== 'selecting_targets') {
-        return { success: false, message: 'Selecția țintelor de atac nu este activă acum.' };
+        return { success: false, message: 'Selecția țintei de atac nu este activă acum.' };
       }
 
       const battle = game.warRound.battles.find((b) => b.attackerId === userId);
       if (!battle) {
         return {
           success: false,
-          message: 'Nu ești atacator în această rundă de război! Ești în apărare sau în repaus.',
+          message: 'Nu este rândul tău să ataci acum! Urmărește atacul jucătorului activ.',
         };
       }
       if (battle.targetTerritoryId !== null) {
         return {
           success: false,
-          message: 'Ținta de atac a fost deja aleasă pentru această rundă!',
+          message: 'Ținta de atac a fost deja aleasă pentru acest duel!',
         };
       }
 
       const attackerPlayer = game.players.find((p) => p.id === userId);
-      const defenderPlayer = game.players.find((p) => p.id === battle.defenderId);
       if (!attackerPlayer || attackerPlayer.isEliminated) {
         return { success: false, message: 'Jucătorul atacator nu este disponibil.' };
       }
-      if (!defenderPlayer || defenderPlayer.isEliminated) {
-        return { success: false, message: 'Apărătorul desemnat nu mai este activ.' };
-      }
+
+      const assignedDefenderId =
+        battle.defenderId && battle.defenderId.trim().length > 0 ? battle.defenderId : null;
 
       const check = canTargetTerritory(
         territoryId,
         attackerPlayer,
         game.territories,
         'war',
-        battle.defenderId
+        assignedDefenderId
       );
       if (!check.allowed) {
         return { success: false, message: check.reason || 'Atac nepermis pe acest teritoriu!' };
       }
 
+      const defenderPlayer = game.players.find((p) => p.id === territory.ownerId);
+      if (!defenderPlayer || defenderPlayer.isEliminated) {
+        return { success: false, message: 'Apărătorul teritoriului vizat nu mai este activ.' };
+      }
+
+      battle.defenderId = defenderPlayer.id;
       battle.targetTerritoryId = territoryId;
       battle.status = 'ready';
       game.pendingTerritoryId = territoryId;
+      game.warRound.defenderIds = Array.from(
+        new Set(
+          game.warRound.battles
+            .map((b) => b.defenderId)
+            .filter((id): id is string => Boolean(id && id.trim().length > 0))
+        )
+      );
+      game.warRound.byePlayerIds = game.players
+        .filter(
+          (p) =>
+            !p.isEliminated &&
+            !game.warRound!.attackerIds.includes(p.id) &&
+            !game.warRound!.defenderIds.includes(p.id)
+        )
+        .map((p) => p.id);
+
+      const originTerr = resolveAttackOriginTerritory(
+        attackerPlayer.id,
+        territoryId,
+        game.territories
+      );
+      const announcement = formatWarAttackAnnouncement({
+        attacker: attackerPlayer,
+        defender: defenderPlayer,
+        targetTerritory: territory,
+        originTerritory: originTerr,
+      });
 
       game.gameLog.push({
         id: this.makeLogId(),
-        text: `⚔️ ${attackerPlayer.username} atacă teritoriul ${territory.name} stăpânit de ${defenderPlayer.username}!`,
+        text: `⚔️ ${announcement.headline}!`,
         timestamp: Date.now(),
         type: 'battle',
       });
@@ -1023,7 +1080,6 @@ export class GameManager {
       if (allSelected) {
         this.beginWarAttackPreview(game);
       } else {
-        // Set activePlayerIndex to the next attacker who still needs to pick a target
         const nextUnpicked = game.warRound.battles.find(
           (b) => b.targetTerritoryId === null && b.status !== 'skipped'
         );
@@ -1036,7 +1092,7 @@ export class GameManager {
 
       return {
         success: true,
-        message: `Ținta ${territory.name} a fost blocată pentru atac!`,
+        message: announcement.headline,
         territoryId,
       };
     }
@@ -1242,14 +1298,44 @@ export class GameManager {
     game.round = 1;
     game.maxRounds = 6;
     game.activePlayerIndex = 0;
+    game.warTurnQueue = [];
     game.warRoleHistory = game.warRoleHistory || {};
 
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `⚔️ Harta României este complet ocupată! Începe FAZA DE RĂZBOI SIMULTAN (${SCORING.WAR_DUEL} pct per bătălie)!`,
+      text: `⚔️ Harta României este complet ocupată! Începe FAZA DE RĂZBOI (${SCORING.WAR_DUEL} pct per bătălie)! Fiecare jucător atacă pe rând o țintă învecinată.`,
       timestamp: Date.now(),
       type: 'info',
     });
+
+    this.startSimultaneousWarRound(game);
+  }
+
+  private advanceToNextWarTurnOrRound(game: GameState): void {
+    const activePlayers = game.players.filter(
+      (p) => !p.isEliminated && Object.values(game.territories).some((t) => t.ownerId === p.id)
+    );
+    if (activePlayers.length <= 1) {
+      if (activePlayers[0]) {
+        this.endGame(game, activePlayers[0]);
+      } else if (game.players[0]) {
+        this.endGame(game, game.players[0]);
+      }
+      return;
+    }
+
+    // Filter remaining queue in current round to players who still have legal adjacent enemy targets
+    const remainingQueue = (game.warTurnQueue || []).filter(
+      (pid) =>
+        activePlayers.some((p) => p.id === pid) &&
+        getLegalWarTargetsForAttacker(pid, game.territories).length > 0
+    );
+    game.warTurnQueue = remainingQueue;
+
+    if (remainingQueue.length === 0) {
+      game.round += 1;
+      game.warTurnQueue = [];
+    }
 
     this.startSimultaneousWarRound(game);
   }
@@ -1279,68 +1365,66 @@ export class GameManager {
       return;
     }
 
+    const activeIds = activePlayers.map((p) => p.id);
+    if (!game.warTurnQueue || game.warTurnQueue.length === 0) {
+      game.warTurnQueue = buildIndividualWarTurnOrder(
+        activeIds,
+        game.territories,
+        game.round
+      );
+    } else {
+      game.warTurnQueue = game.warTurnQueue.filter(
+        (pid) =>
+          activeIds.includes(pid) &&
+          getLegalWarTargetsForAttacker(pid, game.territories).length > 0
+      );
+    }
+
+    if (game.warTurnQueue.length === 0) {
+      // No player has any adjacent enemy territory (should not happen on connected graph, but safe guard)
+      const sorted = [...activePlayers].sort((a, b) => b.score - a.score);
+      this.endGame(game, sorted[0]);
+      return;
+    }
+
+    const attackerId = game.warTurnQueue.shift()!;
+    const attacker = game.players.find((p) => p.id === attackerId);
     game.warRoleHistory = game.warRoleHistory || {};
-    const pairing = buildSimultaneousWarPairings(
-      activePlayers.map((p) => p.id),
-      game.territories,
-      game.round,
-      game.warRoleHistory
-    );
+    game.warRoleHistory[attackerId] = [...(game.warRoleHistory[attackerId] || []), 'attacker'];
 
-    // Record roles in history
-    for (const pid of pairing.attackerIds) {
-      game.warRoleHistory[pid] = [...(game.warRoleHistory[pid] || []), 'attacker'];
-    }
-    for (const pid of pairing.defenderIds) {
-      game.warRoleHistory[pid] = [...(game.warRoleHistory[pid] || []), 'defender'];
-    }
-    for (const pid of pairing.byePlayerIds) {
-      game.warRoleHistory[pid] = [...(game.warRoleHistory[pid] || []), 'bye'];
-    }
+    const battles: WarBattleAssignment[] = [
+      {
+        battleId: `war_r${game.round}_${attackerId}`,
+        attackerId,
+        defenderId: '',
+        targetTerritoryId: null,
+        status: 'selecting_target',
+      },
+    ];
 
-    const battles: WarBattleAssignment[] = pairing.pairs.map((pair, idx) => ({
-      battleId: `war_r${game.round}_b${idx + 1}`,
-      attackerId: pair.attackerId,
-      defenderId: pair.defenderId,
-      targetTerritoryId: null,
-      status: 'selecting_target',
-    }));
-
+    const byePlayerIds = activeIds.filter((id) => id !== attackerId);
     const deadline = Date.now() + 15000;
     game.warRound = {
-      roundId: `war_round_${game.round}_${Date.now()}`,
+      roundId: `war_round_${game.round}_${attackerId}_${Date.now()}`,
       roundNumber: game.round,
       status: 'selecting_targets',
-      attackerIds: pairing.attackerIds,
-      defenderIds: pairing.defenderIds,
-      byePlayerIds: pairing.byePlayerIds,
+      attackerIds: [attackerId],
+      defenderIds: [],
+      byePlayerIds,
       battles,
       selectionDeadline: deadline,
       questionDeadline: null,
+      lastBattleResult: null,
     };
 
-    const firstAttackerIdx = game.players.findIndex((p) => p.id === pairing.attackerIds[0]);
-    if (firstAttackerIdx >= 0) {
-      game.activePlayerIndex = firstAttackerIdx;
+    const attackerIdx = game.players.findIndex((p) => p.id === attackerId);
+    if (attackerIdx >= 0) {
+      game.activePlayerIndex = attackerIdx;
     }
-
-    const pairDescriptions = battles
-      .map((b) => {
-        const atk = game.players.find((p) => p.id === b.attackerId)?.username || b.attackerId;
-        const def = game.players.find((p) => p.id === b.defenderId)?.username || b.defenderId;
-        return `${atk} ⚔️ ${def}`;
-      })
-      .join(' | ');
-
-    const byeNames = pairing.byePlayerIds
-      .map((id) => game.players.find((p) => p.id === id)?.username || id)
-      .join(', ');
 
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `⚔️ Război Runda ${game.round}/${game.maxRounds}: Dueluri simultane [${pairDescriptions}]${
-        byeNames ? ` (Repaus/BYE: ${byeNames})` : ''
-      }. Atacatorii au 15s să aleagă ținta!`,
+      text: `⚔️ Război Runda ${game.round}/${game.maxRounds}: Este rândul lui ${attacker?.username || attackerId} să aleagă un teritoriu inamic învecinat pentru atac (15s)!`,
       timestamp: Date.now(),
       type: 'battle',
     });
@@ -1376,11 +1460,13 @@ export class GameManager {
           );
           if (!currentBattle || currentBattle.targetTerritoryId) return;
 
-          const validIds = getLegalWarTargetsForPair(
-            currentBattle.attackerId,
-            currentBattle.defenderId,
-            currentGame.territories
-          );
+          const validIds = currentBattle.defenderId
+            ? getLegalWarTargetsForPair(
+                currentBattle.attackerId,
+                currentBattle.defenderId,
+                currentGame.territories
+              )
+            : getLegalWarTargetsForAttacker(currentBattle.attackerId, currentGame.territories);
           if (validIds.length > 0) {
             const pickId = validIds[Math.floor(Math.random() * validIds.length)];
             this.selectTerritory(roomId, currentBattle.attackerId, pickId);
@@ -1416,8 +1502,7 @@ export class GameManager {
 
     const activeBattles = game.warRound.battles.filter((b) => b.targetTerritoryId !== null);
     if (activeBattles.length === 0) {
-      game.round++;
-      this.startSimultaneousWarRound(game);
+      this.advanceToNextWarTurnOrRound(game);
       return;
     }
 
@@ -1430,20 +1515,30 @@ export class GameManager {
     game.turnTimeLimit = Math.max(1, Math.ceil(durationMs / 1000));
     game.turnTimerExpiresAt = expiresAt;
 
-    const attackSummary = activeBattles
-      .map((b) => {
-        const atk = game.players.find((p) => p.id === b.attackerId)?.username || 'Atacator';
-        const def = game.players.find((p) => p.id === b.defenderId)?.username || 'Apărător';
-        const tName = b.targetTerritoryId
-          ? game.territories[b.targetTerritoryId]?.name || b.targetTerritoryId
-          : 'teritoriu';
-        return `${atk} ⚔️ ${tName} (${def})`;
-      })
-      .join(' | ');
+    const firstBattle = activeBattles[0];
+    const atkPlayer = game.players.find((p) => p.id === firstBattle.attackerId);
+    const defPlayer = game.players.find((p) => p.id === firstBattle.defenderId);
+    const targetTerr = firstBattle.targetTerritoryId
+      ? game.territories[firstBattle.targetTerritoryId]
+      : null;
+    const originTerr =
+      firstBattle.targetTerritoryId && atkPlayer
+        ? resolveAttackOriginTerritory(
+            atkPlayer.id,
+            firstBattle.targetTerritoryId,
+            game.territories
+          )
+        : null;
+    const announcement = formatWarAttackAnnouncement({
+      attacker: atkPlayer,
+      defender: defPlayer,
+      targetTerritory: targetTerr,
+      originTerritory: originTerr,
+    });
 
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `🎯 Ținte de atac fixate: ${attackSummary}! Urmează întrebarea duelului!`,
+      text: `🎯 ${announcement.headline} — ${announcement.responderText}`,
       timestamp: Date.now(),
       type: 'battle',
     });
@@ -1475,8 +1570,7 @@ export class GameManager {
 
     const activeBattles = game.warRound.battles.filter((b) => b.targetTerritoryId !== null);
     if (activeBattles.length === 0) {
-      game.round++;
-      this.startSimultaneousWarRound(game);
+      this.advanceToNextWarTurnOrRound(game);
       return;
     }
 
@@ -1492,7 +1586,7 @@ export class GameManager {
     }
 
     const participantIds = Array.from(
-      new Set(activeBattles.flatMap((b) => [b.attackerId, b.defenderId]))
+      new Set(activeBattles.flatMap((b) => [b.attackerId, b.defenderId]).filter(Boolean))
     );
 
     this.startQuestion(game, q, {
@@ -1519,6 +1613,7 @@ export class GameManager {
       const defender = game.players.find((p) => p.id === battle.defenderId);
 
       if (!targetTerritory || !attacker || !defender) continue;
+      const wasBaseTarget = Boolean(targetTerritory.isBase);
 
       if (battle.outcome === 'attacker_won') {
         if (targetTerritory.isBase) {
@@ -1526,17 +1621,33 @@ export class GameManager {
           defender.castleTowers = targetTerritory.castleTowers;
 
           if (targetTerritory.castleTowers > 0) {
-            // Tower destroyed: award +400 pts to attacker via persistent attackBonusPoints so recalculatePlayerScores preserves it
             attacker.attackBonusPoints = (attacker.attackBonusPoints || 0) + SCORING.WAR_DUEL;
             attacker.score += SCORING.WAR_DUEL;
+            const summary: WarBattleResultSummary = {
+              battleId: battle.battleId,
+              attackerId: attacker.id,
+              attackerName: attacker.username,
+              attackerColor: attacker.color,
+              defenderId: defender.id,
+              defenderName: defender.username,
+              defenderColor: defender.color,
+              targetTerritoryId: targetTerritory.id,
+              territoryName: targetTerritory.name,
+              isBaseTarget: true,
+              outcome: 'attacker_won',
+              headline: 'Atac reușit',
+              details: `${attacker.username} a distrus un turn din Cetatea ${targetTerritory.name} apărată de ${defender.username} (+${SCORING.WAR_DUEL} pct, ${targetTerritory.castleTowers}/3 turnuri rămase)!`,
+              effectBadge: `🏰 -1 TURN CETATE (+${SCORING.WAR_DUEL} PCT)`,
+              expiresAt: Date.now() + 3400,
+            };
+            game.warRound.lastBattleResult = summary;
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `🏰 TURN DOBORÂT! Castelul lui ${defender.username} a pierdut 1 turn în fața lui ${attacker.username} (+${SCORING.WAR_DUEL} pct)! Mai are ${targetTerritory.castleTowers}/3 turnuri intacte.`,
+              text: `🏰 Atac reușit! ${summary.details}`,
               timestamp: Date.now(),
               type: 'battle',
             });
           } else {
-            // All 3 towers destroyed: Defender eliminated & all territories transferred to attacker!
             defender.isEliminated = true;
             defender.castleTowers = 0;
             targetTerritory.isBase = false;
@@ -1555,20 +1666,36 @@ export class GameManager {
               }
             }
 
+            const summary: WarBattleResultSummary = {
+              battleId: battle.battleId,
+              attackerId: attacker.id,
+              attackerName: attacker.username,
+              attackerColor: attacker.color,
+              defenderId: defender.id,
+              defenderName: defender.username,
+              defenderColor: defender.color,
+              targetTerritoryId: targetTerritory.id,
+              territoryName: targetTerritory.name,
+              isBaseTarget: true,
+              outcome: 'attacker_won',
+              headline: 'Atac reușit',
+              details: `${attacker.username} a cucerit definitiv Cetatea ${targetTerritory.name} a lui ${defender.username} și a preluat toate teritoriile sale!`,
+              effectBadge: '👑 CETATE CUCERITĂ DEFINITIV',
+              expiresAt: Date.now() + 3400,
+            };
+            game.warRound.lastBattleResult = summary;
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `👑 CASTELUL LUI ${defender.username} A FOST CUCERIT DEFINITIV DE ${attacker.username}! Toate teritoriile sale au fost preluate!`,
+              text: `👑 Atac reușit! ${summary.details}`,
               timestamp: Date.now(),
               type: 'elimination',
             });
           }
         } else {
-          // Regular territory conquered: becomes worth 400 pts
           targetTerritory.ownerId = attacker.id;
           targetTerritory.points = SCORING.WAR_DUEL;
           targetTerritory.defensiveBonus = 0;
 
-          // Check if defender lost their very last territory
           const remainingDefenderLand = Object.values(game.territories).filter(
             (t) => t.ownerId === defender.id
           ).length;
@@ -1576,9 +1703,27 @@ export class GameManager {
             defender.isEliminated = true;
           }
 
+          const summary: WarBattleResultSummary = {
+            battleId: battle.battleId,
+            attackerId: attacker.id,
+            attackerName: attacker.username,
+            attackerColor: attacker.color,
+            defenderId: defender.id,
+            defenderName: defender.username,
+            defenderColor: defender.color,
+            targetTerritoryId: targetTerritory.id,
+            territoryName: targetTerritory.name,
+            isBaseTarget: wasBaseTarget,
+            outcome: 'attacker_won',
+            headline: 'Atac reușit',
+            details: `${attacker.username} a cucerit teritoriul ${targetTerritory.name} de la ${defender.username} (+${SCORING.WAR_DUEL} pct)!`,
+            effectBadge: `🚩 TERITORIU CUCERIT (+${SCORING.WAR_DUEL} PCT)`,
+            expiresAt: Date.now() + 3400,
+          };
+          game.warRound.lastBattleResult = summary;
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `🚩 ${attacker.username} a învins pe ${defender.username} și a cucerit ${targetTerritory.name}! (${SCORING.WAR_DUEL} pct)`,
+            text: `🚩 Atac reușit! ${summary.details}`,
             timestamp: Date.now(),
             type: 'conquest',
           });
@@ -1586,17 +1731,52 @@ export class GameManager {
       } else if (battle.outcome === 'defender_won') {
         targetTerritory.defensiveBonus =
           (targetTerritory.defensiveBonus || 0) + SCORING.DEFENSIVE_BONUS;
+        const summary: WarBattleResultSummary = {
+          battleId: battle.battleId,
+          attackerId: attacker.id,
+          attackerName: attacker.username,
+          attackerColor: attacker.color,
+          defenderId: defender.id,
+          defenderName: defender.username,
+          defenderColor: defender.color,
+          targetTerritoryId: targetTerritory.id,
+          territoryName: targetTerritory.name,
+          isBaseTarget: wasBaseTarget,
+          outcome: 'defender_won',
+          headline: 'Apărare reușită',
+          details: `${defender.username} a apărat cu succes ${targetTerritory.name} în fața atacului lansat de ${attacker.username} (+${SCORING.DEFENSIVE_BONUS} pct bonus defensiv)!`,
+          effectBadge: `🛡️ SCUT DEFENSIV (+${SCORING.DEFENSIVE_BONUS} PCT)`,
+          expiresAt: Date.now() + 3400,
+        };
+        game.warRound.lastBattleResult = summary;
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `🛡️ ${defender.username} a apărat cu succes ${targetTerritory.name} în fața lui ${attacker.username} (+${SCORING.DEFENSIVE_BONUS} bonus defensiv)!`,
+          text: `🛡️ Apărare reușită! ${summary.details}`,
           timestamp: Date.now(),
           type: 'battle',
         });
       } else {
-        // draw_no_bonus
+        const summary: WarBattleResultSummary = {
+          battleId: battle.battleId,
+          attackerId: attacker.id,
+          attackerName: attacker.username,
+          attackerColor: attacker.color,
+          defenderId: defender.id,
+          defenderName: defender.username,
+          defenderColor: defender.color,
+          targetTerritoryId: targetTerritory.id,
+          territoryName: targetTerritory.name,
+          isBaseTarget: wasBaseTarget,
+          outcome: 'draw_no_bonus',
+          headline: 'Apărare reușită',
+          details: `Niciun răspuns corect în duelul dintre ${attacker.username} și ${defender.username}: ${targetTerritory.name} rămâne la ${defender.username} (fără bonus).`,
+          effectBadge: '🛡️ TERITORIU PĂSTRAT',
+          expiresAt: Date.now() + 3400,
+        };
+        game.warRound.lastBattleResult = summary;
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `⚖️ Niciun răspuns corect în duelul ${attacker.username} vs ${defender.username} pentru ${targetTerritory.name}. Teritoriul rămâne la apărător fără bonus.`,
+          text: `⚖️ Apărare reușită! ${summary.details}`,
           timestamp: Date.now(),
           type: 'battle',
         });
@@ -1870,6 +2050,7 @@ export class GameManager {
       cq.winnerIds = correctSubmissions.map((c) => c.player.id);
 
       if (correctSubmissions.length === 0) {
+        game.conquestStallRounds = (game.conquestStallRounds || 0) + 1;
         game.gameLog.push({
           id: this.makeLogId(),
           text: `❌ Niciun jucător nu a răspuns corect în această rundă de cucerire. Nicio zonă nu este alocată.`,
@@ -1877,6 +2058,7 @@ export class GameManager {
           type: 'info',
         });
       } else {
+        game.conquestStallRounds = 0;
         const names = correctSubmissions
           .map((c) => `${c.player.username} (${(c.submitTime / 1000).toFixed(2)}s)`)
           .join(', ');
@@ -1999,27 +2181,6 @@ export class GameManager {
         game.territories
       );
 
-      if (eligibility.noAdjacentNeutralInMatch) {
-        // No active player borders any remaining neutral territory (isolated neutral enclave)
-        game.allocationWinnerId = null;
-        game.allocationPickReady = false;
-        game.gameLog.push({
-          id: this.makeLogId(),
-          text: `⚖️ Niciun teritoriu liber rămas nu mai este adiacent cu teritoriile jucătorilor activi. Se trece la Faza de Război!`,
-          timestamp: Date.now(),
-          type: 'info',
-        });
-        this.notifyUpdate(roomId);
-        const warTimer = setTimeout(() => {
-          game.currentQuestion = null;
-          this.enterWarPhase(game);
-        }, 2000);
-        const pending = this.botTimers.get(roomId) || [];
-        pending.push(warTimer);
-        this.botTimers.set(roomId, pending);
-        return;
-      }
-
       if (eligibility.winnerId) {
         game.allocationNoResponseRetries = 0;
         const winner = game.players.find((p) => p.id === eligibility.winnerId);
@@ -2046,9 +2207,13 @@ export class GameManager {
             });
           }
 
+          const hasAdjacentNeutral =
+            getLegalNeutralTargetsForPlayer(winner.id, game.territories).length > 0;
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `🏆 ${winner.username} a câștigat departajarea (+${SCORING.ALLOCATION} pct) și are 15s să aleagă o zonă liberă învecinată!`,
+            text: hasAdjacentNeutral
+              ? `🏆 ${winner.username} a câștigat departajarea (+${SCORING.ALLOCATION} pct) și are 15s să aleagă o zonă liberă învecinată!`
+              : `🏆 ${winner.username} a câștigat departajarea (+${SCORING.ALLOCATION} pct)! Deoarece nu mai are zone libere adiacente, poate alege o zonă liberă rămasă pe hartă!`,
             timestamp: Date.now(),
             type: 'conquest',
           });
@@ -2069,12 +2234,12 @@ export class GameManager {
           return;
         }
       } else {
-        // Bounded retry policy when no player with an adjacent neutral territory answered correctly (max 2 retries per territory)
+        // Bounded retry policy when no player answered correctly (max 2 retries per territory)
         game.allocationNoResponseRetries = (game.allocationNoResponseRetries || 0) + 1;
         if (game.allocationNoResponseRetries <= 2) {
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⏱️ Niciun jucător eligibil nu a răspuns corect la departajare (încercarea ${game.allocationNoResponseRetries}/2). Se repetă întrebarea pentru această zonă!`,
+            text: `⏱️ Niciun jucător nu a răspuns corect la departajare (încercarea ${game.allocationNoResponseRetries}/2). Se repetă întrebarea pentru această zonă!`,
             timestamp: Date.now(),
             type: 'info',
           });
@@ -2089,21 +2254,24 @@ export class GameManager {
           this.botTimers.set(roomId, pending);
           return;
         } else {
-          // Max retries reached: deterministically assign an ADJACENT neutral territory to the active player with fewest territories who borders a neutral territory
+          // Max retries reached: deterministically assign a legal neutral territory to the active player with fewest territories
           game.allocationNoResponseRetries = 0;
-          const eligiblePlayers = game.players.filter(
-            (p) =>
-              !p.isEliminated &&
-              getLegalNeutralTargetsForPlayer(p.id, game.territories).length > 0
+          const activeCandidates = game.players.filter((p) => !p.isEliminated);
+          const withAdjacent = activeCandidates.filter(
+            (p) => getLegalNeutralTargetsForPlayer(p.id, game.territories).length > 0
           );
-          if (eligiblePlayers.length > 0) {
-            const fallbackPlayer = [...eligiblePlayers].sort((a, b) => {
+          const pool = withAdjacent.length > 0 ? withAdjacent : activeCandidates;
+          if (pool.length > 0) {
+            const fallbackPlayer = [...pool].sort((a, b) => {
               if (a.territoriesCount !== b.territoriesCount)
                 return a.territoriesCount - b.territoriesCount;
               return a.score - b.score;
             })[0];
-            const adjIds = getLegalNeutralTargetsForPlayer(fallbackPlayer.id, game.territories);
-            const targetNeutral = game.territories[adjIds[0]];
+            const legalIds = getLegalAllocationTargetsForPlayer(
+              fallbackPlayer.id,
+              game.territories
+            );
+            const targetNeutral = legalIds.length > 0 ? game.territories[legalIds[0]] : undefined;
             if (targetNeutral) {
               targetNeutral.ownerId = fallbackPlayer.id;
               targetNeutral.points = SCORING.ALLOCATION;
@@ -2111,7 +2279,7 @@ export class GameManager {
               this.recalculatePlayerScores(game);
               game.gameLog.push({
                 id: this.makeLogId(),
-                text: `⚖️ Lipsă repetată de răspuns: teritoriul învecinat ${targetNeutral.name} a fost alocat automat către ${fallbackPlayer.username} (+${SCORING.ALLOCATION} pct).`,
+                text: `⚖️ Lipsă repetată de răspuns: teritoriul ${targetNeutral.name} a fost alocat automat către ${fallbackPlayer.username} (+${SCORING.ALLOCATION} pct).`,
                 timestamp: Date.now(),
                 type: 'conquest',
               });
@@ -2120,12 +2288,10 @@ export class GameManager {
           this.notifyUpdate(roomId);
           const nextTimer = setTimeout(() => {
             game.currentQuestion = null;
-            const anyAdjacentRemaining = game.players.some(
-              (p) =>
-                !p.isEliminated &&
-                getLegalNeutralTargetsForPlayer(p.id, game.territories).length > 0
-            );
-            if (anyAdjacentRemaining) {
+            const remainingNeutrals = Object.values(game.territories).filter(
+              (t) => t.ownerId === null
+            ).length;
+            if (remainingNeutrals > 0) {
               this.triggerNextAllocationQuestion(game);
             } else {
               this.enterWarPhase(game);
@@ -2140,10 +2306,9 @@ export class GameManager {
     }
 
     // ------------------------------------------
-    // CASE 3: SIMULTANEOUS WAR RESOLUTION (+400 pts)
+    // CASE 3: WAR DUEL RESOLUTION (+400 pts)
     // ------------------------------------------
     if (cq.phaseContext === 'war' && game.warRound) {
-      // Mark NO_RESPONSE for participants who timed out
       for (const pid of requiredPlayers) {
         const p = game.players.find((x) => x.id === pid);
         const sub = cq.playerAnswers[pid];
@@ -2169,7 +2334,6 @@ export class GameManager {
       }
 
       if (!cq.isTiebreak && q.type === 'choice') {
-        // Evaluate each simultaneous battle pair on the common choice question
         const tiedBattles: WarBattleAssignment[] = [];
         const winnersSoFar: string[] = [];
 
@@ -2229,15 +2393,14 @@ export class GameManager {
             this.applySimultaneousWarRoundOutcomes(game);
             this.notifyUpdate(roomId);
             const advTimer = setTimeout(() => {
-              game.round++;
-              this.startSimultaneousWarRound(game);
+              this.advanceToNextWarTurnOrRound(game);
             }, 3000);
             this.turnAdvanceTimers.set(roomId, advTimer);
             return;
           }
 
           const tiebreakParticipants = Array.from(
-            new Set(tiedBattles.flatMap((b) => [b.attackerId, b.defenderId]))
+            new Set(tiedBattles.flatMap((b) => [b.attackerId, b.defenderId]).filter(Boolean))
           );
 
           const tieTimer = setTimeout(() => {
@@ -2258,18 +2421,15 @@ export class GameManager {
           return;
         }
 
-        // All battles decided at choice stage! Apply outcomes atomically.
         this.applySimultaneousWarRoundOutcomes(game);
         this.notifyUpdate(roomId);
 
         const advTimer = setTimeout(() => {
-          game.round++;
-          this.startSimultaneousWarRound(game);
+          this.advanceToNextWarTurnOrRound(game);
         }, 3200);
         this.turnAdvanceTimers.set(roomId, advTimer);
         return;
       } else {
-        // Tiebreak question resolution for tied battles (choice or legacy estimation)
         const winners: string[] = [];
         for (const battle of game.warRound.battles) {
           if (battle.outcome !== 'needs_tiebreak') {
@@ -2355,8 +2515,7 @@ export class GameManager {
         this.notifyUpdate(roomId);
 
         const advTimer = setTimeout(() => {
-          game.round++;
-          this.startSimultaneousWarRound(game);
+          this.advanceToNextWarTurnOrRound(game);
         }, 3200);
         this.turnAdvanceTimers.set(roomId, advTimer);
         return;
@@ -2391,25 +2550,29 @@ export class GameManager {
     }
 
     if (game.phase === 'war') {
-      game.round++;
-      this.startSimultaneousWarRound(game);
+      this.advanceToNextWarTurnOrRound(game);
       return;
     }
 
     if (game.phase === 'conquest') {
-      const neutralCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
-      if (game.round >= game.maxRounds || neutralCount === 0) {
-        if (neutralCount > 0) {
+      const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+      const decision = shouldContinueConquestPhase(
+        game.territories,
+        activeIds,
+        game.conquestStallRounds || 0
+      );
+      if (!decision.shouldContinue) {
+        if (decision.nextPhase === 'allocation') {
           game.phase = 'allocation';
           game.round = 0;
-          game.maxRounds = neutralCount;
+          game.maxRounds = decision.neutralCount;
           game.unallocatedTerritoriesQueue = Object.values(game.territories)
             .filter((t) => t.ownerId === null)
             .map((t) => t.id);
 
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⚖️ Au rămas ${neutralCount} teritorii neocupate! Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu).`,
+            text: `⚖️ Au rămas ${decision.neutralCount} teritorii neocupate! Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu).`,
             timestamp: Date.now(),
             type: 'info',
           });
@@ -2441,15 +2604,24 @@ export class GameManager {
 
   public triggerNextConquestQuestion(game: GameState): void {
     if (game.phase !== 'conquest' || game.currentQuestion) return;
-    const neutralCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
-    if (neutralCount === 0 || game.round > game.maxRounds) {
+    const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+    const decision = shouldContinueConquestPhase(
+      game.territories,
+      activeIds,
+      game.conquestStallRounds || 0
+    );
+    if (!decision.shouldContinue) {
       this.finishConquestRound(game);
       return;
     }
 
+    if (game.round > game.maxRounds) {
+      game.maxRounds = game.round;
+    }
+
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `📜 Cucerire - Runda ${game.round}/${game.maxRounds}: Toată lumea răspunde în același timp la întrebare!`,
+      text: `📜 Cucerire - Runda ${game.round} (${decision.neutralCount} teritorii libere rămase): Toată lumea răspunde în același timp la întrebare!`,
       timestamp: Date.now(),
       type: 'info',
     });
@@ -2460,7 +2632,6 @@ export class GameManager {
       return;
     }
 
-    const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
     this.startQuestion(game, q, {
       phaseContext: 'conquest',
       attackerId: game.players[0].id,
@@ -2526,17 +2697,25 @@ export class GameManager {
     const roomId = game.roomId;
     game.conquestPickerId = null;
     game.conquestPickQueue = [];
-    game.round += 1;
 
-    const neutralCount = Object.values(game.territories).filter((t) => t.ownerId === null).length;
-    if (game.round > game.maxRounds || neutralCount === 0) {
-      if (neutralCount > 0) {
+    const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+    const decision = shouldContinueConquestPhase(
+      game.territories,
+      activeIds,
+      game.conquestStallRounds || 0
+    );
+
+    if (!decision.shouldContinue) {
+      if (decision.nextPhase === 'allocation') {
         game.phase = 'allocation';
         game.round = 0;
-        game.maxRounds = neutralCount;
+        game.maxRounds = decision.neutralCount;
+        game.unallocatedTerritoriesQueue = Object.values(game.territories)
+          .filter((t) => t.ownerId === null)
+          .map((t) => t.id);
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `⚖️ S-a încheiat faza de cucerire! Au rămas ${neutralCount} teritorii libere. Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu)!`,
+          text: `⚖️ S-a încheiat faza de cucerire! Au rămas ${decision.neutralCount} teritorii libere. Începe FAZA DE DEPARTAJARE (${SCORING.ALLOCATION} pct per teritoriu)!`,
           timestamp: Date.now(),
           type: 'info',
         });
@@ -2550,6 +2729,10 @@ export class GameManager {
         this.enterWarPhase(game);
       }
     } else {
+      game.round += 1;
+      if (game.round > game.maxRounds) {
+        game.maxRounds = game.round;
+      }
       const nextConquestTimer = setTimeout(() => {
         this.turnAdvanceTimers.delete(roomId);
         this.triggerNextConquestQuestion(game);
@@ -2704,9 +2887,9 @@ export class GameManager {
         this.processNextConquestPick(game);
       }
     } else if (game.phase === 'allocation' && game.allocationWinnerId === bot.id) {
-      const adjacentNeutralIds = getLegalNeutralTargetsForPlayer(bot.id, game.territories);
-      if (adjacentNeutralIds.length > 0) {
-        const pickId = adjacentNeutralIds[Math.floor(Math.random() * adjacentNeutralIds.length)];
+      const legalNeutralIds = getLegalAllocationTargetsForPlayer(bot.id, game.territories);
+      if (legalNeutralIds.length > 0) {
+        const pickId = legalNeutralIds[Math.floor(Math.random() * legalNeutralIds.length)];
         this.selectTerritory(roomId, bot.id, pickId);
       } else {
         game.allocationWinnerId = null;

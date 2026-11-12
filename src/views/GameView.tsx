@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, UserProfile } from '../types/game';
-import { canTargetTerritory, resolveAttackOriginTerritory } from '../game/rules';
+import {
+  canTargetTerritory,
+  resolveAttackOriginTerritory,
+  formatWarAttackAnnouncement,
+  getLegalNeutralTargetsForPlayer,
+} from '../game/rules';
 import { GameHUD, PlayerSidebar } from '../components/GameHUD';
 import { RomaniaMap } from '../components/RomaniaMap';
 import { QuestionModal } from '../components/QuestionModal';
@@ -59,9 +64,13 @@ export const GameView: React.FC<GameViewProps> = ({
       game.allocationPickReady &&
       !game.currentQuestion
     ) {
+      const hasAdjacent =
+        getLegalNeutralTargetsForPlayer(currentUser.id, game.territories).length > 0;
       setFeedbackToast({
         type: 'info',
-        text: '🏆 CÂȘTIGĂTOR DEPARTAJARE! Atinge pe hartă un teritoriu liber învecinat cu teritoriile tale (+300 PCT)!',
+        text: hasAdjacent
+          ? '🏆 CÂȘTIGĂTOR DEPARTAJARE! Atinge pe hartă un teritoriu liber învecinat cu teritoriile tale (+300 PCT)!'
+          : '🏆 CÂȘTIGĂTOR DEPARTAJARE! Nu mai ai teritorii libere adiacente — alege orice teritoriu liber rămas (+300 PCT)!',
       });
       const t = setTimeout(() => setFeedbackToast(null), 5000);
       return () => clearTimeout(t);
@@ -72,6 +81,7 @@ export const GameView: React.FC<GameViewProps> = ({
     game.allocationWinnerId,
     game.allocationPickReady,
     game.currentQuestion,
+    game.territories,
     currentUser.id,
   ]);
 
@@ -82,7 +92,9 @@ export const GameView: React.FC<GameViewProps> = ({
         ? game.warRound.battles.find((b) => b.attackerId === currentUser.id)
         : undefined;
     const assignedDefenderId =
-      game.phase === 'war' && myWarBattle ? myWarBattle.defenderId : null;
+      game.phase === 'war' && myWarBattle && myWarBattle.defenderId
+        ? myWarBattle.defenderId
+        : null;
 
     if (myPlayer && game.phase !== 'waiting' && game.phase !== 'finished') {
       const check = canTargetTerritory(
@@ -113,15 +125,55 @@ export const GameView: React.FC<GameViewProps> = ({
     });
   };
 
-  const activeWarPreviewBattles =
+  const activeWarPreviewBattle =
     game.phase === 'war' &&
     game.warRound?.status === 'attack_preview' &&
     !game.currentQuestion
-      ? game.warRound.battles.filter((b) => b.status === 'ready' && b.targetTerritoryId)
-      : [];
+      ? game.warRound.battles.find(
+          (b) => (b.status === 'ready' || b.status === 'auto_selected') && b.targetTerritoryId
+        ) || null
+      : null;
+
+  const activeBattleResult =
+    game.phase === 'war' &&
+    game.warRound?.status === 'completed' &&
+    !game.currentQuestion &&
+    game.warRound.lastBattleResult
+      ? game.warRound.lastBattleResult
+      : null;
+
+  const previewAnnouncement = activeWarPreviewBattle
+    ? (() => {
+        const atk = game.players.find((p) => p.id === activeWarPreviewBattle.attackerId);
+        const def = game.players.find((p) => p.id === activeWarPreviewBattle.defenderId);
+        const terr = activeWarPreviewBattle.targetTerritoryId
+          ? game.territories[activeWarPreviewBattle.targetTerritoryId]
+          : null;
+        const origin =
+          activeWarPreviewBattle.targetTerritoryId && atk
+            ? resolveAttackOriginTerritory(
+                atk.id,
+                activeWarPreviewBattle.targetTerritoryId,
+                game.territories
+              )
+            : null;
+        return {
+          atk,
+          def,
+          terr,
+          origin,
+          info: formatWarAttackAnnouncement({
+            attacker: atk,
+            defender: def,
+            targetTerritory: terr,
+            originTerritory: origin,
+          }),
+        };
+      })()
+    : null;
 
   return (
-    <div className="relative w-full flex-1 min-h-0 flex flex-col gap-1.5 lg:h-full lg:overflow-hidden animate-fadeIn">
+    <div className="relative w-full max-w-full flex-1 min-h-0 flex flex-col gap-1 sm:gap-1.5 lg:h-full overflow-x-hidden lg:overflow-hidden animate-fadeIn">
       {/* Compact Top Command Bar (+ Mobile Player Strip on <1024px) */}
       <GameHUD
         game={game}
@@ -130,67 +182,101 @@ export const GameView: React.FC<GameViewProps> = ({
       />
 
       {/* Pre-Question War Attack Presentation Stage Banner */}
-      {activeWarPreviewBattles.length > 0 && (
+      {previewAnnouncement && (
         <div
           data-testid="war-attack-preview-banner"
-          className="relative z-30 rounded-2xl border-2 border-rose-500/80 bg-gradient-to-r from-stone-950 via-rose-950/90 to-stone-950 px-4 py-2.5 shadow-[0_0_30px_rgba(244,63,94,0.35)] backdrop-blur-xl transition-opacity duration-200 motion-reduce:transition-none"
+          className="relative z-30 rounded-xl sm:rounded-2xl border-2 border-rose-500/85 bg-gradient-to-r from-stone-950 via-rose-950/95 to-stone-950 px-3 py-2 sm:px-4 sm:py-2.5 shadow-[0_0_28px_rgba(244,63,94,0.38)] backdrop-blur-xl transition-opacity duration-200 motion-reduce:transition-none"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 border border-rose-400/50 text-rose-300">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
+            <div className="flex items-start sm:items-center gap-2 min-w-0">
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/25 border border-rose-400/60 text-rose-300">
                 <Swords className="h-4 w-4" />
               </span>
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-rose-300">
-                  Asediu Declanșat &bull; Prezentare Țintă
+              <div className="min-w-0">
+                <div
+                  data-testid="war-attack-headline"
+                  className="text-xs sm:text-sm md:text-base font-serif font-black tracking-wide text-amber-200 leading-snug break-words"
+                >
+                  {previewAnnouncement.info.headline}
                 </div>
-                <div className="text-xs sm:text-sm font-serif font-bold text-white">
-                  Pregătiți-vă! Întrebarea de duel pornește în câteva clipe...
+                <div className="text-[11px] sm:text-xs font-medium text-stone-200 leading-tight mt-0.5">
+                  {previewAnnouncement.info.responderText}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {activeWarPreviewBattles.map((b) => {
-                const attacker = game.players.find((p) => p.id === b.attackerId);
-                const defender = game.players.find((p) => p.id === b.defenderId);
-                const terr = b.targetTerritoryId ? game.territories[b.targetTerritoryId] : null;
-                const originTerr =
-                  b.targetTerritoryId
-                    ? resolveAttackOriginTerritory(
-                        b.attackerId,
-                        b.targetTerritoryId,
-                        game.territories
-                      )
-                    : null;
-                if (!attacker || !defender || !terr) return null;
-                return (
-                  <div
-                    key={b.battleId}
-                    className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-400/40 bg-stone-950/90 px-3 py-1.5 text-xs shadow-md"
-                  >
-                    <span className="inline-flex items-center gap-1 font-bold" style={{ color: attacker.color }}>
-                      <Swords className="h-3.5 w-3.5" />
-                      {attacker.username}
-                    </span>
-                    {originTerr && (
-                      <span className="text-[11px] text-amber-200/90 font-semibold">
-                        ({originTerr.name})
-                      </span>
-                    )}
-                    <span className="text-stone-400 font-black">atacă</span>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/20 border border-rose-400/40 px-2 py-0.5 font-serif font-black text-amber-200">
-                      <Crosshair className="h-3 w-3 text-rose-400" />
-                      {terr.isBase ? '🏰 ' : ''}
-                      {terr.name}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-stone-300">
-                      (<Shield className="h-3 w-3 text-sky-400" />
-                      <strong style={{ color: defender.color }}>{defender.username}</strong>)
-                    </span>
-                  </div>
-                );
-              })}
+            {previewAnnouncement.atk && previewAnnouncement.def && previewAnnouncement.terr && (
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-400/40 bg-stone-950/90 px-2.5 py-1 text-[11px] sm:text-xs shrink-0">
+                <span
+                  className="inline-flex items-center gap-1 font-bold"
+                  style={{ color: previewAnnouncement.atk.color }}
+                >
+                  <Swords className="h-3.5 w-3.5" />
+                  {previewAnnouncement.atk.username}
+                </span>
+                <span className="text-stone-400 font-black">atacă</span>
+                <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/20 border border-rose-400/40 px-1.5 py-0.5 font-serif font-black text-amber-200">
+                  <Crosshair className="h-3 w-3 text-rose-400" />
+                  {previewAnnouncement.terr.isBase ? '🏰 ' : ''}
+                  {previewAnnouncement.terr.name}
+                </span>
+                <span className="inline-flex items-center gap-1 text-stone-300">
+                  (<Shield className="h-3 w-3 text-sky-400" />
+                  <strong style={{ color: previewAnnouncement.def.color }}>
+                    {previewAnnouncement.def.username}
+                  </strong>
+                  )
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Post-Battle Outcome Banner (Atac reușit / Apărare reușită) */}
+      {activeBattleResult && (
+        <div
+          data-testid="war-battle-outcome-banner"
+          className={`relative z-30 rounded-xl sm:rounded-2xl border-2 px-3 py-2 sm:px-4 sm:py-2.5 shadow-2xl backdrop-blur-xl transition-opacity duration-200 motion-reduce:transition-none ${
+            activeBattleResult.outcome === 'attacker_won'
+              ? 'border-amber-400/85 bg-gradient-to-r from-stone-950 via-amber-950/90 to-stone-950'
+              : 'border-emerald-400/85 bg-gradient-to-r from-stone-950 via-emerald-950/90 to-stone-950'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
+            <div className="flex items-start sm:items-center gap-2 min-w-0">
+              <span
+                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${
+                  activeBattleResult.outcome === 'attacker_won'
+                    ? 'bg-amber-500/25 border-amber-400/60 text-amber-300'
+                    : 'bg-emerald-500/25 border-emerald-400/60 text-emerald-300'
+                }`}
+              >
+                {activeBattleResult.outcome === 'attacker_won' ? (
+                  <Swords className="h-4 w-4" />
+                ) : (
+                  <Shield className="h-4 w-4" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <div
+                  data-testid="war-battle-outcome-headline"
+                  className={`text-xs sm:text-sm md:text-base font-serif font-black uppercase tracking-wider ${
+                    activeBattleResult.outcome === 'attacker_won'
+                      ? 'text-amber-300'
+                      : 'text-emerald-300'
+                  }`}
+                >
+                  {activeBattleResult.headline}
+                </div>
+                <div className="text-[11px] sm:text-xs font-semibold text-stone-100 leading-snug break-words">
+                  {activeBattleResult.details}
+                </div>
+              </div>
+            </div>
+
+            <div className="inline-flex items-center self-start sm:self-center rounded-lg border border-amber-400/40 bg-stone-950/90 px-2.5 py-1 text-[10px] sm:text-xs font-black tracking-wide text-amber-200 shrink-0">
+              {activeBattleResult.effectBadge}
             </div>
           </div>
         </div>
@@ -200,7 +286,7 @@ export const GameView: React.FC<GameViewProps> = ({
       {feedbackToast && !game.currentQuestion && (
         <div
           data-testid="territory-feedback-toast"
-          className={`pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs sm:text-sm font-bold shadow-2xl backdrop-blur-xl transition-opacity duration-150 motion-reduce:transition-none ${
+          className={`pointer-events-none fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 max-w-[94vw] rounded-xl border px-3 py-2 text-xs sm:text-sm font-bold shadow-2xl backdrop-blur-xl transition-opacity duration-150 motion-reduce:transition-none ${
             feedbackToast.type === 'success'
               ? 'border-emerald-400 bg-emerald-950/95 text-emerald-200 shadow-emerald-950/60'
               : feedbackToast.type === 'error'
@@ -215,13 +301,13 @@ export const GameView: React.FC<GameViewProps> = ({
           ) : (
             <Swords className="h-4 w-4 text-amber-400 shrink-0" />
           )}
-          <span>{feedbackToast.text}</span>
+          <span className="break-words">{feedbackToast.text}</span>
         </div>
       )}
 
       {/* Map-First Workspace: Map takes full width on <1280px; on >=1280px (xl) RomaniaMap is on left and PlayerSidebar is on right */}
-      <div className="flex-1 min-h-0 w-full flex flex-col xl:flex-row gap-2 overflow-hidden">
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-[260px] sm:min-h-[340px] w-full flex flex-col xl:flex-row gap-2 overflow-hidden">
+        <div className="flex-1 min-w-0 min-h-[260px] sm:min-h-[340px] flex flex-col">
           <RomaniaMap
             game={game}
             territories={game.territories}
@@ -246,6 +332,7 @@ export const GameView: React.FC<GameViewProps> = ({
         <QuestionModal
           activeQuestion={game.currentQuestion}
           players={game.players}
+          territories={game.territories}
           currentUserId={currentUser.id}
           warRound={game.warRound}
           onSubmitAnswer={onSubmitAnswer}
@@ -264,3 +351,4 @@ export const GameView: React.FC<GameViewProps> = ({
     </div>
   );
 };
+

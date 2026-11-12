@@ -1,7 +1,7 @@
 import React from 'react';
 import { GameState, RoundTrackerMarkerItem } from '../types/game';
 import { buildRoundDisplayItems } from '../game/rules';
-import { Swords, Shield, Check, Clock, Sparkles } from 'lucide-react';
+import { Check, Clock, Sparkles } from 'lucide-react';
 
 interface RoundTrackerProps {
   game: GameState;
@@ -17,7 +17,6 @@ export const RoundTracker: React.FC<RoundTrackerProps> = ({ game }) => {
     totalRounds,
     items,
     battlePairs,
-    byeItems,
   } = model;
 
   const progressSteps = Math.max(1, Math.min(10, totalRounds));
@@ -84,14 +83,14 @@ export const RoundTracker: React.FC<RoundTrackerProps> = ({ game }) => {
     <div
       data-testid="round-tracker"
       data-phase={phase}
-      className="pointer-events-none select-none w-[196px] sm:w-[228px] rounded-xl border border-amber-500/35 bg-stone-950/90 px-2.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.85)] backdrop-blur-md flex flex-col gap-1"
+      className="pointer-events-none select-none w-[158px] sm:w-[216px] rounded-xl border border-amber-500/35 bg-stone-950/90 px-2 sm:px-2.5 py-1 sm:py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.85)] backdrop-blur-md flex flex-col gap-1"
     >
       {/* Row 1: Phase Name + Compact Round / Remaining Counter */}
-      <div className="flex items-center justify-between gap-1.5">
-        <span className="font-serif text-[10px] sm:text-[11px] font-black tracking-wider text-amber-300 uppercase whitespace-nowrap">
+      <div className="flex items-center justify-between gap-1">
+        <span className="font-serif text-[9px] sm:text-[11px] font-black tracking-wider text-amber-300 uppercase truncate">
           {compactPhaseTitle}
         </span>
-        <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold text-amber-200 whitespace-nowrap shrink-0">
+        <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 border border-amber-500/30 px-1 sm:px-1.5 py-0.5 font-mono text-[8px] sm:text-[10px] font-bold text-amber-200 whitespace-nowrap shrink-0">
           <Clock className="h-2.5 w-2.5 text-amber-400 shrink-0" />
           {compactSubLabel}
         </span>
@@ -121,63 +120,21 @@ export const RoundTracker: React.FC<RoundTrackerProps> = ({ game }) => {
         })}
       </div>
 
-      {/* Row 3: Authoritative Turn / Pick / War Duel Order (1 marker per player, NEVER N x N) */}
+      {/* Row 3: Authoritative Turn / Pick / Individual War Order (1 marker per player, never displayed as team pairs) */}
       <div
         data-testid="round-tracker-markers"
         className="flex items-center justify-between gap-1 pt-0.5"
       >
-        {phase === 'war' && battlePairs.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1 w-full">
-            {battlePairs.map((pair) => (
-              <div
-                key={pair.battleId}
-                data-testid={`tracker-battle-${pair.battleId}`}
-                title={`${pair.attacker.username} (Atac) ⚔️ ${pair.defender.username} (Apărare)`}
-                className={`inline-flex items-center gap-0.5 rounded-md border px-1 py-0.5 ${
-                  pair.status === 'skipped'
-                    ? 'border-stone-700/70 bg-stone-900/50 opacity-50'
-                    : pair.targetTerritoryId
-                    ? 'border-amber-500/45 bg-amber-950/35'
-                    : 'border-sky-400/50 bg-sky-950/35'
-                }`}
-              >
-                <span
-                  data-testid={`tracker-marker-${pair.attacker.playerId}`}
-                  className="h-3 w-3 rounded-sm ring-1 ring-white/50 shrink-0 flex items-center justify-center"
-                  style={{ backgroundColor: pair.attacker.color }}
-                >
-                  <Swords className="h-2 w-2 text-white drop-shadow" />
-                </span>
-                <span className="text-[8px] font-black text-amber-300 px-0.5">⚔</span>
-                <span
-                  data-testid={`tracker-marker-${pair.defender.playerId}`}
-                  className="h-3 w-3 rounded-sm ring-1 ring-white/40 shrink-0 flex items-center justify-center"
-                  style={{ backgroundColor: pair.defender.color }}
-                >
-                  <Shield className="h-2 w-2 text-white drop-shadow" />
-                </span>
-              </div>
-            ))}
-            {byeItems.map((bye) => (
-              <div
-                key={bye.playerId}
-                data-testid={`tracker-marker-${bye.playerId}`}
-                title={`${bye.username} — Repaus (BYE)`}
-                className="inline-flex items-center gap-0.5 rounded border border-stone-700/80 bg-stone-900/70 px-1 py-0.5 opacity-60"
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-sm"
-                  style={{ backgroundColor: bye.color }}
-                />
-                <span className="text-[8px] font-mono text-stone-400">BYE</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex items-center gap-1 flex-nowrap">
-            {items.map((item) => renderMarkerBadge(item, items.length > 6))}
-          </div>
-        )}
+        <div
+          data-testid={
+            phase === 'war' && battlePairs.length > 0
+              ? `tracker-battle-${battlePairs[0].battleId}`
+              : undefined
+          }
+          className="flex items-center gap-1 flex-wrap"
+        >
+          {items.map((item) => renderMarkerBadge(item, items.length > 5))}
+        </div>
       </div>
     </div>
   );
