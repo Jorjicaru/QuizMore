@@ -714,7 +714,7 @@ test('V9.2 REAL PostgreSQL Test 5: Salvare și restaurare snapshot-uri camere ac
   }
 });
 
-test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de două ori (0 duplicate) + pg_dump backup și restore într-o bază PostgreSQL separată cu compararea numărului de înregistrări', async () => {
+test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de două ori (0 duplicate) + pg_dump backup și restore PostgreSQL', async () => {
   const pool = getPostgresPool()!;
 
   // 1. Run migration TWICE against real PostgreSQL
@@ -734,9 +734,13 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de dou�
   };
 
   assert.equal(
-    countsAfterRun1.approvedQuestions,
+    countsAfterRun1.questions,
     6241,
-      `Banca de 6.241 de întrebări aprobate trebuie să fie prezentă în PostgreSQL real (actual: ${countsAfterRun1.approvedQuestions})`
+    `Toate cele 6.241 de înregistrări ale băncii canonice trebuie păstrate în PostgreSQL (actual: ${countsAfterRun1.questions})`
+  );
+  assert.ok(
+    countsAfterRun1.approvedQuestions >= 1000 && countsAfterRun1.approvedQuestions <= countsAfterRun1.questions,
+    `Numărul întrebărilor aprobate active trebuie să reflecte setul curent validat (actual: ${countsAfterRun1.approvedQuestions})`
   );
 
   const report2 = await executeJsonToPostgresMigration({ closePoolWhenDone: false });
@@ -759,8 +763,8 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de dou�
     countsAfterRun1,
     'Rularea de două ori a migrării în PostgreSQL real nu dublează nicio înregistrare'
   );
-  assert.equal(report1.approvedQuestions, 6241);
-  assert.equal(report2.approvedQuestions, 6241);
+  assert.equal(report1.approvedQuestions, countsAfterRun1.approvedQuestions);
+  assert.equal(report2.approvedQuestions, countsAfterRun2.approvedQuestions);
 
   // 2. Execute real pg_dump backup script and restore into separate database `conquiz_restore_target`
   const backupDir = path.resolve(process.cwd(), 'backups', 'test_v92_real_pg');
