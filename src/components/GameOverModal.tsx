@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { GameState, Player } from '../types/game';
 import confetti from 'canvas-confetti';
-import { Trophy, Award, RefreshCw, Home, Flag, CheckCircle2 } from 'lucide-react';
+import { Trophy, RefreshCw, Home, MessageSquarePlus } from 'lucide-react';
 import { sound } from '../services/audio';
 
 interface GameOverModalProps {
@@ -9,6 +9,7 @@ interface GameOverModalProps {
   currentUserId?: string;
   onRematch: () => void;
   onGoHome: () => void;
+  onOpenFeedback?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -16,6 +17,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   currentUserId,
   onRematch,
   onGoHome,
+  onOpenFeedback,
 }) => {
   const sortedPlayers = [...game.players].sort((a, b) => Number(!!a.isEliminated) - Number(!!b.isEliminated) || b.score - a.score);
   const winner = game.winner || sortedPlayers[0];
@@ -128,10 +130,21 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
           <button
             onClick={onGoHome}
-            className="flex-1 sm:flex-initial min-h-[42px] flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-200 hover:bg-slate-700 transition active:scale-95"
+            className="flex-1 sm:flex-initial min-h-[42px] flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-200 hover:bg-slate-700 transition active:scale-95 cursor-pointer"
           >
             <Home className="h-4 w-4 shrink-0" /> Înapoi la Meniu
           </button>
+
+          {onOpenFeedback && (
+            <button
+              type="button"
+              data-testid="gameover-feedback-btn"
+              onClick={onOpenFeedback}
+              className="flex-1 sm:flex-initial min-h-[42px] flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95 cursor-pointer"
+            >
+              <MessageSquarePlus className="h-4 w-4 shrink-0" /> Trimite feedback
+            </button>
+          )}
         </div>
       </div>
     </div>

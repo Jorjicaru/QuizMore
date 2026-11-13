@@ -3,6 +3,7 @@ import { Territory, Player, GamePhase, WarRoundState, GameState } from '../types
 import {
   canTargetTerritory,
   canSelectBase,
+  canPlayerSelectTerritoryNow,
   getMapAnimationConfig,
   computeTerritorySelectionVisualState,
   buildActiveAttackVectors,
@@ -177,7 +178,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const isMyTurn =
     !disabled &&
     currentUserId !== undefined &&
-    (gamePhase === 'war' && warRound
+    (game
+      ? canPlayerSelectTerritoryNow(game, currentUserId)
+      : gamePhase === 'war' && warRound
       ? Boolean(
           warRound.status === 'selecting_targets' &&
             myWarBattle &&
@@ -580,7 +583,10 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         </div>
 
         {isMyTurn && (
-          <div className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/25 px-2 py-0.5 sm:px-2.5 sm:py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md max-w-full">
+          <div
+            data-testid="map-action-prompt-badge"
+            className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/25 px-2 py-0.5 sm:px-2.5 sm:py-1 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md max-w-full"
+          >
             <span className="text-[9px] sm:text-[11px] font-serif font-black tracking-wide text-amber-200 truncate">
               {gamePhase === 'base_selection'
                 ? 'ALEGE BAZA TA (1000 PCT)'

@@ -20,6 +20,7 @@ import questionRoutes from './server/routes/questionRoutes';
 import gameRoutes from './server/routes/gameRoutes';
 import socialRoutes from './server/routes/socialRoutes';
 import adminRoutes from './server/routes/adminRoutes';
+import feedbackRoutes from './server/routes/feedbackRoutes';
 import { setupSocketHandlers } from './server/socketHandler';
 import { isMaintenanceModeEnabled, getMaintenanceMessage } from './server/maintenance';
 
@@ -190,6 +191,7 @@ async function startServer() {
   app.use('/api/games', createRateLimiter(60_000, 180), gameRoutes);
   app.use('/api/social', createRateLimiter(60_000, 120), socialRoutes);
   app.use('/api/admin', createRateLimiter(60_000, 120), adminRoutes);
+  app.use('/api/feedback', createRateLimiter(60_000, 20), feedbackRoutes);
 
   // Setup Real-time Game WebSockets
   setupSocketHandlers(io, gameManager);

@@ -1,4 +1,4 @@
-import { UserProfile, Question } from '../types/game';
+import { UserProfile, Question, FeedbackCategory, FeedbackStatus, FeedbackRecord } from '../types/game';
 
 const TOKEN_KEY = 'conquiz_token';
 
@@ -229,6 +229,22 @@ export const api = {
     });
   },
 
+  // Feedback
+  async submitFeedback(payload: {
+    category: FeedbackCategory;
+    message: string;
+    roomId?: string | null;
+  }) {
+    return this.request<{
+      success: boolean;
+      feedback: FeedbackRecord;
+      message: string;
+    }>('/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Questions & Admin
   async getQuestions(filter?: { category?: string; difficulty?: string; type?: string; search?: string }) {
     const params = new URLSearchParams(filter as any).toString();
@@ -271,6 +287,80 @@ export const api = {
     return this.request<{ users: any[] }>(`/api/admin/users?search=${encodeURIComponent(search || '')}`);
   },
 
+  async getAdminUserProfile(userId: string) {
+    return this.request<{
+      user: {
+        id: string;
+        username: string;
+        email: string;
+        role: 'user' | 'admin';
+        isBanned: boolean;
+        createdAt: string;
+        rating: number;
+        wins: number;
+        losses: number;
+        matchesPlayed: number;
+        territoriesConquered: number;
+        correctAnswersTotal: number;
+        highestScore: number;
+        title: string;
+        manualRankOverride: number | null;
+        profile: UserProfile;
+        leaderboardRank: number;
+        friendsCount: number;
+        pendingFriendsCount: number;
+      };
+      leaderboardRank: number | null;
+      gamesHistory: Array<{
+        id: string;
+        roomId: string;
+        createdAt: string;
+        durationSeconds: number;
+        playerCount: number;
+        winnerId: string | null;
+        winnerUsername?: string;
+        playersSummary: Array<{
+          userId: string;
+          username: string;
+          score: number;
+          territories: number;
+          correctAnswers: number;
+          isWinner: boolean;
+        }>;
+      }>;
+      recentGames: Array<{
+        id: string;
+        roomId: string;
+        createdAt: string;
+        durationSeconds: number;
+        playerCount: number;
+        winnerId: string | null;
+        winnerUsername?: string;
+        playersSummary: Array<{
+          userId: string;
+          username: string;
+          score: number;
+          territories: number;
+          correctAnswers: number;
+          isWinner: boolean;
+        }>;
+      }>;
+    }>(`/api/admin/users/${encodeURIComponent(userId)}/profile`);
+  },
+
+  async deleteAdminUser(userId: string, reason?: string) {
+    return this.request<{
+      success: boolean;
+      deletedUserId: string;
+      deletedData: string[];
+      preservedData: string[];
+      message: string;
+    }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
   async toggleUserBan(userId: string) {
     return this.request<{ success: boolean; isBanned: boolean; message: string }>(`/api/admin/users/${userId}/ban`, {
       method: 'POST',
@@ -291,16 +381,35 @@ export const api = {
       wins?: number;
       losses?: number;
       matchesPlayed?: number;
+      territoriesConquered?: number;
       highestScore?: number;
       title?: string;
+      manualRankOverride?: number | null;
       reason?: string;
     }
   ) {
-    return this.request<{ success: boolean; message: string; user: any }>(
+    return this.request<{ success: boolean; message: string; profile: UserProfile }>(
       `/api/admin/users/${encodeURIComponent(userId)}/adjust-stats`,
       {
         method: 'POST',
         body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async getAdminFeedback(filter?: { status?: FeedbackStatus | 'all'; category?: FeedbackCategory | 'all' }) {
+    const params = new URLSearchParams();
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.category) params.set('category', filter.category);
+    return this.request<{ feedback: FeedbackRecord[] }>(`/api/admin/feedback?${params.toString()}`);
+  },
+
+  async updateAdminFeedbackStatus(id: string, status: FeedbackStatus) {
+    return this.request<{ success: boolean; feedback: FeedbackRecord; message: string }>(
+      `/api/admin/feedback/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
       }
     );
   },
@@ -339,6 +448,8 @@ export const api = {
       onlineUserIds: string[];
       disconnectedPlayersCount: number;
       botControlledPlayersCount: number;
+      newFeedbackCount?: number;
+      totalFeedbackCount?: number;
       rooms: Array<{
         roomId: string;
         roomName: string;
@@ -366,3 +477,4 @@ export const api = {
     }>('/api/admin/stats');
   },
 };
+

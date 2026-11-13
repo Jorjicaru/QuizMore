@@ -146,8 +146,19 @@ export const LeaderboardView: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
             {leaderboard.map((player) => (
-              <tr key={player.id} className="hover:bg-slate-800/40 transition">
-                <td className="p-3.5 pl-5 font-bold text-slate-400">#{player.rank}</td>
+              <tr key={player.id} data-testid={`leaderboard-row-${player.id}`} className="hover:bg-slate-800/40 transition">
+                <td className="p-3.5 pl-5 font-bold text-slate-400">
+                  <span>#{player.rank}</span>
+                  {typeof player.manualRankOverride === 'number' && (
+                    <span
+                      data-testid={`leaderboard-manual-rank-${player.id}`}
+                      className="ml-1.5 rounded bg-purple-500/20 border border-purple-500/40 px-1.5 py-0.5 text-[9px] font-sans font-bold text-purple-300"
+                      title="Poziție ajustată manual de administrator"
+                    >
+                      Fixat
+                    </span>
+                  )}
+                </td>
                 <td className="p-3.5 font-sans font-bold flex items-center gap-2 text-slate-100">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xs">
                     {player.avatar === 'av_stefan' ? '👑' : player.avatar === 'av_regina' ? '💎' : '🗡️'}

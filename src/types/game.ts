@@ -76,6 +76,7 @@ export interface Player {
   isConnected?: boolean;
   botControlled?: boolean;
   disconnectedAt?: number;
+  hasLeftIntentionally?: boolean;
   isEliminated?: boolean;
   baseTerritoryId?: string | null;
   castleTowers: number;
@@ -229,6 +230,7 @@ export interface RoundDisplayModel {
   items: RoundTrackerMarkerItem[];
   battlePairs: RoundTrackerBattlePair[];
   byeItems: RoundTrackerMarkerItem[];
+  conquestTurnSchedule?: string[][];
 }
 
 export interface GameLogEntry {
@@ -260,6 +262,8 @@ export interface GameState {
   phase: GamePhase;
   players: Player[];
   spectators?: SpectatorProfile[];
+  turnOrder?: string[];
+  conquestTurnSchedule?: string[][];
   activePlayerIndex: number;
   territories: Record<string, Territory>;
   turnTimeLimit: number;
@@ -297,5 +301,27 @@ export interface UserProfile {
   territoriesConquered: number;
   correctAnswersTotal: number;
   highestScore: number;
+  manualRankOverride?: number | null;
   createdAt: string;
 }
+
+export type FeedbackCategory =
+  | 'problema_tehnica'
+  | 'intrebare_gresita'
+  | 'idee_imbunatatire'
+  | 'altceva';
+
+export type FeedbackStatus = 'nou' | 'in_verificare' | 'rezolvat';
+
+export interface FeedbackRecord {
+  id: string;
+  userId: string | null;
+  username: string | null;
+  category: FeedbackCategory;
+  message: string;
+  roomId?: string | null;
+  status: FeedbackStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+

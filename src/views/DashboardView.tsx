@@ -54,6 +54,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [customMaxPlayers, setCustomMaxPlayers] = useState<number>(4);
   const [roomIsPrivate, setRoomIsPrivate] = useState<boolean>(false);
   const [customRoomName, setCustomRoomName] = useState<string>('');
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState<boolean>(false);
+
+  // Lock background page scroll while modal is open and restore scroll position on close
+  useEffect(() => {
+    const isAnyModalOpen = showCreateModal || showAiModal;
+    if (!isAnyModalOpen || typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+    const scrollY = window.scrollY;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [showCreateModal, showAiModal]);
 
   const fetchRooms = async () => {
     try {
@@ -87,6 +103,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     sound.playClick();
     setRoomIsPrivate(defaultPrivate);
     setCustomRoomName(`Cetatea lui ${user.username}`);
+    setShowAdvancedSettings(false);
     setShowCreateModal(true);
   };
 
@@ -395,19 +412,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {showAiModal && (
         <div
           data-testid="ai-config-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 sm:p-4 backdrop-blur-sm animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-2.5 sm:p-4 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowAiModal(false)}
         >
           <div
-            className="flex flex-col w-full max-w-md max-h-[88dvh] rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl text-left overflow-hidden"
+            className="flex flex-col w-full max-w-md max-h-[calc(100dvh-1.25rem)] sm:max-h-[88dvh] rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl text-left overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4 shrink-0">
-              <h3 className="font-serif text-lg sm:text-xl font-bold text-slate-100 flex items-center gap-2">
-                <Bot className="h-5 w-5 text-amber-400" /> Configurare Meci vs AI
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 sm:px-5 py-3 shrink-0">
+              <h3
+                id="ai-modal-title"
+                className="font-serif text-base sm:text-xl font-bold text-slate-100 flex items-center gap-2"
+              >
+                <Bot className="h-5 w-5 text-amber-400 shrink-0" /> Configurare Meci vs AI
               </h3>
               <button
                 type="button"
+                aria-label="Închide dialogul AI"
                 onClick={() => setShowAiModal(false)}
                 className="rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:text-white cursor-pointer"
               >
@@ -415,7 +439,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-3.5 space-y-3.5 text-xs">
               <p className="text-slate-400">
                 Alege numărul de adversari virtuali (până la 9 roboți) și nivelul de dificultate.
               </p>
@@ -462,7 +486,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 bg-slate-950/80 px-5 py-3.5 shrink-0">
+            <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 bg-slate-950/90 px-4 sm:px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0">
               <button
                 type="button"
                 onClick={() => setShowAiModal(false)}
@@ -491,53 +515,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {showCreateModal && (
         <div
           data-testid="create-room-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 sm:p-4 backdrop-blur-sm animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-room-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-2.5 sm:p-4 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowCreateModal(false)}
         >
           <div
-            className="flex flex-col w-full max-w-lg max-h-[88dvh] rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl text-left overflow-hidden"
+            data-testid="create-room-dialog-card"
+            className="flex flex-col w-full max-w-lg max-h-[calc(100dvh-1.25rem)] sm:max-h-[88dvh] rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl text-left overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5 shrink-0">
-              <div>
-                <h3 className="font-serif text-lg sm:text-xl font-bold text-slate-100 flex items-center gap-2">
-                  <PlusCircle className="h-5 w-5 text-amber-400" />
-                  <span>{roomIsPrivate ? 'Cameră Privată Nouă' : 'Cameră Publică Nouă'}</span>
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 sm:px-5 py-3 shrink-0">
+              <div className="min-w-0 pr-2">
+                <h3
+                  id="create-room-modal-title"
+                  className="font-serif text-base sm:text-xl font-bold text-slate-100 flex items-center gap-2 truncate"
+                >
+                  <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400 shrink-0" />
+                  <span className="truncate">
+                    {roomIsPrivate ? 'Cameră Privată Nouă' : 'Cameră Publică Nouă'}
+                  </span>
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
                   Configurează arena pe harta României (2 până la 10 jucători).
                 </p>
               </div>
               <button
                 type="button"
+                data-testid="close-create-room-modal-btn"
+                aria-label="Închide dialogul de creare cameră"
                 onClick={() => setShowCreateModal(false)}
-                className="rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:text-white cursor-pointer"
+                className="rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:text-white shrink-0 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Scrollable Modal Content */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
+            <div
+              data-testid="create-room-modal-body"
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-3 space-y-3 text-xs"
+            >
               {/* Visibility Selector: Public vs Private */}
               <div>
-                <label className="font-bold text-slate-300 block mb-1.5">Tipul Camerei:</label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <label className="font-bold text-slate-300 block mb-1">Tipul Camerei:</label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     data-testid="room-type-public-btn"
                     onClick={() => setRoomIsPrivate(false)}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left transition cursor-pointer ${
                       !roomIsPrivate
                         ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200 shadow-sm'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:bg-slate-800/70'
                     }`}
                   >
                     <Globe className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs">Cameră Publică</div>
-                      <div className="text-[10px] opacity-80">Vizibilă în lista publică</div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs truncate">Cameră Publică</div>
+                      <div className="text-[10px] opacity-80 truncate">Vizibilă în listă</div>
                     </div>
                   </button>
 
@@ -545,16 +583,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type="button"
                     data-testid="room-type-private-btn"
                     onClick={() => setRoomIsPrivate(true)}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left transition cursor-pointer ${
                       roomIsPrivate
                         ? 'border-amber-500 bg-amber-500/15 text-amber-200 shadow-sm'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:bg-slate-800/70'
                     }`}
                   >
                     <Lock className="h-4 w-4 text-amber-400 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs">Cameră Privată</div>
-                      <div className="text-[10px] opacity-80">Acces doar cu cod / invitație</div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs truncate">Cameră Privată</div>
+                      <div className="text-[10px] opacity-80 truncate">Acces doar cu cod</div>
                     </div>
                   </button>
                 </div>
@@ -565,6 +603,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <label className="font-bold text-slate-300 block mb-1">Numele Camerei:</label>
                 <input
                   type="text"
+                  data-testid="create-room-name-input"
                   maxLength={40}
                   value={customRoomName}
                   onChange={(e) => setCustomRoomName(e.target.value)}
@@ -574,10 +613,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
 
               {/* Player Capacity */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-slate-200">Capacitate Jucători:</label>
-                  <span className="text-amber-400 font-mono font-black text-sm">
+                  <span className="text-amber-400 font-mono font-black text-xs sm:text-sm">
                     {customMaxPlayers} Jucători
                   </span>
                 </div>
@@ -587,36 +626,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   max={10}
                   value={customMaxPlayers}
                   onChange={(e) => setCustomMaxPlayers(Number(e.target.value))}
-                  className="mt-2 w-full accent-amber-500 cursor-pointer"
+                  className="mt-1.5 w-full accent-amber-500 cursor-pointer"
                 />
-                <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+                <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-0.5">
                   <span>2 jucători (10 zone)</span>
                   <span>4 jucători (20 zone)</span>
                   <span>10 jucători (38 zone)</span>
                 </div>
               </div>
 
-              {/* Fixed Structure Notice */}
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-slate-300 space-y-1">
-                <div>
-                  <span className="font-bold text-amber-300">⚔️ Structura Rundelor: </span>
-                  <span>
-                    Bază (1000 pct) &bull; Cucerire (200 pct) &bull; Departajare (300 pct) &bull; Război & Asediu (400 pct).
+              {/* Collapsible Advanced Settings & Structure Details */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/50 overflow-hidden">
+                <button
+                  type="button"
+                  data-testid="create-room-advanced-toggle"
+                  aria-expanded={showAdvancedSettings}
+                  onClick={() => setShowAdvancedSettings((prev) => !prev)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-bold text-amber-300 hover:bg-slate-800/50 transition cursor-pointer"
+                >
+                  <span>⚙️ Setări avansate & structura rundelor</span>
+                  <span className="font-mono text-[10px] text-slate-400">
+                    {showAdvancedSettings ? 'Ascunde ▲' : 'Afișează ▼'}
                   </span>
-                </div>
-                <div>
-                  <span className="font-bold text-amber-300">📚 Întrebări: </span>
-                  <span>
-                    Cultură generală cu 4 opțiuni (15s) și întrebări numerice de estimare pentru departajarea duelurilor la egalitate.
-                  </span>
-                </div>
+                </button>
+                {showAdvancedSettings && (
+                  <div className="border-t border-slate-800 px-3 py-2.5 text-[11px] text-slate-300 space-y-1.5 bg-amber-500/5">
+                    <div>
+                      <span className="font-bold text-amber-300">⚔️ Structura Rundelor: </span>
+                      <span>
+                        Bază (1000 pct) &bull; Cucerire (200 pct, ordine fixă pe runde) &bull; Departajare (300 pct) &bull; Război & Asediu (400 pct).
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-amber-300">📚 Întrebări: </span>
+                      <span>
+                        Cultură generală cu 4 opțiuni (15s) și întrebări numerice de estimare pentru departajarea duelurilor la egalitate.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Sticky Modal Footer */}
-            <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 bg-slate-950/85 px-5 py-3.5 shrink-0">
+            <div
+              data-testid="create-room-modal-footer"
+              className="flex items-center justify-end gap-2.5 border-t border-slate-800 bg-slate-950/90 px-4 sm:px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0"
+            >
               <button
                 type="button"
+                data-testid="cancel-create-room-btn"
                 onClick={() => setShowCreateModal(false)}
                 className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
               >

@@ -6,6 +6,7 @@ import { sound } from './services/audio';
 
 // Components
 import { Navbar } from './components/Navbar';
+import { FeedbackModal } from './components/FeedbackModal';
 
 // Views
 import { DashboardView } from './views/DashboardView';
@@ -40,6 +41,7 @@ export default function App() {
     mode: string;
   } | null>(null);
   const [appNotice, setAppNotice] = useState<string | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const checkMaintenanceStatus = useCallback(async () => {
     try {
@@ -407,6 +409,7 @@ export default function App() {
           }
         }}
         onLogout={handleLogout}
+        onOpenFeedback={() => setShowFeedbackModal(true)}
         unreadNotificationsCount={unreadNotifs}
       />
 
@@ -544,6 +547,7 @@ export default function App() {
                 chatMessages={chatMessages}
                 onLeaveGame={handleLeaveGame}
                 onRematch={handleRematch}
+                onOpenFeedback={() => setShowFeedbackModal(true)}
               />
             )}
 
@@ -570,6 +574,14 @@ export default function App() {
           </>
         )}
       </main>
+
+      {currentUser && (
+        <FeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          defaultRoomId={activeGame?.roomId || rejoinableRoom?.roomId || null}
+        />
+      )}
 
       {/* Footer - hidden during active game */}
       {activeTab !== 'game' && (

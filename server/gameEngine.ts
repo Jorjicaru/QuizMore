@@ -32,6 +32,9 @@ import {
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
+  buildConquestTurnSchedule,
+  getRoundFixedTurnOrder,
+  orderConquestWinnersByFixedTurnOrder,
   SCORING,
 } from '../src/game/rules';
 import { db } from './db';
@@ -74,8 +77,60 @@ export class GameManager {
   private questionTimers: Map<string, NodeJS.Timeout> = new Map();
   private selectionTimers: Map<string, NodeJS.Timeout> = new Map();
   private turnAdvanceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private emptyRoomCleanupTimers: Map<string, NodeJS.Timeout> = new Map();
+  private emptyRoomGraceMs = 30000;
 
   constructor() {}
+
+  public setEmptyRoomGraceMsForTesting(ms: number): void {
+    this.emptyRoomGraceMs = Math.max(10, ms);
+  }
+
+  private clearEmptyRoomCleanupTimer(roomId: string): void {
+    const t = this.emptyRoomCleanupTimers.get(roomId);
+    if (t) {
+      clearTimeout(t);
+      this.emptyRoomCleanupTimers.delete(roomId);
+    }
+  }
+
+  private closeAndCleanupRoom(roomId: string): void {
+    this.clearRoomTimers(roomId);
+    this.games.delete(roomId);
+    if (isPostgresConfigured()) {
+      void deleteActiveGameSnapshotFromPostgres(roomId);
+    }
+  }
+
+  private scheduleEmptyRoomCleanup(roomId: string): void {
+    this.clearEmptyRoomCleanupTimer(roomId);
+    const timer = setTimeout(() => {
+      this.emptyRoomCleanupTimers.delete(roomId);
+      const game = this.games.get(roomId);
+      if (!game) return;
+
+      const connectedHumans = game.players.filter(
+        (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+      );
+      if (connectedHumans.length > 0) {
+        return;
+      }
+
+      const hasAiBots = game.players.some((p) => p.isAi);
+      if (game.phase === 'waiting' || game.phase === 'finished' || !hasAiBots) {
+        this.closeAndCleanupRoom(roomId);
+      } else {
+        // Active match with AI bots: mark disconnected humans as having left so endGame cleans up the room immediately when the AI match finishes
+        for (const p of game.players) {
+          if (!p.isAi && p.isConnected === false) {
+            p.hasLeftIntentionally = true;
+          }
+        }
+      }
+    }, this.emptyRoomGraceMs);
+    timer.unref?.();
+    this.emptyRoomCleanupTimers.set(roomId, timer);
+  }
 
   private makeLogId(): string {
     return `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -442,9 +497,11 @@ export class GameManager {
     const existing = game.players.find((p) => p.id === user.id);
     if (existing) {
       const wasDisconnected = existing.isConnected === false || existing.botControlled === true;
+      this.clearEmptyRoomCleanupTimer(roomId);
       this.clearPlayerBotTimer(roomId, user.id);
       existing.isConnected = true;
       existing.botControlled = false;
+      existing.hasLeftIntentionally = false;
       delete existing.disconnectedAt;
       if (game.spectators) {
         game.spectators = game.spectators.filter((s) => s.id !== user.id);
@@ -506,6 +563,8 @@ export class GameManager {
       return { success: false, message: 'Camera este plină.' };
     }
 
+    this.clearEmptyRoomCleanupTimer(roomId);
+
     const newPlayer: Player = {
       id: user.id,
       username: user.username,
@@ -517,6 +576,7 @@ export class GameManager {
       isAi: false,
       isConnected: true,
       botControlled: false,
+      hasLeftIntentionally: false,
       castleTowers: 3,
       defensiveBonus: 0,
       territoriesCount: 0,
@@ -580,12 +640,25 @@ export class GameManager {
 
     if (game.phase !== 'waiting' && game.phase !== 'finished') {
       this.activateBotTakeoverForPlayer(game, player);
+      const connectedHumans = game.players.filter(
+        (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+      );
+      if (connectedHumans.length === 0) {
+        this.scheduleEmptyRoomCleanup(roomId);
+      }
       return;
     }
 
     if (game.phase === 'finished') {
       player.isConnected = false;
-      this.notifyUpdate(roomId);
+      const connectedHumans = game.players.filter(
+        (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+      );
+      if (connectedHumans.length === 0) {
+        this.closeAndCleanupRoom(roomId);
+      } else {
+        this.notifyUpdate(roomId);
+      }
       return;
     }
 
@@ -598,6 +671,12 @@ export class GameManager {
         player.isHost = false;
         nextConnectedHuman.isHost = true;
       }
+    }
+    const connectedHumans = game.players.filter(
+      (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+    );
+    if (connectedHumans.length === 0) {
+      this.scheduleEmptyRoomCleanup(roomId);
     }
     this.notifyUpdate(roomId);
   }
@@ -615,26 +694,58 @@ export class GameManager {
     }
 
     if (game.phase !== 'waiting' && game.phase !== 'finished') {
-      // Keep the player record and owned territories stable during an active match and activate bot takeover.
+      leavingPlayer.hasLeftIntentionally = true;
+      const remainingActiveHumans = game.players.filter(
+        (p) => !p.isAi && !p.hasLeftIntentionally && p.isConnected !== false
+      );
+      const disconnectedButNotLeftHumans = game.players.filter(
+        (p) => !p.isAi && !p.hasLeftIntentionally && p.isConnected === false
+      );
+      const hasAiBots = game.players.some((p) => p.isAi);
+
+      if (remainingActiveHumans.length === 0 && disconnectedButNotLeftHumans.length === 0) {
+        if (!hasAiBots) {
+          // All human players left a human-only match -> close and clean up room immediately
+          this.closeAndCleanupRoom(roomId);
+          return;
+        }
+        // Match against AI bots -> continue match with bot takeover until endGame, then clean up
+        this.activateBotTakeoverForPlayer(game, leavingPlayer);
+        return;
+      }
+
+      if (remainingActiveHumans.length === 0 && disconnectedButNotLeftHumans.length > 0) {
+        this.scheduleEmptyRoomCleanup(roomId);
+      }
       this.activateBotTakeoverForPlayer(game, leavingPlayer);
       return;
     }
 
     if (game.phase === 'finished') {
       leavingPlayer.isConnected = false;
-      this.notifyUpdate(roomId);
+      leavingPlayer.hasLeftIntentionally = true;
+      const remainingHumans = game.players.filter(
+        (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+      );
+      if (remainingHumans.length === 0) {
+        this.closeAndCleanupRoom(roomId);
+      } else {
+        this.notifyUpdate(roomId);
+      }
       return;
     }
 
     game.players = game.players.filter((p) => p.id !== userId);
     const remainingHumans = game.players.filter((p) => !p.isAi);
+    const remainingConnectedHumans = remainingHumans.filter(
+      (p) => p.isConnected !== false && !p.hasLeftIntentionally
+    );
     if (game.players.length === 0 || remainingHumans.length === 0) {
-      this.clearRoomTimers(roomId);
-      this.games.delete(roomId);
-      if (isPostgresConfigured()) {
-        void deleteActiveGameSnapshotFromPostgres(roomId);
-      }
+      this.closeAndCleanupRoom(roomId);
       return;
+    }
+    if (remainingConnectedHumans.length === 0) {
+      this.scheduleEmptyRoomCleanup(roomId);
     }
     if (leavingPlayer.isHost) {
       const nextHuman =
@@ -675,6 +786,19 @@ export class GameManager {
 
     const target = activeMatch || waitingRoom || finishedRoom;
     return target ? this.getClientState(target.roomId) : undefined;
+  }
+
+  public removeDeletedUserFromRooms(userId: string): void {
+    for (const roomId of Array.from(this.games.keys())) {
+      const g = this.games.get(roomId);
+      if (!g) continue;
+      if (
+        g.players.some((p) => p.id === userId) ||
+        g.spectators?.some((s) => s.id === userId)
+      ) {
+        this.leaveRoom(roomId, userId);
+      }
+    }
   }
 
   public addBot(
@@ -800,12 +924,22 @@ export class GameManager {
     }
     game.phase = 'base_selection';
     game.activePlayerIndex = 0;
+    game.turnOrder = game.players.map((p) => p.id);
+    const estConquestRounds = calculateConquestRounds(
+      Object.keys(game.territories).length,
+      game.players.length
+    );
+    game.conquestTurnSchedule = buildConquestTurnSchedule(
+      game.turnOrder,
+      Math.max(8, estConquestRounds + 4)
+    );
     game.usedQuestionIds = [];
     game.usedFactKeys = [];
     game.categoryUsageCounts = {};
     game.allocationNoResponseRetries = 0;
     for (const p of game.players) {
       p.attackBonusPoints = 0;
+      p.hasLeftIntentionally = false;
       if (!p.isAi && p.isConnected === false) {
         p.botControlled = true;
       }
@@ -1331,16 +1465,25 @@ export class GameManager {
         };
       } else {
         game.phase = 'conquest';
-        game.activePlayerIndex = 0;
         game.round = 1;
         game.maxRounds = calculateConquestRounds(
           Object.keys(game.territories).length,
           game.players.length
         );
+        if (!game.turnOrder || game.turnOrder.length === 0) {
+          game.turnOrder = game.players.map((p) => p.id);
+        }
+        game.conquestTurnSchedule = buildConquestTurnSchedule(
+          game.turnOrder,
+          Math.max(8, game.maxRounds + 4)
+        );
+        const firstRoundOrder = getRoundFixedTurnOrder(game, 1);
+        const firstIdx = game.players.findIndex((p) => p.id === firstRoundOrder[0]);
+        game.activePlayerIndex = firstIdx >= 0 ? firstIdx : 0;
 
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `🚩 Toate bazele au fost întemeiate! Faza 1: CUCERIRE (${game.maxRounds} runde, ${SCORING.CONQUEST} puncte per teritoriu). Toată lumea răspunde în același timp la întrebări grilă!`,
+          text: `🚩 Toate bazele au fost întemeiate! Faza 1: CUCERIRE (${game.maxRounds} runde, ${SCORING.CONQUEST} puncte per teritoriu). Toată lumea răspunde în același timp la întrebări grilă, iar alegerea teritoriilor urmează ordinea fixă a rundei!`,
           timestamp: Date.now(),
           type: 'info',
         });
@@ -2227,16 +2370,25 @@ export class GameManager {
         }
       }
 
-      // Sort by submission time ascending (fastest answer gets first pick)
-      correctSubmissions.sort((a, b) => a.submitTime - b.submitTime);
-      correctSubmissions.forEach((c, idx) => {
+      // Order strictly by the fixed deterministic turn order for this round (NOT by submitTime)
+      const roundTurnOrder = getRoundFixedTurnOrder(game, game.round);
+      const orderedWinnerIds = orderConquestWinnersByFixedTurnOrder(
+        correctSubmissions.map((c) => c.player.id),
+        roundTurnOrder
+      );
+      const subByPlayerId = new Map(correctSubmissions.map((c) => [c.player.id, c]));
+      const orderedSubmissions = orderedWinnerIds
+        .map((pid) => subByPlayerId.get(pid))
+        .filter((c): c is { player: Player; submitTime: number } => Boolean(c));
+
+      orderedSubmissions.forEach((c, idx) => {
         if (cq.playerAnswers[c.player.id]) {
           cq.playerAnswers[c.player.id].rank = idx + 1;
         }
       });
-      cq.winnerIds = correctSubmissions.map((c) => c.player.id);
+      cq.winnerIds = orderedWinnerIds;
 
-      if (correctSubmissions.length === 0) {
+      if (orderedSubmissions.length === 0) {
         game.conquestStallRounds = (game.conquestStallRounds || 0) + 1;
         game.gameLog.push({
           id: this.makeLogId(),
@@ -2246,12 +2398,12 @@ export class GameManager {
         });
       } else {
         game.conquestStallRounds = 0;
-        const names = correctSubmissions
-          .map((c) => `${c.player.username} (${(c.submitTime / 1000).toFixed(2)}s)`)
+        const names = orderedSubmissions
+          .map((c, idx) => `#${idx + 1} ${c.player.username}`)
           .join(', ');
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `🎯 Răspuns corect: ${names}! Fiecare are rândul să aleagă câte un teritoriu învecinat (+${SCORING.CONQUEST} pct).`,
+          text: `🎯 Răspuns corect! Ordinea fixă de cucerire în Runda ${game.round}: ${names} (+${SCORING.CONQUEST} pct).`,
           timestamp: Date.now(),
           type: 'conquest',
         });
@@ -2262,8 +2414,8 @@ export class GameManager {
       const delayTimer = setTimeout(() => {
         game.currentQuestion = null;
         game.pendingTerritoryId = null;
-        if (correctSubmissions.length > 0) {
-          game.conquestPickQueue = correctSubmissions.map((c) => c.player.id);
+        if (orderedSubmissions.length > 0) {
+          game.conquestPickQueue = [...orderedWinnerIds];
           this.processNextConquestPick(game);
         } else {
           this.finishConquestRound(game);
@@ -2988,9 +3140,28 @@ export class GameManager {
       game.maxRounds = game.round;
     }
 
+    if (!game.turnOrder || game.turnOrder.length === 0) {
+      game.turnOrder = game.players.map((p) => p.id);
+    }
+    if (!game.conquestTurnSchedule || game.conquestTurnSchedule.length < game.maxRounds) {
+      game.conquestTurnSchedule = buildConquestTurnSchedule(
+        game.turnOrder,
+        Math.max(8, game.maxRounds + 4)
+      );
+    }
+    const roundOrderIds = getRoundFixedTurnOrder(game, game.round);
+    const firstIdx = game.players.findIndex((p) => p.id === roundOrderIds[0]);
+    if (firstIdx >= 0) {
+      game.activePlayerIndex = firstIdx;
+    }
+
+    const roundOrderNames = roundOrderIds
+      .map((id) => game.players.find((p) => p.id === id)?.username || id)
+      .join(' → ');
+
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `📜 Cucerire - Runda ${game.round} (${decision.neutralCount} teritorii libere rămase): Toată lumea răspunde în același timp la întrebare!`,
+      text: `📜 Cucerire - Runda ${game.round} (${decision.neutralCount} teritorii libere rămase) • Ordinea turei: ${roundOrderNames}.`,
       timestamp: Date.now(),
       type: 'info',
     });
@@ -3003,7 +3174,7 @@ export class GameManager {
 
     this.startQuestion(game, q, {
       phaseContext: 'conquest',
-      attackerId: game.players[0].id,
+      attackerId: roundOrderIds[0] || game.players[0].id,
       participantIds: activeIds,
     });
   }
@@ -3164,15 +3335,25 @@ export class GameManager {
     for (const p of game.players) {
       const user = db.findUserById(p.id);
       if (user) {
-        user.profile.matchesPlayed++;
-        if (p.id === winner.id) user.profile.wins++;
-        else user.profile.losses++;
-        user.profile.territoriesConquered += p.territoriesCount;
-        user.profile.correctAnswersTotal += p.correctAnswers;
-        if (p.score > user.profile.highestScore) user.profile.highestScore = p.score;
-        void db.updateUserProfile(user.id, user.profile).catch((err) => {
-          console.error('[GameEngine] Eroare la actualizarea profilului după meci:', err);
-        });
+        const nextMatchesPlayed = (user.profile.matchesPlayed || 0) + 1;
+        const nextWins = (user.profile.wins || 0) + (p.id === winner.id ? 1 : 0);
+        const nextLosses = (user.profile.losses || 0) + (p.id === winner.id ? 0 : 1);
+        const nextTerritories = (user.profile.territoriesConquered || 0) + p.territoriesCount;
+        const nextCorrect = (user.profile.correctAnswersTotal || 0) + p.correctAnswers;
+        const nextHighestScore = Math.max(user.profile.highestScore || 0, p.score);
+        // Only update match counters; never overwrite rating, title, or manualRankOverride set by Admin!
+        void db
+          .updateUserProfile(user.id, {
+            matchesPlayed: nextMatchesPlayed,
+            wins: nextWins,
+            losses: nextLosses,
+            territoriesConquered: nextTerritories,
+            correctAnswersTotal: nextCorrect,
+            highestScore: nextHighestScore,
+          })
+          .catch((err) => {
+            console.error('[GameEngine] Eroare la actualizarea profilului după meci:', err);
+          });
       }
     }
 
@@ -3203,6 +3384,14 @@ export class GameManager {
     }
 
     this.notifyUpdate(game.roomId);
+
+    // If no human players remain connected in this room (e.g. human left an AI match), close and clean up the finished room immediately
+    const connectedHumans = game.players.filter(
+      (p) => !p.isAi && p.isConnected !== false && !p.hasLeftIntentionally
+    );
+    if (connectedHumans.length === 0) {
+      this.closeAndCleanupRoom(game.roomId);
+    }
   }
 
   private checkAiTurn(roomId: string): void {
@@ -3390,6 +3579,7 @@ export class GameManager {
       clearTimeout(advTimer);
       this.turnAdvanceTimers.delete(roomId);
     }
+    this.clearEmptyRoomCleanupTimer(roomId);
   }
 
   public getActiveGamesCount(): number {
@@ -3580,6 +3770,11 @@ export class GameManager {
     for (const roomId of this.games.keys()) {
       this.clearRoomTimers(roomId);
     }
+    for (const timer of this.emptyRoomTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.emptyRoomTimers.clear();
+    this.games.clear();
   }
 
   private notifyUpdate(roomId: string): void {

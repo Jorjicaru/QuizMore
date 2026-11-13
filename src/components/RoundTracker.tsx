@@ -120,6 +120,53 @@ export const RoundTracker: React.FC<RoundTrackerProps> = ({ game }) => {
         })}
       </div>
 
+      {/* Row 2.5: Multi-round fixed player turn schedule (tilted color bars per round, like Triviador) */}
+      {phase === 'conquest' &&
+        model.conquestTurnSchedule &&
+        model.conquestTurnSchedule.length > 0 && (
+          <div
+            data-testid="round-tracker-schedule"
+            className="flex items-center gap-1 w-full pt-0.5"
+          >
+            {model.conquestTurnSchedule.slice(0, progressSteps).map((roundOrder, rIdx) => {
+              const roundNumber = rIdx + 1;
+              const isCurrentRound = roundNumber === currentRound;
+              const isPastRound = roundNumber < currentRound;
+              return (
+                <div
+                  key={`sched_r_${roundNumber}`}
+                  data-testid={`tracker-schedule-round-${roundNumber}`}
+                  className={`flex-1 flex items-center justify-center gap-[2px] py-0.5 rounded ${
+                    isCurrentRound ? 'bg-amber-500/10' : isPastRound ? 'opacity-45' : 'opacity-80'
+                  }`}
+                >
+                  {roundOrder.map((playerId, pIdx) => {
+                    const p = game.players.find((pl) => pl.id === playerId);
+                    if (!p) return null;
+                    const isCurrentPicker =
+                      isCurrentRound && game.conquestPickerId === playerId;
+                    return (
+                      <span
+                        key={`${roundNumber}_${playerId}_${pIdx}`}
+                        data-testid={`schedule-bar-r${roundNumber}-${playerId}`}
+                        title={`Runda ${roundNumber}, ordinea ${pIdx + 1}: ${p.username}`}
+                        className={`inline-block w-1.5 h-3.5 rounded-[2px] -skew-x-12 transition-all ${
+                          isCurrentPicker
+                            ? 'ring-1 ring-white shadow-[0_0_8px_rgba(255,255,255,0.95)] scale-125 z-10'
+                            : isCurrentRound
+                            ? 'ring-1 ring-black/60'
+                            : ''
+                        }`}
+                        style={{ backgroundColor: p.color }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
       {/* Row 3: Authoritative Turn / Pick / Individual War Order (1 marker per player, never displayed as team pairs) */}
       <div
         data-testid="round-tracker-markers"

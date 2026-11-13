@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Download,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { sound } from '../services/audio';
 
@@ -20,6 +21,7 @@ interface NavbarProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   onLogout: () => void;
+  onOpenFeedback?: () => void;
   unreadNotificationsCount?: number;
 }
 
@@ -28,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onSelectTab,
   onLogout,
+  onOpenFeedback,
 }) => {
   const [isMuted, setIsMuted] = useState(sound.getIsMuted());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -154,6 +157,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {user ? (
             <>
+              {onOpenFeedback && (
+                <button
+                  type="button"
+                  data-testid="open-feedback-btn"
+                  onClick={() => {
+                    sound.playClick();
+                    onOpenFeedback();
+                  }}
+                  title="Trimite feedback"
+                  aria-label="Trimite feedback"
+                  className="hidden sm:flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition cursor-pointer"
+                >
+                  <MessageSquarePlus className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  <span className="hidden xl:inline">Trimite feedback</span>
+                </button>
+              )}
+
               {/* Elo Rating Badge */}
               <div className="hidden xl:flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs whitespace-nowrap">
                 <Trophy className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -233,6 +253,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             );
           })}
+          {onOpenFeedback && (
+            <button
+              type="button"
+              data-testid="mobile-open-feedback-btn"
+              onClick={() => {
+                sound.playClick();
+                setMobileMenuOpen(false);
+                onOpenFeedback();
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20"
+            >
+              <MessageSquarePlus className="h-4 w-4 text-amber-400" />
+              <span>Trimite feedback</span>
+            </button>
+          )}
         </div>
       )}
     </header>

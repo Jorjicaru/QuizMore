@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, Player } from '../types/game';
-import { buildRoundDisplayItems, canPlayerRegenerateTower } from '../game/rules';
+import {
+  buildRoundDisplayItems,
+  canPlayerRegenerateTower,
+  canPlayerSelectTerritoryNow,
+} from '../game/rules';
 import { sound } from '../services/audio';
 import { socketService } from '../services/socket';
 import {
@@ -96,7 +100,7 @@ export const renderPlayerCardItem = (
   variant: 'sidebar' | 'mobile'
 ) => {
   const isTurn =
-    game.players[game.activePlayerIndex]?.id === player.id &&
+    canPlayerSelectTerritoryNow(game, player.id) &&
     game.phase !== 'finished' &&
     game.phase !== 'war';
   const isMe = player.id === currentUserId;
@@ -259,7 +263,7 @@ export const PlayerSidebar: React.FC<{
         {rankedPlayers.map(({ player }, rankIdx) => {
           const rank = rankIdx + 1;
           const isTurn =
-            game.players[game.activePlayerIndex]?.id === player.id &&
+            canPlayerSelectTerritoryNow(game, player.id) &&
             game.phase !== 'finished' &&
             game.phase !== 'war';
           const isMe = player.id === currentUserId;
@@ -424,18 +428,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       ? game.warRound.battles.find((b) => b.attackerId === currentUserId)
       : undefined;
 
-  const isMyTurn =
-    !isSpectator &&
-    game.phase !== 'finished' &&
-    !game.currentQuestion &&
-    (game.phase === 'war' && game.warRound
-      ? Boolean(
-          game.warRound.status === 'selecting_targets' &&
-            myWarBattle &&
-            myWarBattle.targetTerritoryId === null &&
-            myWarBattle.status !== 'skipped'
-        )
-      : activePlayer?.id === currentUserId);
+  const isMyTurn = !isSpectator && canPlayerSelectTerritoryNow(game, currentUserId);
 
   const canRegenerateTowerNow =
     isMyTurn &&
@@ -523,10 +516,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     };
   }, [game.turnTimerExpiresAt, game.turnTimeLimit, game.phase, game.currentQuestion]);
 
+  const isTerritoryPickWindowOpen =
+    game.phase === 'base_selection' ||
+    (game.phase === 'conquest' && Boolean(game.conquestPickerId)) ||
+    (game.phase === 'allocation' &&
+      Boolean(game.allocationPickReady && game.allocationWinnerId)) ||
+    (game.phase === 'war' &&
+      Boolean(
+        game.warRound &&
+          (game.warRound.status === 'selecting_targets' ||
+            game.warRound.status === 'attack_preview')
+      ));
+
   const showSelectionTimer =
     game.phase !== 'finished' &&
     game.phase !== 'waiting' &&
     !game.currentQuestion &&
+    isTerritoryPickWindowOpen &&
     game.turnTimerExpiresAt > 0;
 
   const trackerModel = buildRoundDisplayItems(game);
@@ -550,10 +556,43 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     }
     if (isMyTurn) {
       return (
-        <div className="flex items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-500/20 px-2 sm:px-2.5 py-1 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
+        <div
+          data-testid="hud-my-turn-pill"
+          className="flex items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-500/20 px-2 sm:px-2.5 py-1 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+        >
           <Swords className="h-3.5 w-3.5 text-amber-300 shrink-0" />
           <span className="font-serif text-[10px] sm:text-xs font-black tracking-wide text-amber-200 whitespace-nowrap">
             RÂNDUL TĂU PE HARTĂ!
+          </span>
+        </div>
+      );
+    }
+    if (game.currentQuestion) {
+      return (
+        <div className="flex items-center gap-1.5 rounded-lg border border-stone-700/80 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
+          <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[140px] sm:max-w-[240px]">
+            Întrebare în desfășurare...
+          </span>
+        </div>
+      );
+    }
+    if (game.phase === 'conquest' && !game.conquestPickerId) {
+      return (
+        <div className="flex items-center gap-1.5 rounded-lg border border-stone-800 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
+          <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span className="text-[11px] sm:text-xs text-stone-300 truncate max-w-[150px] sm:max-w-[230px]">
+            Se pregătește întrebarea...
+          </span>
+        </div>
+      );
+    }
+    if (game.phase === 'allocation' && !game.allocationPickReady) {
+      return (
+        <div className="flex items-center gap-1.5 rounded-lg border border-stone-800 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
+          <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span className="text-[11px] sm:text-xs text-stone-300 truncate max-w-[150px] sm:max-w-[230px]">
+            Departajare în desfășurare...
           </span>
         </div>
       );
@@ -706,16 +745,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="flex items-center gap-2 pt-0.5 min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 truncate">
               {game.phase === 'base_selection'
-                ? 'Alege Baza (1000 pct)'
+                ? isMyTurn
+                  ? 'Alege Baza (1000 pct)'
+                  : `${activePlayer?.username || 'Jucătorul'} alege baza...`
                 : game.phase === 'conquest'
-                ? 'Cucerește teritoriu liber (200 pct)'
+                ? isMyTurn
+                  ? 'Cucerește teritoriu liber (200 pct)'
+                  : `${activePlayer?.username || 'Jucătorul'} alege teritoriu...`
                 : game.phase === 'allocation'
-                ? 'Revendică teritoriu liber (300 pct)'
+                ? isMyTurn
+                  ? 'Revendică teritoriu liber (300 pct)'
+                  : `${activePlayer?.username || 'Câștigătorul'} alege teritoriu...`
                 : game.warRound?.status === 'attack_preview'
                 ? 'Prezentare atac'
                 : canRegenerateTowerNow
                 ? 'Alege ținta de atac (400 pct) sau regenerează un turn'
-                : 'Alege ținta de atac (400 pct)'}
+                : isMyTurn
+                ? 'Alege ținta de atac (400 pct)'
+                : 'Se alege ținta de atac...'}
             </span>
             <div className="h-1.5 flex-1 min-w-[48px] overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">
               <div

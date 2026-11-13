@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../db';
 import { gameManager } from '../gameEngine';
 import { authenticate, AuthRequest } from '../auth';
+import { computeLeaderboardWithManualOverrides } from '../../src/game/rules';
 
 const router = Router();
 
@@ -13,25 +14,15 @@ router.get('/rooms', (_req: Request, res: Response): void => {
 
 // Leaderboard
 router.get('/leaderboard', (req: Request, res: Response): void => {
-  const { type = 'rating' } = req.query;
-  const allUsers = db.getAllUsers().map(u => u.profile);
+  const rawType = String(req.query.type || 'rating');
+  const sortType: 'rating' | 'wins' | 'territories' | 'score' =
+    rawType === 'wins' || rawType === 'territories' || rawType === 'score'
+      ? rawType
+      : 'rating';
 
-  let sorted = [...allUsers];
-  if (type === 'wins') {
-    sorted.sort((a, b) => b.wins - a.wins);
-  } else if (type === 'territories') {
-    sorted.sort((a, b) => b.territoriesConquered - a.territoriesConquered);
-  } else if (type === 'score') {
-    sorted.sort((a, b) => b.highestScore - a.highestScore);
-  } else {
-    // Default: rating
-    sorted.sort((a, b) => b.rating - a.rating);
-  }
-
-  const leaderboard = sorted.slice(0, 50).map((u, index) => ({
-    rank: index + 1,
-    ...u,
-  }));
+  const allUsers = db.getAllUsers().map((u) => u.profile);
+  const ranked = computeLeaderboardWithManualOverrides(allUsers, sortType);
+  const leaderboard = ranked.slice(0, 50);
 
   res.json({ leaderboard });
 });

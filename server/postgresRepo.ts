@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
-import { Question, GameState } from '../src/types/game';
+import { Question, GameState, FeedbackRecord, FeedbackCategory, FeedbackStatus } from '../src/types/game';
 import { UserRecord, GameRecord, FriendRecord, NotificationRecord, AuditLogRecord, DatabaseSchema } from './db';
 import { normalizeQuestionText } from './questionsData';
 import { isAiStudioPreviewEnv, isPlaceholderValue } from './envSecurity';
@@ -156,7 +156,7 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
   const pgPool = getPostgresPool();
   if (!pgPool) return null;
 
-  const [usersRes, questionsRes, gamesRes, resultsRes, friendsRes, notifsRes, auditRes] = await Promise.all([
+  const [usersRes, questionsRes, gamesRes, resultsRes, friendsRes, notifsRes, auditRes, feedbackRes] = await Promise.all([
     pgPool.query('SELECT * FROM users ORDER BY created_at ASC'),
     pgPool.query('SELECT * FROM questions ORDER BY id ASC'),
     pgPool.query('SELECT * FROM games ORDER BY created_at DESC LIMIT 200'),
@@ -166,12 +166,19 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
     pgPool
       .query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200')
       .catch(() => ({ rows: [] as any[] })),
+    pgPool
+      .query('SELECT * FROM app_feedback ORDER BY created_at DESC LIMIT 300')
+      .catch(() => ({ rows: [] as any[] })),
   ]);
 
   const users: Record<string, UserRecord> = {};
   for (const row of usersRes.rows) {
     const createdAtIso =
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+    const manualRankOverride =
+      row.manual_rank_override !== null && row.manual_rank_override !== undefined
+        ? Number(row.manual_rank_override)
+        : null;
     users[row.id] = {
       id: row.id,
       username: row.username,
@@ -195,6 +202,7 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
         territoriesConquered: Number(row.territories_conquered ?? 0),
         correctAnswersTotal: Number(row.correct_answers_total ?? 0),
         highestScore: Number(row.highest_score ?? 0),
+        manualRankOverride,
         createdAt: createdAtIso,
       },
     };
@@ -307,6 +315,24 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }));
 
+  const feedback: FeedbackRecord[] = (feedbackRes?.rows || []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id || null,
+    username: row.username || 'Anonim',
+    category: (row.category || 'altceva') as FeedbackCategory,
+    message: row.message || '',
+    roomId: row.room_id || null,
+    status: (row.status || 'nou') as FeedbackStatus,
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updatedAt:
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : row.updated_at
+        ? String(row.updated_at)
+        : undefined,
+  }));
+
   return {
     users,
     questions,
@@ -314,6 +340,7 @@ export async function loadAllFromPostgres(): Promise<DatabaseSchema | null> {
     friends,
     notifications,
     auditLogs,
+    feedback,
   };
 }
 
@@ -327,8 +354,8 @@ export async function upsertUserToPostgres(
       `INSERT INTO users (
         id, username, email, password_hash, role, is_banned,
         avatar, title, rating, matches_played, wins, losses,
-        territories_conquered, correct_answers_total, highest_score, token_version, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+        territories_conquered, correct_answers_total, highest_score, manual_rank_override, token_version, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
       ON CONFLICT (id) DO UPDATE SET
         username = EXCLUDED.username,
         email = EXCLUDED.email,
@@ -344,6 +371,7 @@ export async function upsertUserToPostgres(
         territories_conquered = EXCLUDED.territories_conquered,
         correct_answers_total = EXCLUDED.correct_answers_total,
         highest_score = EXCLUDED.highest_score,
+        manual_rank_override = EXCLUDED.manual_rank_override,
         token_version = EXCLUDED.token_version,
         updated_at = NOW()`,
       [
@@ -362,6 +390,7 @@ export async function upsertUserToPostgres(
         p.territoriesConquered ?? 0,
         p.correctAnswersTotal ?? 0,
         p.highestScore ?? 0,
+        p.manualRankOverride ?? null,
         user.tokenVersion ?? 1,
         user.createdAt || new Date().toISOString(),
       ]
@@ -378,6 +407,9 @@ export async function deleteUserFromPostgres(
   client?: QueryableClient
 ): Promise<void> {
   if (client) {
+    await client.query('DELETE FROM friends WHERE requester_id = $1 OR recipient_id = $1', [userId]);
+    await client.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM users WHERE id = $1', [userId]);
     return;
   }
@@ -816,6 +848,56 @@ export async function deleteActiveGameSnapshotFromPostgres(roomId: string): Prom
   await pgPool.query('DELETE FROM active_game_snapshots WHERE room_id = $1', [roomId]);
 }
 
+export async function insertFeedbackToPostgres(
+  entry: FeedbackRecord,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query(
+      `INSERT INTO app_feedback (id, user_id, username, category, message, room_id, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (id) DO UPDATE SET
+         status = EXCLUDED.status,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        entry.id,
+        entry.userId || null,
+        entry.username || 'Anonim',
+        entry.category,
+        entry.message,
+        entry.roomId || null,
+        entry.status,
+        entry.createdAt,
+        entry.updatedAt || entry.createdAt,
+      ]
+    );
+    return;
+  }
+  await withPostgresTransaction(async (tx) => {
+    await insertFeedbackToPostgres(entry, tx);
+  });
+}
+
+export async function updateFeedbackStatusInPostgres(
+  id: string,
+  status: FeedbackStatus,
+  updatedAtIso: string,
+  client?: QueryableClient
+): Promise<void> {
+  if (client) {
+    await client.query(
+      `UPDATE app_feedback
+       SET status = $2, updated_at = $3
+       WHERE id = $1`,
+      [id, status, updatedAtIso]
+    );
+    return;
+  }
+  await withPostgresTransaction(async (tx) => {
+    await updateFeedbackStatusInPostgres(id, status, updatedAtIso, tx);
+  });
+}
+
 export async function closePostgresPool(): Promise<void> {
   if (pool && !injectedTestPool) {
     await pool.end();
@@ -824,3 +906,4 @@ export async function closePostgresPool(): Promise<void> {
   injectedTestPool = null;
   postgresReady = false;
 }
+

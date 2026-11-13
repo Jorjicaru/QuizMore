@@ -1194,6 +1194,17 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
     const cq = game.currentQuestion;
     const pickQueue = game.conquestPickQueue || [];
     const pickerId = game.conquestPickerId || null;
+    const totalRounds = Math.max(1, game.maxRounds, game.round);
+    const fixedSchedule =
+      Array.isArray(game.conquestTurnSchedule) && game.conquestTurnSchedule.length >= totalRounds
+        ? game.conquestTurnSchedule
+        : buildConquestTurnSchedule(
+            game.turnOrder && game.turnOrder.length > 0
+              ? game.turnOrder
+              : game.players.map((p) => p.id),
+            totalRounds
+          );
+    const roundTurnOrder = getRoundFixedTurnOrder(game, game.round);
 
     if (!cq && (pickerId || pickQueue.length > 0)) {
       const orderedQueueIds: string[] = [];
@@ -1221,8 +1232,10 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
         });
       });
 
-      for (const p of game.players) {
-        if (orderedQueueIds.includes(p.id)) continue;
+      for (const pid of roundTurnOrder) {
+        if (orderedQueueIds.includes(pid)) continue;
+        const p = playersById.get(pid);
+        if (!p) continue;
         items.push({
           playerId: p.id,
           username: p.username,
@@ -1239,23 +1252,28 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
         subMode: 'picking',
         subModeLabel: `${orderedQueueIds.length} alegeri pe hartă`,
         currentRound: game.round,
-        totalRounds: Math.max(1, game.maxRounds),
+        totalRounds,
         remainingSteps: orderedQueueIds.length,
         items,
         battlePairs: [],
         byeItems: [],
+        conquestTurnSchedule: fixedSchedule,
       };
     }
 
-    const items: RoundTrackerMarkerItem[] = game.players.map((p, idx) => {
+    const orderedPlayersForRound = roundTurnOrder
+      .map((pid) => playersById.get(pid))
+      .filter((p): p is Player => Boolean(p));
+
+    const items: RoundTrackerMarkerItem[] = orderedPlayersForRound.map((p, idx) => {
       const sub = cq?.playerAnswers?.[p.id];
       let state: RoundTrackerMarkerState = 'pending';
-      let label = 'Gândește...';
+      let label = `Ordinea #${idx + 1} în rundă`;
 
       if (cq?.resolved) {
         if (sub?.answerStatus === 'CORRECT' || sub?.isCorrect) {
           state = 'correct';
-          label = 'Corect';
+          label = `Corect (Ordinea #${idx + 1})`;
         } else if (sub?.answerStatus === 'NO_RESPONSE') {
           state = 'no_response';
           label = 'Fără răspuns';
@@ -1265,7 +1283,7 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
         }
       } else if (sub !== undefined && sub.answer !== null && sub.answer !== undefined) {
         state = 'answered';
-        label = 'A răspuns';
+        label = `A răspuns (Ordinea #${idx + 1})`;
       }
 
       return {
@@ -1282,13 +1300,14 @@ export function buildRoundDisplayItems(game: GameState): RoundDisplayModel {
       phase: game.phase,
       phaseLabel: 'CUCERIRE',
       subMode: 'question',
-      subModeLabel: `Runda ${game.round}/${game.maxRounds}`,
+      subModeLabel: `Runda ${game.round}/${totalRounds}`,
       currentRound: game.round,
-      totalRounds: Math.max(1, game.maxRounds),
-      remainingSteps: Math.max(0, game.maxRounds - game.round + 1),
+      totalRounds,
+      remainingSteps: Math.max(0, totalRounds - game.round + 1),
       items,
       battlePairs: [],
       byeItems: [],
+      conquestTurnSchedule: fixedSchedule,
     };
   }
 
@@ -2121,6 +2140,221 @@ export function detectTerritoryMapTransitions(params: {
   }
 
   return transitions;
+}
+
+// ============================================================================
+// SECȚIUNEA V11: ORDINE FIXĂ PENTRU CUCERIRI, VALIDARE TURN PROPRIU ȘI CLASAMENT
+// ============================================================================
+
+/**
+ * Construiește programul fix de ordine a turelor (round-robin determinist) pentru rundele de cucerire (`conquest`).
+ * Pornind de la `turnOrder` stabilită la începutul meciului:
+ * - Runda 1: `[p1, p2, p3, ...]`
+ * - Runda 2: `[p2, p3, ..., p1]`
+ * - Runda k: rotație circulară cu `(k - 1) % n`
+ */
+export function buildConquestTurnSchedule(playerIds: string[], totalRounds: number): string[][] {
+  const cleanIds = playerIds.filter(Boolean);
+  const n = cleanIds.length;
+  const count = Math.max(1, totalRounds);
+  if (n === 0) return Array.from({ length: count }, () => []);
+
+  const schedule: string[][] = [];
+  for (let r = 0; r < count; r++) {
+    const shift = r % n;
+    schedule.push([...cleanIds.slice(shift), ...cleanIds.slice(0, shift)]);
+  }
+  return schedule;
+}
+
+/**
+ * Returnează ordinea fixă a jucătorilor pentru o rundă dată (`roundNumber` 1-indexed),
+ * folosind `game.conquestTurnSchedule` sau rotația deterministă a `game.turnOrder`.
+ */
+export function getRoundFixedTurnOrder(
+  game: Pick<GameState, 'players' | 'turnOrder' | 'conquestTurnSchedule'>,
+  roundNumber: number
+): string[] {
+  const activeIds = game.players.map((p) => p.id);
+  const roundIdx = Math.max(0, (roundNumber || 1) - 1);
+
+  if (
+    Array.isArray(game.conquestTurnSchedule) &&
+    game.conquestTurnSchedule.length > 0 &&
+    Array.isArray(game.conquestTurnSchedule[roundIdx % game.conquestTurnSchedule.length])
+  ) {
+    const fromSchedule = game.conquestTurnSchedule[roundIdx % game.conquestTurnSchedule.length].filter(
+      (id) => activeIds.includes(id)
+    );
+    for (const id of activeIds) {
+      if (!fromSchedule.includes(id)) {
+        fromSchedule.push(id);
+      }
+    }
+    return fromSchedule;
+  }
+
+  const baseOrder =
+    Array.isArray(game.turnOrder) && game.turnOrder.length > 0
+      ? game.turnOrder.filter((id) => activeIds.includes(id))
+      : [...activeIds];
+  for (const id of activeIds) {
+    if (!baseOrder.includes(id)) {
+      baseOrder.push(id);
+    }
+  }
+
+  if (baseOrder.length === 0) return [];
+  const shift = roundIdx % baseOrder.length;
+  return [...baseOrder.slice(shift), ...baseOrder.slice(0, shift)];
+}
+
+/**
+ * Ordonează jucătorii care au răspuns corect la o întrebare de cucerire (`conquest`)
+ * EXCLUSIV după ordinea fixă de tură a rundei (`roundTurnOrder`), NU după timpul de răspuns (`submitTime`).
+ */
+export function orderConquestWinnersByFixedTurnOrder(
+  correctPlayerIds: string[],
+  roundTurnOrder: string[]
+): string[] {
+  const correctSet = new Set(correctPlayerIds);
+  const ordered: string[] = [];
+  for (const pid of roundTurnOrder) {
+    if (correctSet.has(pid) && !ordered.includes(pid)) {
+      ordered.push(pid);
+    }
+  }
+  for (const pid of correctPlayerIds) {
+    if (!ordered.includes(pid)) {
+      ordered.push(pid);
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Verifică dacă un jucător are dreptul efectiv să selecteze un teritoriu pe hartă CHIAR ACUM:
+ * - base_selection: nicio întrebare activă și `players[activePlayerIndex].id === userId`
+ * - conquest: nicio întrebare activă (`!currentQuestion`) și `conquestPickerId === userId`
+ * - allocation: nicio întrebare activă (`!currentQuestion`), `allocationPickReady === true` și `allocationWinnerId === userId`
+ * - war: nicio întrebare activă (`!currentQuestion`), `warRound.status === 'selecting_targets'` și jucătorul are o bătălie activă fără țintă aleasă
+ */
+export function canPlayerSelectTerritoryNow(
+  game: Pick<
+    GameState,
+    | 'phase'
+    | 'currentQuestion'
+    | 'players'
+    | 'activePlayerIndex'
+    | 'conquestPickerId'
+    | 'allocationWinnerId'
+    | 'allocationPickReady'
+    | 'warRound'
+  >,
+  userId: string | undefined | null
+): boolean {
+  if (!userId || game.currentQuestion) return false;
+
+  if (game.phase === 'base_selection') {
+    const activePlayer = game.players[game.activePlayerIndex];
+    return Boolean(activePlayer && activePlayer.id === userId && !activePlayer.baseTerritoryId);
+  }
+
+  if (game.phase === 'conquest') {
+    return Boolean(game.conquestPickerId && game.conquestPickerId === userId);
+  }
+
+  if (game.phase === 'allocation') {
+    return Boolean(game.allocationPickReady && game.allocationWinnerId === userId);
+  }
+
+  if (game.phase === 'war') {
+    if (!game.warRound || game.warRound.status !== 'selecting_targets') return false;
+    return game.warRound.battles.some(
+      (b) =>
+        b.attackerId === userId &&
+        b.status === 'selecting_target' &&
+        !b.targetTerritoryId
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Calculează clasamentul jucătorilor ținând cont atât de criteriul de sortare (`rating` / `wins` / `territories` / `score`),
+ * cât și de eventualele poziții fixate manual de către administrator (`manualRankOverride`),
+ * astfel încât o ajustare manuală să își producă efectul clar și determinist.
+ */
+export function computeLeaderboardWithManualOverrides<
+  T extends {
+    id: string;
+    rating: number;
+    wins: number;
+    territoriesConquered: number;
+    highestScore: number;
+    manualRankOverride?: number | null;
+  }
+>(
+  users: T[],
+  type: 'rating' | 'wins' | 'territories' | 'score' = 'rating'
+): Array<T & { rank: number }> {
+  const metricCompare = (a: T, b: T): number => {
+    if (type === 'wins') {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return b.rating - a.rating;
+    }
+    if (type === 'territories') {
+      if (b.territoriesConquered !== a.territoriesConquered) {
+        return b.territoriesConquered - a.territoriesConquered;
+      }
+      return b.rating - a.rating;
+    }
+    if (type === 'score') {
+      if (b.highestScore !== a.highestScore) return b.highestScore - a.highestScore;
+      return b.rating - a.rating;
+    }
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    return b.wins - a.wins;
+  };
+
+  // Pentru tab-ul principal ('rating'), aplicăm și manualRankOverride (dacă a fost setat de admin)
+  const autoSorted = [...users].sort(metricCompare);
+  if (type !== 'rating') {
+    return autoSorted.map((u, idx) => ({ ...u, rank: idx + 1 }));
+  }
+
+  const withOverride = autoSorted
+    .filter(
+      (u) =>
+        typeof u.manualRankOverride === 'number' &&
+        Number.isInteger(u.manualRankOverride) &&
+        u.manualRankOverride >= 1
+    )
+    .sort((a, b) => {
+      const ra = a.manualRankOverride as number;
+      const rb = b.manualRankOverride as number;
+      if (ra !== rb) return ra - rb;
+      return metricCompare(a, b);
+    });
+
+  if (withOverride.length === 0) {
+    return autoSorted.map((u, idx) => ({ ...u, rank: idx + 1 }));
+  }
+
+  const overrideSet = new Set(withOverride.map((u) => u.id));
+  const regularUsers = autoSorted.filter((u) => !overrideSet.has(u.id));
+  const finalOrder: T[] = [...regularUsers];
+
+  for (const pinned of withOverride) {
+    const targetIdx = Math.max(
+      0,
+      Math.min(finalOrder.length, (pinned.manualRankOverride as number) - 1)
+    );
+    finalOrder.splice(targetIdx, 0, pinned);
+  }
+
+  return finalOrder.map((u, idx) => ({ ...u, rank: idx + 1 }));
 }
 
 

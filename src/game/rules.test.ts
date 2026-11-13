@@ -39,6 +39,11 @@ import {
   resolveAttackOriginTerritory,
   buildActiveAttackVectors,
   detectTerritoryMapTransitions,
+  buildConquestTurnSchedule,
+  getRoundFixedTurnOrder,
+  orderConquestWinnersByFixedTurnOrder,
+  canPlayerSelectTerritoryNow,
+  computeLeaderboardWithManualOverrides,
   SCORING,
 } from './rules';
 import { Territory, Player, GameState } from '../types/game';
@@ -52,6 +57,11 @@ import { GameManager } from '../../server/gameEngine';
 import { INITIAL_QUESTIONS, normalizeQuestionText } from '../../server/questionsData';
 import { db, Database } from '../../server/db';
 import { generateToken } from '../../server/auth';
+import bcrypt from 'bcryptjs';
+import express from 'express';
+import adminRoutes from '../../server/routes/adminRoutes';
+import feedbackRoutes, { clearFeedbackRateLimitsForTesting } from '../../server/routes/feedbackRoutes';
+import gameRoutes from '../../server/routes/gameRoutes';
 import { setupSocketHandlers } from '../../server/socketHandler';
 import {
   isPlaceholderValue,
@@ -1231,6 +1241,7 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
     client2.disconnect();
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    gm.shutdownAllRooms();
     await db.deleteUser(u1Id);
     await db.deleteUser(u2Id);
   }
@@ -3559,6 +3570,614 @@ test('V10 Test 39: Asediu continuu al bazei (3 -> 2 -> 1 -> 0 turnuri), regenera
     (gm as any).clearRoomTimers(privRoom.roomId);
   }
 });
+
+test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și protecție istoric meciuri), persistența parolei admin la redeploy, afișarea strictă a instrucțiunii de cucerire, ordine fixă pe runde în cucerire, închiderea camerelor fără jucători (vs continuare AI) și sistemul de feedback', async () => {
+  // =========================================================================
+  // 1. PAROLA CONTULUI DE ADMINISTRATOR DUPĂ REDEPLOY (addConfiguredAdmin)
+  // =========================================================================
+  const mockDbData: any = {
+    users: {},
+    questions: [],
+    games: [],
+    friends: [],
+    notifications: [],
+    auditLogs: [],
+    feedback: [],
+  };
+  const envConfig = {
+    ADMIN_EMAIL: 'admin.redeploy@jorjicaru.top',
+    ADMIN_PASSWORD: 'VoievodSecret#987654!',
+    ADMIN_USERNAME: 'AdminRedeploy',
+  };
+
+  // First boot: creates the admin user from env
+  const boot1 = db.addConfiguredAdmin(mockDbData, envConfig);
+  assert.equal(boot1.changed, true, 'La prima pornire fără admin în DB, contul admin este creat din env');
+  const createdAdmin = Object.values(mockDbData.users)[0] as any;
+  assert.ok(createdAdmin);
+  assert.equal(createdAdmin.role, 'admin');
+  assert.equal(bcrypt.compareSync('VoievodSecret#987654!', createdAdmin.passwordHash), true);
+
+  // Admin changes password in UI -> passwordHash and tokenVersion update in DB
+  createdAdmin.passwordHash = bcrypt.hashSync('SchimbareNoua#654321!', 4);
+  createdAdmin.tokenVersion = 2;
+
+  // Simulate redeploy / container restart with the SAME original env variables
+  const boot2 = db.addConfiguredAdmin(mockDbData, envConfig);
+  assert.equal(
+    boot2.changed,
+    false,
+    'La redeploy/restart, addConfiguredAdmin NU suprascrie contul de admin existent'
+  );
+  assert.equal(
+    Object.keys(mockDbData.users).length,
+    1,
+    'Nu se creează conturi duplicate de administrator la redeploy'
+  );
+  assert.equal(
+    bcrypt.compareSync('SchimbareNoua#654321!', createdAdmin.passwordHash),
+    true,
+    'Noua parolă a administratorului rămâne validă după redeploy'
+  );
+  assert.equal(
+    bcrypt.compareSync('VoievodSecret#987654!', createdAdmin.passwordHash),
+    false,
+    'Parola veche din env nu mai suprascrie parola schimbată de admin'
+  );
+  assert.equal(createdAdmin.tokenVersion, 2);
+
+  // =========================================================================
+  // 2. INSTRUCȚIUNEA DE CUCERIRE APARE NUMAI CÂND E MOMENTUL (canPlayerSelectTerritoryNow)
+  // =========================================================================
+  const gm = new GameManager();
+  try {
+    const cRoom = gm.createRoom({
+      hostUser: { id: 'u_turn_1', username: 'Jucator1', avatar: 'av_vlad' },
+      maxPlayers: 3,
+      initialBotsCount: 0,
+      isPrivate: true,
+    });
+    gm.joinRoom(cRoom.roomId, { id: 'u_turn_2', username: 'Jucator2', avatar: 'av_stefan' });
+    gm.joinRoom(cRoom.roomId, { id: 'u_turn_3', username: 'Jucator3', avatar: 'av_mihai' });
+    gm.setReady(cRoom.roomId, 'u_turn_2', true);
+    gm.setReady(cRoom.roomId, 'u_turn_3', true);
+    gm.startGame(cRoom.roomId, 'u_turn_1');
+
+    const cGame = gm.getRoom(cRoom.roomId)!;
+    assert.equal(cGame.phase, 'base_selection');
+    assert.deepEqual(cGame.turnOrder, ['u_turn_1', 'u_turn_2', 'u_turn_3']);
+    assert.ok(cGame.conquestTurnSchedule!.length >= cGame.maxRounds);
+    assert.deepEqual(cGame.conquestTurnSchedule![0], ['u_turn_1', 'u_turn_2', 'u_turn_3']);
+    assert.deepEqual(cGame.conquestTurnSchedule![1], ['u_turn_2', 'u_turn_3', 'u_turn_1']);
+    assert.deepEqual(cGame.conquestTurnSchedule![2], ['u_turn_3', 'u_turn_1', 'u_turn_2']);
+
+    // Complete base selection for all 3 players
+    for (let i = 0; i < 3; i++) {
+      const activePid = cGame.players[cGame.activePlayerIndex].id;
+      const validBase = Object.values(cGame.territories).find((t) =>
+        canCompleteBaseSelection(t.id, cGame.territories, 2 - i)
+      )!;
+      assert.equal(canPlayerSelectTerritoryNow(cGame, activePid), true);
+      gm.selectTerritory(cRoom.roomId, activePid, validBase.id);
+    }
+
+    // Right after base_selection -> phase is 'conquest', waiting 1.5s for first question (no conquestPickerId yet)
+    assert.equal(cGame.phase, 'conquest');
+    assert.equal(Boolean(cGame.conquestPickerId), false);
+    assert.equal(
+      canPlayerSelectTerritoryNow(cGame, 'u_turn_1'),
+      false,
+      'Înainte de întrebarea de cucerire (conquestPickerId inactiv), niciun jucător nu vede promptul de cucerire'
+    );
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_2'), false);
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_3'), false);
+
+    // Trigger conquest question 1 (Round 1 fixed order: u_turn_1, u_turn_2, u_turn_3)
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    (gm as any).triggerNextConquestQuestion(cGame);
+    assert.ok(cGame.currentQuestion, 'Întrebarea de cucerire a pornit');
+
+    // During the question, canPlayerSelectTerritoryNow is FALSE for all players
+    assert.equal(
+      canPlayerSelectTerritoryNow(cGame, 'u_turn_1'),
+      false,
+      'În timpul întrebării, instrucțiunea de cucerire pe hartă NU apare'
+    );
+
+    // =========================================================================
+    // 3. ORDINE FIXĂ A JUCĂTORILOR PENTRU CUCERIRI (INDIFERENT DE VITEZA RĂSPUNSULUI)
+    // =========================================================================
+    const cq1 = cGame.currentQuestion!;
+    const cq1Correct = cq1.question.correctAnswerIndex!;
+    const cq1Wrong = (cq1Correct + 1) % 4;
+
+    // u_turn_3 answers FIRST (fast), u_turn_1 answers LAST (slow), u_turn_2 answers wrong.
+    // Round 1 fixed order is ['u_turn_1', 'u_turn_2', 'u_turn_3'], so u_turn_1 MUST pick before u_turn_3!
+    gm.submitAnswer(cRoom.roomId, 'u_turn_3', cq1Correct, cq1.questionInstanceId);
+    gm.submitAnswer(cRoom.roomId, 'u_turn_2', cq1Wrong, cq1.questionInstanceId);
+    gm.submitAnswer(cRoom.roomId, 'u_turn_1', cq1Correct, cq1.questionInstanceId);
+
+    assert.equal(cGame.currentQuestion?.resolved, true, 'Întrebarea s-a rezolvat');
+    assert.deepEqual(
+      cGame.currentQuestion?.winnerIds,
+      ['u_turn_1', 'u_turn_3'],
+      'Câștigătorii sunt ordonați după ordinea fixă a rundei 1, nu după viteza de răspuns'
+    );
+    assert.equal(cGame.currentQuestion?.playerAnswers['u_turn_1']?.rank, 1);
+    assert.equal(cGame.currentQuestion?.playerAnswers['u_turn_3']?.rank, 2);
+    assert.equal(
+      canPlayerSelectTerritoryNow(cGame, 'u_turn_1'),
+      false,
+      'Cât timp fereastra de rezultat a întrebării este activă, instrucțiunea pe hartă încă nu apare'
+    );
+
+    // Advance past the 2.8s question result reveal timer into territory picking
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    cGame.conquestPickQueue = [...(cGame.currentQuestion!.winnerIds || [])];
+    cGame.currentQuestion = null;
+    (gm as any).processNextConquestPick(cGame);
+
+    assert.equal(
+      cGame.conquestPickerId,
+      'u_turn_1',
+      'Deși u_turn_3 a răspuns mai repede, u_turn_1 alege primul conform ordinii fixe a rundei 1!'
+    );
+    assert.deepEqual(cGame.conquestPickQueue, ['u_turn_3']);
+
+    // Verify prompt visibility: TRUE only for u_turn_1, FALSE for u_turn_2 and u_turn_3
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_1'), true);
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_2'), false);
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_3'), false);
+
+    // u_turn_1 selects a territory -> prompt immediately disappears for u_turn_1 and moves to u_turn_3!
+    const p1Target = getLegalNeutralTargetsForPlayer('u_turn_1', cGame.territories)[0];
+    const p1Claim = gm.selectTerritory(cRoom.roomId, 'u_turn_1', p1Target);
+    assert.equal(p1Claim.success, true);
+    assert.equal(
+      canPlayerSelectTerritoryNow(cGame, 'u_turn_1'),
+      false,
+      'După alegerea teritoriului, instrucțiunea dispare imediat pentru u_turn_1'
+    );
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    (gm as any).processNextConquestPick(cGame);
+    assert.equal(cGame.conquestPickerId, 'u_turn_3', 'Dreptul de alegere a trecut la u_turn_3');
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_3'), true);
+
+    // u_turn_3 selects a territory -> round 1 picks finish, advances to round 2
+    const p3Target = getLegalNeutralTargetsForPlayer('u_turn_3', cGame.territories)[0];
+    const p3Claim = gm.selectTerritory(cRoom.roomId, 'u_turn_3', p3Target);
+    assert.equal(p3Claim.success, true);
+    assert.equal(canPlayerSelectTerritoryNow(cGame, 'u_turn_3'), false);
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    (gm as any).processNextConquestPick(cGame);
+    assert.equal(Boolean(cGame.conquestPickerId), false);
+    assert.equal(cGame.round, 2, 'A trecut la runda 2 de cucerire');
+
+    // Round 2 fixed order is ['u_turn_2', 'u_turn_3', 'u_turn_1']
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    (gm as any).triggerNextConquestQuestion(cGame);
+    const cq2 = cGame.currentQuestion as NonNullable<GameState['currentQuestion']>;
+    const cq2Correct = cq2.question.correctAnswerIndex!;
+    // u_turn_1 answers first, u_turn_2 answers second, u_turn_3 answers third -> order MUST be u_turn_2, u_turn_3, u_turn_1!
+    gm.submitAnswer(cRoom.roomId, 'u_turn_1', cq2Correct, cq2.questionInstanceId);
+    gm.submitAnswer(cRoom.roomId, 'u_turn_2', cq2Correct, cq2.questionInstanceId);
+    gm.submitAnswer(cRoom.roomId, 'u_turn_3', cq2Correct, cq2.questionInstanceId);
+
+    assert.deepEqual(cGame.currentQuestion?.winnerIds, ['u_turn_2', 'u_turn_3', 'u_turn_1']);
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    cGame.conquestPickQueue = [...(cGame.currentQuestion!.winnerIds || [])];
+    cGame.currentQuestion = null;
+    (gm as any).processNextConquestPick(cGame);
+
+    assert.equal(
+      cGame.conquestPickerId,
+      'u_turn_2',
+      'În runda 2, u_turn_2 alege primul conform programului fix [u_turn_2, u_turn_3, u_turn_1]'
+    );
+    assert.deepEqual(cGame.conquestPickQueue, ['u_turn_3', 'u_turn_1']);
+    (gm as any).clearRoomTimers(cRoom.roomId);
+
+    // =========================================================================
+    // 4. ÎNCHIDEREA CAMERELOR FĂRĂ JUCĂTORI (WAITING, ACTIVE UMAN, AI CONTINUATION, SPECTATOR, GRACE)
+    // =========================================================================
+    // 4a. Camera în waiting se închide imediat când ultimul jucător uman iese
+    const waitRoom = gm.createRoom({
+      hostUser: { id: 'u_w1', username: 'WaitHost', avatar: 'av_vlad' },
+      maxPlayers: 2,
+      initialBotsCount: 0,
+      isPrivate: false,
+    });
+    assert.ok(gm.getRoom(waitRoom.roomId));
+    gm.leaveRoom(waitRoom.roomId, 'u_w1');
+    assert.equal(
+      gm.getRoom(waitRoom.roomId),
+      undefined,
+      'Camera în waiting fără jucători este închisă și ștearsă din memorie imediat'
+    );
+    assert.equal(
+      gm.getPublicRooms().some((r) => r.roomId === waitRoom.roomId),
+      false,
+      'Camera închisă nu mai apare în lista de camere publice'
+    );
+
+    // 4b. Meci activ DOAR cu jucători umani (și un spectator) -> se închide imediat când toți jucătorii umani părăsesc camera
+    gm.joinRoom(cRoom.roomId, { id: 'u_spec_99', username: 'Spectator99', avatar: 'av_maria' });
+    assert.equal(cGame.spectators?.length, 1, 'Spectatorul este în cameră');
+    gm.leaveRoom(cRoom.roomId, 'u_turn_1');
+    gm.leaveRoom(cRoom.roomId, 'u_turn_2');
+    assert.ok(gm.getRoom(cRoom.roomId), 'Camera încă există cât timp u_turn_3 este prezent');
+    gm.leaveRoom(cRoom.roomId, 'u_turn_3');
+    assert.equal(
+      gm.getRoom(cRoom.roomId),
+      undefined,
+      'Când toți jucătorii umani părăsesc un meci fără boți AI, camera se închide chiar dacă avea spectatori'
+    );
+
+    // 4c. Deconectare neașteptată (handleSocketDisconnect) închide camera după perioada de grație dacă nu mai revine niciun om
+    gm.setEmptyRoomGraceMsForTesting(25);
+    try {
+      const discRoom = gm.createRoom({
+        hostUser: { id: 'u_d1', username: 'DiscHost', avatar: 'av_vlad' },
+        maxPlayers: 2,
+        initialBotsCount: 0,
+        isPrivate: true,
+      });
+      gm.handleSocketDisconnect(discRoom.roomId, 'u_d1');
+      assert.ok(gm.getRoom(discRoom.roomId), 'În timpul perioadei de grație, camera este încă rezervată');
+      await new Promise((r) => setTimeout(r, 45));
+      assert.equal(
+        gm.getRoom(discRoom.roomId),
+        undefined,
+        'După expirarea perioadei de grație fără niciun jucător uman conectat, camera se închide automat'
+      );
+    } finally {
+      gm.setEmptyRoomGraceMsForTesting(30_000);
+    }
+
+    // 4d. Meci activ cu AI: dacă singurul om iese, partida continuă cu AI până la final (endGame), apoi camera se închide
+    const aiRoom = gm.createRoom({
+      hostUser: { id: 'u_ai_human', username: 'HumanVsBot', avatar: 'av_vlad' },
+      maxPlayers: 2,
+      initialBotsCount: 1,
+      isPrivate: true,
+    });
+    gm.startGame(aiRoom.roomId, 'u_ai_human');
+    gm.leaveRoom(aiRoom.roomId, 'u_ai_human');
+    const aiGameAfterLeave = gm.getRoom(aiRoom.roomId);
+    assert.ok(
+      aiGameAfterLeave,
+      'Camera cu bot AI rămâne deschisă pentru ca botul să ducă meciul la capăt'
+    );
+    assert.equal(aiGameAfterLeave.players.find((p) => p.id === 'u_ai_human')?.botControlled, true);
+
+    // When the AI match finishes (endGame), since 0 humans are connected, the room closes and cleans up automatically!
+    (gm as any).endGame(aiGameAfterLeave, aiGameAfterLeave.players[0]);
+    assert.equal(
+      gm.getRoom(aiRoom.roomId),
+      undefined,
+      'După finalizarea meciului AI fără jucători umani conectați, camera se închide și se curăță din memorie'
+    );
+
+    // =========================================================================
+    // 5. ADMINISTRARE CONTURI, CLASAMENT (MANUAL RANK OVERRIDE) & FEEDBACK (API REAL)
+    // =========================================================================
+    clearFeedbackRateLimitsForTesting();
+    const nowIso = new Date().toISOString();
+    const adminUser = await db.createUser({
+      id: 'u_admin_v11',
+      username: 'AdminV11',
+      email: 'admin.v11@conquiz.ro',
+      passwordHash: bcrypt.hashSync('AdminPass123!', 4),
+      role: 'admin',
+      tokenVersion: 1,
+      createdAt: nowIso,
+      profile: {
+        id: 'u_admin_v11',
+        username: 'AdminV11',
+        email: 'admin.v11@conquiz.ro',
+        role: 'admin',
+        avatar: 'av_stefan',
+        title: 'Mare Voievod',
+        rating: 1500,
+        matchesPlayed: 10,
+        wins: 8,
+        losses: 2,
+        territoriesConquered: 40,
+        correctAnswersTotal: 50,
+        highestScore: 4500,
+        createdAt: nowIso,
+      },
+    });
+
+    const targetPlayer = await db.createUser({
+      id: 'u_target_v11',
+      username: 'JucatorTestV11',
+      email: 'jucator.v11@conquiz.ro',
+      passwordHash: bcrypt.hashSync('UserPass123!', 4),
+      role: 'user',
+      tokenVersion: 1,
+      createdAt: nowIso,
+      profile: {
+        id: 'u_target_v11',
+        username: 'JucatorTestV11',
+        email: 'jucator.v11@conquiz.ro',
+        role: 'user',
+        avatar: 'av_vlad',
+        title: 'Explorator',
+        rating: 1100,
+        matchesPlayed: 2,
+        wins: 1,
+        losses: 1,
+        territoriesConquered: 6,
+        correctAnswersTotal: 8,
+        highestScore: 1800,
+        createdAt: nowIso,
+      },
+    });
+
+    // Record a historical match involving targetPlayer so we can verify match history preservation upon user deletion
+    await db.recordGame({
+      id: 'game_hist_v11',
+      roomId: 'HIST11',
+      createdAt: nowIso,
+      durationSeconds: 240,
+      playerCount: 2,
+      winnerId: targetPlayer.id,
+      winnerUsername: targetPlayer.username,
+      playersSummary: [
+        {
+          userId: targetPlayer.id,
+          username: targetPlayer.username,
+          score: 3200,
+          territories: 12,
+          correctAnswers: 9,
+          isWinner: true,
+        },
+        {
+          userId: adminUser.id,
+          username: adminUser.username,
+          score: 2100,
+          territories: 8,
+          correctAnswers: 6,
+          isWinner: false,
+        },
+      ],
+    });
+
+    const adminToken = generateToken(adminUser.id, 'admin', adminUser.tokenVersion);
+    const userToken = generateToken(targetPlayer.id, 'user', targetPlayer.tokenVersion);
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRoutes);
+    app.use('/api/feedback', feedbackRoutes);
+    app.use('/api/games', gameRoutes);
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as { port: number }).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const reqJson = async (
+      method: string,
+      urlPath: string,
+      body?: any,
+      token?: string
+    ): Promise<{ status: number; data: any }> => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Connection: 'close',
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${baseUrl}${urlPath}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, data };
+    };
+
+    try {
+      // 5a. Non-admin user is strictly blocked (403) from admin endpoints
+      const nonAdminList = await reqJson('GET', '/api/admin/users', undefined, userToken);
+      assert.equal(nonAdminList.status, 403, 'Utilizatorul obișnuit primește 403 la lista admin');
+
+      const nonAdminAdjust = await reqJson(
+        'POST',
+        `/api/admin/users/${targetPlayer.id}/adjust-stats`,
+        { rating: 9999 },
+        userToken
+      );
+      assert.equal(nonAdminAdjust.status, 403, 'Utilizatorul obișnuit nu poate modifica clasamentul');
+
+      const nonAdminDelete = await reqJson(
+        'DELETE',
+        `/api/admin/users/${adminUser.id}`,
+        undefined,
+        userToken
+      );
+      assert.equal(nonAdminDelete.status, 403, 'Utilizatorul obișnuit nu poate șterge conturi');
+
+      // 5b. Admin searches user by email and inspects full profile + match history
+      const searchRes = await reqJson(
+        'GET',
+        '/api/admin/users?search=jucator.v11@conquiz.ro',
+        undefined,
+        adminToken
+      );
+      assert.equal(searchRes.status, 200);
+      assert.equal(searchRes.data.users.length, 1);
+      assert.equal(searchRes.data.users[0].id, targetPlayer.id);
+
+      const profileRes = await reqJson(
+        'GET',
+        `/api/admin/users/${targetPlayer.id}/profile`,
+        undefined,
+        adminToken
+      );
+      assert.equal(profileRes.status, 200);
+      assert.equal(profileRes.data.user.username, 'JucatorTestV11');
+      assert.ok(
+        profileRes.data.recentGames.some((g: any) => g.id === 'game_hist_v11'),
+        'Profilul inspectat de admin include istoricul meciurilor jucătorului'
+      );
+
+      // 5c. Admin adjusts player leaderboard stats & sets manualRankOverride = 1
+      const adjustRes = await reqJson(
+        'POST',
+        `/api/admin/users/${targetPlayer.id}/adjust-stats`,
+        {
+          rating: 1350,
+          wins: 5,
+          losses: 1,
+          matchesPlayed: 6,
+          territoriesConquered: 25,
+          highestScore: 3900,
+          title: 'Domnitor',
+          manualRankOverride: 1,
+          reason: 'Premiu turneu național',
+        },
+        adminToken
+      );
+      assert.equal(adjustRes.status, 200);
+      assert.equal(adjustRes.data.user.rating, 1350);
+      assert.equal(adjustRes.data.user.manualRankOverride, 1);
+
+      // Check leaderboard endpoint: targetPlayer must be #1 even though adminUser has rating 1500!
+      const lbRes = await reqJson('GET', '/api/games/leaderboard?type=rating');
+      assert.equal(lbRes.status, 200);
+      assert.equal(
+        lbRes.data.leaderboard[0].id,
+        targetPlayer.id,
+        'Jucătorul cu manualRankOverride = 1 ocupă poziția #1 în clasament'
+      );
+      assert.equal(lbRes.data.leaderboard[0].rank, 1);
+
+      // Verify that automatic match completion does NOT overwrite manualRankOverride or admin-set rating
+      const finishRoom = gm.createRoom({
+        hostUser: { id: targetPlayer.id, username: targetPlayer.username, avatar: 'av_vlad' },
+        maxPlayers: 2,
+        initialBotsCount: 1,
+        isPrivate: true,
+      });
+      gm.startGame(finishRoom.roomId, targetPlayer.id);
+      const finishGame = gm.getRoom(finishRoom.roomId)!;
+      (gm as any).endGame(finishGame, finishGame.players[0]);
+      (gm as any).clearRoomTimers(finishRoom.roomId);
+
+      const targetAfterMatch = db.findUserById(targetPlayer.id)!;
+      assert.equal(
+        targetAfterMatch.profile.manualRankOverride,
+        1,
+        'manualRankOverride NU este suprascris automat la terminarea unui meci'
+      );
+      assert.equal(
+        targetAfterMatch.profile.rating,
+        1350,
+        'Ratingul ajustat manual de admin NU este suprascris la terminarea meciului'
+      );
+
+      // 5d. Application Feedback flow (submit -> validate -> scrub secrets -> admin list & status update)
+      const invalidFb = await reqJson(
+        'POST',
+        '/api/feedback',
+        { category: 'problema_tehnica', message: 'abc' },
+        userToken
+      );
+      assert.equal(invalidFb.status, 400, 'Mesajul prea scurt (< 5 caractere) este respins');
+
+      const validFb = await reqJson(
+        'POST',
+        '/api/feedback',
+        {
+          category: 'idee_imbunatatire',
+          message: 'Ar fi grozav să avem mai multe întrebări despre geografia României!',
+          roomId: 'ro2026',
+        },
+        userToken
+      );
+      assert.equal(validFb.status, 201);
+      assert.equal(validFb.data.feedback.status, 'nou');
+      assert.equal(validFb.data.feedback.roomId, 'RO2026');
+      const fbId = validFb.data.feedback.id;
+
+      // Duplicate message right away is blocked (429)
+      const dupFb = await reqJson(
+        'POST',
+        '/api/feedback',
+        {
+          category: 'idee_imbunatatire',
+          message: 'Ar fi grozav să avem mai multe întrebări despre geografia României!',
+        },
+        userToken
+      );
+      assert.equal(dupFb.status, 429, 'Trimiterea repetată a aceluiași feedback este limitată (429)');
+
+      // Admin lists feedback & marks as in_verificare then rezolvat
+      const adminFbList = await reqJson('GET', '/api/admin/feedback?status=nou', undefined, adminToken);
+      assert.equal(adminFbList.status, 200);
+      assert.ok(adminFbList.data.feedback.some((f: any) => f.id === fbId));
+
+      const markVerify = await reqJson(
+        'PATCH',
+        `/api/admin/feedback/${fbId}/status`,
+        { status: 'in_verificare' },
+        adminToken
+      );
+      assert.equal(markVerify.status, 200);
+      assert.equal(markVerify.data.feedback.status, 'in_verificare');
+
+      const markResolved = await reqJson(
+        'PATCH',
+        `/api/admin/feedback/${fbId}/status`,
+        { status: 'rezolvat' },
+        adminToken
+      );
+      assert.equal(markResolved.status, 200);
+      assert.equal(markResolved.data.feedback.status, 'rezolvat');
+
+      // 5e. Admin deletes targetPlayer account -> user is deleted, but historical game & audit logs remain intact!
+      const selfDelete = await reqJson('DELETE', `/api/admin/users/${adminUser.id}`, undefined, adminToken);
+      assert.equal(selfDelete.status, 400, 'Administratorul nu își poate șterge propriul cont');
+
+      const delRes = await reqJson(
+        'DELETE',
+        `/api/admin/users/${targetPlayer.id}`,
+        { reason: 'Cont de test șters conform cerinței V11' },
+        adminToken
+      );
+      assert.equal(delRes.status, 200);
+      assert.equal(db.findUserById(targetPlayer.id), undefined, 'Contul a fost șters din baza de date');
+      assert.ok(
+        db.getGamesHistory(50).some((g) => g.id === 'game_hist_v11'),
+        'Istoricul meciurilor (games) este păstrat intact după ștergerea contului'
+      );
+
+      const logs = db.getAuditLogs(20);
+      assert.ok(
+        logs.some((l) => l.action === 'USER_DELETE' && l.targetId === targetPlayer.id),
+        'Ștergerea contului este înregistrată în jurnalul de audit cu admin, țintă și detalii'
+      );
+      assert.ok(
+        logs.some((l) => l.action === 'USER_STATS_ADJUST' && l.targetId === targetPlayer.id),
+        'Ajustarea clasamentului este înregistrată în jurnalul de audit'
+      );
+      assert.ok(
+        logs.some((l) => l.action === 'FEEDBACK_STATUS_CHANGE' && l.targetId === fbId),
+        'Actualizarea statusului feedback-ului este înregistrată în jurnalul de audit'
+      );
+    } finally {
+      await db.deleteUser(adminUser.id);
+      await db.deleteUser(targetPlayer.id);
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  } finally {
+    gm.shutdownAllRooms();
+  }
+});
+
 
 
 

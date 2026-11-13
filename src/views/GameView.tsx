@@ -45,6 +45,7 @@ interface GameViewProps {
   chatMessages?: Array<{ id: string; username: string; text: string; timestamp: number }>;
   onLeaveGame: () => void;
   onRematch: () => void;
+  onOpenFeedback?: () => void;
 }
 
 export const GameView: React.FC<GameViewProps> = ({
@@ -57,6 +58,7 @@ export const GameView: React.FC<GameViewProps> = ({
   chatMessages = [],
   onLeaveGame,
   onRematch,
+  onOpenFeedback,
 }) => {
   const activePlayer = game.players[game.activePlayerIndex];
   const isSpectator = !game.players.some((p) => p.id === currentUser.id);
@@ -67,7 +69,7 @@ export const GameView: React.FC<GameViewProps> = ({
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [chatInput, setChatInput] = useState('');
 
-  // Show an immediate banner when the current user wins the right to pick a territory
+  // Show an immediate banner when the current user wins the right to pick a territory, and clear it immediately when their pick ends
   useEffect(() => {
     if (game.phase === 'conquest' && game.conquestPickerId === currentUser.id && !game.currentQuestion) {
       const hasAdjacent =
@@ -98,6 +100,9 @@ export const GameView: React.FC<GameViewProps> = ({
       const t = setTimeout(() => setFeedbackToast(null), 5000);
       return () => clearTimeout(t);
     }
+    setFeedbackToast((prev) =>
+      prev && (prev.text.startsWith('🎯') || prev.text.startsWith('🏆')) ? null : prev
+    );
   }, [
     game.phase,
     game.conquestPickerId,
@@ -479,6 +484,7 @@ export const GameView: React.FC<GameViewProps> = ({
           currentUserId={currentUser.id}
           onRematch={onRematch}
           onGoHome={onLeaveGame}
+          onOpenFeedback={onOpenFeedback}
         />
       )}
     </div>

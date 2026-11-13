@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Question, QuestionCategory } from '../types/game';
+import {
+  Question,
+  QuestionCategory,
+  FeedbackRecord,
+  FeedbackStatus,
+  FeedbackCategory,
+} from '../types/game';
 import { sound } from '../services/audio';
 import {
   ShieldAlert,
@@ -18,9 +24,12 @@ import {
   RefreshCw,
   XCircle,
   Sliders,
+  Eye,
+  MessageSquarePlus,
+  X,
 } from 'lucide-react';
 
-type AdminTabId = 'stats' | 'users' | 'questions' | 'audit';
+type AdminTabId = 'stats' | 'users' | 'feedback' | 'questions' | 'audit';
 type DifficultyOption = 'usor' | 'mediu' | 'greu';
 
 function normalizeQuestionDifficulty(value: string | undefined): DifficultyOption {
@@ -29,6 +38,19 @@ function normalizeQuestionDifficulty(value: string | undefined): DifficultyOptio
   }
   return 'mediu';
 }
+
+const FEEDBACK_CATEGORY_LABELS: Record<string, string> = {
+  problema_tehnica: 'Problemă tehnică',
+  intrebare_gresita: 'Întrebare greșită',
+  idee_imbunatatire: 'Idee de îmbunătățire',
+  altceva: 'Altceva',
+};
+
+const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
+  nou: 'Nou',
+  in_verificare: 'În verificare',
+  rezolvat: 'Rezolvat',
+};
 
 export const AdminView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTabId>('stats');
@@ -60,22 +82,34 @@ export const AdminView: React.FC = () => {
   // Users State
   const [usersList, setUsersList] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [viewingUserProfile, setViewingUserProfile] = useState<{
+    user: any;
+    recentGames: any[];
+    leaderboardRank: number | null;
+  } | null>(null);
+  const [loadingUserProfile, setLoadingUserProfile] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<any | null>(null);
+  const [deleteUserReason, setDeleteUserReason] = useState('');
   const [adjustingUser, setAdjustingUser] = useState<any | null>(null);
   const [adjustForm, setAdjustForm] = useState<{
     rating: string;
     wins: string;
     losses: string;
     matchesPlayed: string;
+    territoriesConquered: string;
     highestScore: string;
     title: string;
+    manualRankOverride: string;
     reason: string;
   }>({
     rating: '1000',
     wins: '0',
     losses: '0',
     matchesPlayed: '0',
+    territoriesConquered: '0',
     highestScore: '0',
     title: '',
+    manualRankOverride: '',
     reason: '',
   });
   const [confirmUserAction, setConfirmUserAction] = useState<{
@@ -84,6 +118,11 @@ export const AdminView: React.FC = () => {
     action: 'ban' | 'role';
     targetRole?: 'user' | 'admin';
   } | null>(null);
+
+  // Feedback State
+  const [feedbackList, setFeedbackList] = useState<FeedbackRecord[]>([]);
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<FeedbackStatus | 'all'>('all');
+  const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState<FeedbackCategory | 'all'>('all');
 
   // Room close confirmation state
   const [confirmCloseRoom, setConfirmCloseRoom] = useState<{ roomId: string; roomName: string } | null>(null);
@@ -113,6 +152,18 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  const fetchFeedback = async () => {
+    try {
+      const res = await api.getAdminFeedback({
+        status: feedbackStatusFilter !== 'all' ? feedbackStatusFilter : undefined,
+        category: feedbackCategoryFilter !== 'all' ? feedbackCategoryFilter : undefined,
+      });
+      setFeedbackList(res.feedback || []);
+    } catch {
+      // ignore
+    }
+  };
+
   const fetchStats = async () => {
     try {
       const res = await api.getAdminStats();
@@ -135,8 +186,9 @@ export const AdminView: React.FC = () => {
     fetchStats();
     if (activeTab === 'questions') fetchQuestions();
     if (activeTab === 'users') fetchUsers();
+    if (activeTab === 'feedback') fetchFeedback();
     if (activeTab === 'audit') fetchAuditLogs();
-  }, [activeTab, qCategory, qDifficulty]);
+  }, [activeTab, qCategory, qDifficulty, feedbackStatusFilter, feedbackCategoryFilter]);
 
   const openAddQuestionModal = () => {
     setEditingQuestion(null);
@@ -244,6 +296,37 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  const handleInspectUserProfile = async (userId: string) => {
+    try {
+      sound.playClick();
+      setLoadingUserProfile(true);
+      const res = await api.getAdminUserProfile(userId);
+      setViewingUserProfile(res);
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Nu s-a putut încărca profilul.', type: 'error' });
+    } finally {
+      setLoadingUserProfile(false);
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!deletingUser) return;
+    try {
+      sound.playClick();
+      const res = await api.deleteAdminUser(
+        deletingUser.id,
+        deleteUserReason.trim() || 'Ștergere cont din panoul de administrare'
+      );
+      setMessage({ text: res.message, type: 'success' });
+      setDeletingUser(null);
+      setDeleteUserReason('');
+      fetchUsers();
+      fetchStats();
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    }
+  };
+
   const openAdjustModal = (user: any) => {
     setAdjustingUser(user);
     setAdjustForm({
@@ -251,8 +334,11 @@ export const AdminView: React.FC = () => {
       wins: String(user.wins ?? 0),
       losses: String(user.losses ?? 0),
       matchesPlayed: String(user.matchesPlayed ?? 0),
+      territoriesConquered: String(user.territoriesConquered ?? 0),
       highestScore: String(user.highestScore ?? 0),
       title: String(user.title ?? 'Explorator'),
+      manualRankOverride:
+        typeof user.manualRankOverride === 'number' ? String(user.manualRankOverride) : '',
       reason: '',
     });
   };
@@ -262,19 +348,36 @@ export const AdminView: React.FC = () => {
     if (!adjustingUser) return;
     try {
       sound.playClick();
+      const trimmedOverride = adjustForm.manualRankOverride.trim();
+      const parsedOverride =
+        trimmedOverride === '' ? null : Math.max(1, Math.min(1000, Math.round(Number(trimmedOverride))));
+
       const res = await api.adjustUserStats(adjustingUser.id, {
         rating: Number(adjustForm.rating),
         wins: Number(adjustForm.wins),
         losses: Number(adjustForm.losses),
         matchesPlayed: Number(adjustForm.matchesPlayed),
+        territoriesConquered: Number(adjustForm.territoriesConquered),
         highestScore: Number(adjustForm.highestScore),
         title: adjustForm.title.trim(),
+        manualRankOverride: parsedOverride,
         reason: adjustForm.reason.trim() || 'Corecție manuală din panoul de administrare',
       });
       setMessage({ text: res.message, type: 'success' });
       setAdjustingUser(null);
       fetchUsers();
       fetchStats();
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    }
+  };
+
+  const handleUpdateFeedbackStatus = async (feedbackId: string, status: FeedbackStatus) => {
+    try {
+      sound.playClick();
+      const res = await api.updateAdminFeedbackStatus(feedbackId, status);
+      setMessage({ text: res.message, type: 'success' });
+      fetchFeedback();
     } catch (err: any) {
       setMessage({ text: err.message, type: 'error' });
     }
@@ -300,6 +403,7 @@ export const AdminView: React.FC = () => {
   const tabs: Array<{ id: AdminTabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'stats', label: 'Statistici Live & Camere', icon: Activity },
     { id: 'users', label: 'Utilizatori & Clasament', icon: Users },
+    { id: 'feedback', label: 'Feedback Utilizatori', icon: MessageSquarePlus },
     { id: 'questions', label: 'Baza de Întrebări', icon: Database },
     { id: 'audit', label: 'Jurnal Audit Admin', icon: FileText },
   ];
@@ -316,7 +420,7 @@ export const AdminView: React.FC = () => {
             Statistici Live, Moderare & Gestiune
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Monitorizează camerele active, utilizatorii autentificați, clasamentul, întrebările și jurnalul de audit.
+            Monitorizează camerele active, utilizatorii autentificați, clasamentul, feedback-ul, întrebările și jurnalul de audit.
           </p>
         </div>
 
@@ -326,6 +430,7 @@ export const AdminView: React.FC = () => {
               sound.playClick();
               fetchStats();
               if (activeTab === 'users') fetchUsers();
+              if (activeTab === 'feedback') fetchFeedback();
               if (activeTab === 'questions') fetchQuestions();
               if (activeTab === 'audit') fetchAuditLogs();
             }}
@@ -555,11 +660,12 @@ export const AdminView: React.FC = () => {
 
       {/* TAB 2: Users & Leaderboard Management */}
       {activeTab === 'users' && (
-        <div className="space-y-4">
+        <div className="space-y-4" data-testid="admin-users-panel">
           <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
             <Search className="h-4 w-4 text-slate-500" />
             <input
               type="text"
+              data-testid="admin-user-search-input"
               placeholder="Caută utilizatori după nume sau email..."
               value={userSearch}
               onChange={(e) => setUserSearch(e.target.value)}
@@ -567,8 +673,10 @@ export const AdminView: React.FC = () => {
               className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
             />
             <button
+              type="button"
+              data-testid="admin-user-search-btn"
               onClick={fetchUsers}
-              className="rounded-xl bg-purple-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-purple-500"
+              className="rounded-xl bg-purple-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-purple-500 cursor-pointer"
             >
               Caută
             </button>
@@ -582,7 +690,7 @@ export const AdminView: React.FC = () => {
                     <th className="p-3 pl-4">Utilizator</th>
                     <th className="p-3">Email</th>
                     <th className="p-3">Rol</th>
-                    <th className="p-3 text-center">Rating</th>
+                    <th className="p-3 text-center">Rating / Poz.</th>
                     <th className="p-3 text-center">V / Î / M</th>
                     <th className="p-3 text-center">Scor Max</th>
                     <th className="p-3 text-center">Stare</th>
@@ -591,7 +699,7 @@ export const AdminView: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {usersList.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-800/40">
+                    <tr key={u.id} data-testid={`admin-user-row-${u.id}`} className="hover:bg-slate-800/40">
                       <td className="p-3 pl-4 font-bold text-slate-100">
                         <div>{u.username}</div>
                         <div className="text-[10px] text-slate-500 font-normal">{u.title}</div>
@@ -606,7 +714,18 @@ export const AdminView: React.FC = () => {
                           {u.role}
                         </span>
                       </td>
-                      <td className="p-3 text-center font-mono font-bold text-amber-300">{u.rating ?? 1000}</td>
+                      <td className="p-3 text-center font-mono">
+                        <span className="font-bold text-amber-300">{u.rating ?? 1000}</span>
+                        {typeof u.manualRankOverride === 'number' && (
+                          <span
+                            data-testid={`admin-manual-rank-badge-${u.id}`}
+                            className="ml-1 rounded bg-purple-500/20 border border-purple-500/40 px-1 py-0.5 text-[9px] font-bold text-purple-300"
+                            title="Poziție manuală în clasament"
+                          >
+                            #{u.manualRankOverride}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-3 text-center font-mono text-slate-300">
                         <span className="text-emerald-400">{u.wins ?? 0}</span> /{' '}
                         <span className="text-red-400">{u.losses ?? 0}</span> /{' '}
@@ -623,16 +742,30 @@ export const AdminView: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 text-right pr-4">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <button
+                            type="button"
+                            data-testid={`admin-view-profile-${u.id}`}
+                            onClick={() => handleInspectUserProfile(u.id)}
+                            disabled={loadingUserProfile}
+                            className="inline-flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[10px] font-semibold text-sky-300 hover:bg-sky-500/25 cursor-pointer"
+                            title="Vezi Profilul Complet & Istoricul Meciurilor"
+                          >
+                            <Eye className="h-3 w-3" /> Profil
+                          </button>
+
+                          <button
+                            type="button"
+                            data-testid={`admin-adjust-user-${u.id}`}
                             onClick={() => openAdjustModal(u)}
-                            className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25"
+                            className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25 cursor-pointer"
                             title="Ajustează Clasament / Scor"
                           >
                             <Sliders className="h-3 w-3" /> Scor/Clasament
                           </button>
 
                           <button
+                            type="button"
                             onClick={() =>
                               setConfirmUserAction({
                                 userId: u.id,
@@ -641,12 +774,13 @@ export const AdminView: React.FC = () => {
                                 targetRole: u.role === 'admin' ? 'user' : 'admin',
                               })
                             }
-                            className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 hover:bg-slate-700"
+                            className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 hover:bg-slate-700 cursor-pointer"
                           >
                             {u.role === 'admin' ? 'Fă User' : 'Fă Admin'}
                           </button>
 
                           <button
+                            type="button"
                             onClick={() =>
                               setConfirmUserAction({
                                 userId: u.id,
@@ -654,7 +788,7 @@ export const AdminView: React.FC = () => {
                                 action: 'ban',
                               })
                             }
-                            className={`rounded px-2 py-1 text-[10px] font-semibold ${
+                            className={`rounded px-2 py-1 text-[10px] font-semibold cursor-pointer ${
                               u.isBanned
                                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                 : 'bg-red-500/20 text-red-300 border border-red-500/30'
@@ -662,10 +796,154 @@ export const AdminView: React.FC = () => {
                           >
                             {u.isBanned ? 'Reactivează' : 'Suspendă'}
                           </button>
+
+                          <button
+                            type="button"
+                            data-testid={`admin-delete-user-${u.id}`}
+                            onClick={() => {
+                              setDeletingUser(u);
+                              setDeleteUserReason('');
+                            }}
+                            className="inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[10px] font-bold text-rose-300 hover:bg-rose-500/25 cursor-pointer"
+                            title="Șterge definitiv contul utilizatorului"
+                          >
+                            <Trash2 className="h-3 w-3" /> Șterge Cont
+                          </button>
                         </div>
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2.5: Application Feedback Management */}
+      {activeTab === 'feedback' && (
+        <div className="space-y-4" data-testid="admin-feedback-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-300">Filtru Status:</span>
+              {(
+                [
+                  { id: 'all', label: 'Toate' },
+                  { id: 'nou', label: 'Nou' },
+                  { id: 'in_verificare', label: 'În verificare' },
+                  { id: 'rezolvat', label: 'Rezolvat' },
+                ] as Array<{ id: FeedbackStatus | 'all'; label: string }>
+              ).map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  data-testid={`admin-feedback-filter-${st.id}`}
+                  onClick={() => setFeedbackStatusFilter(st.id)}
+                  className={`rounded-xl px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                    feedbackStatusFilter === st.id
+                      ? 'border border-purple-500/50 bg-purple-500/20 text-purple-300'
+                      : 'border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={feedbackCategoryFilter}
+                onChange={(e) => setFeedbackCategoryFilter(e.target.value as FeedbackCategory | 'all')}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-300"
+              >
+                <option value="all">Toate Categoriile</option>
+                <option value="problema_tehnica">Problemă tehnică</option>
+                <option value="intrebare_gresita">Întrebare greșită</option>
+                <option value="idee_imbunatatire">Idee de îmbunătățire</option>
+                <option value="altceva">Altceva</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                  <tr>
+                    <th className="p-3 pl-4">Dată</th>
+                    <th className="p-3">Utilizator</th>
+                    <th className="p-3">Categorie</th>
+                    <th className="p-3">Mesaj Feedback</th>
+                    <th className="p-3">Cameră</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right pr-4">Actualizează Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {feedbackList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-slate-500">
+                        Niciun feedback înregistrat pentru filtrele selectate.
+                      </td>
+                    </tr>
+                  ) : (
+                    feedbackList.map((fb) => (
+                      <tr key={fb.id} data-testid={`admin-feedback-row-${fb.id}`} className="hover:bg-slate-800/40">
+                        <td className="p-3 pl-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                          {new Date(fb.createdAt).toLocaleString('ro-RO')}
+                        </td>
+                        <td className="p-3">
+                          <div className="font-bold text-slate-100">{fb.username}</div>
+                          <div className="text-[10px] font-mono text-slate-500">
+                            {fb.userId ? `ID: ${fb.userId}` : 'Vizitator'}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                            {FEEDBACK_CATEGORY_LABELS[fb.category] || fb.category}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-200 max-w-md break-words">{fb.message}</td>
+                        <td className="p-3 font-mono text-amber-300">
+                          {fb.roomId ? `#${fb.roomId}` : '-'}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            data-testid={`admin-feedback-status-${fb.id}`}
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                              fb.status === 'rezolvat'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : fb.status === 'in_verificare'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                            }`}
+                          >
+                            {FEEDBACK_STATUS_LABELS[fb.status] || fb.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right pr-4">
+                          <div className="flex items-center justify-end gap-1">
+                            {(['nou', 'in_verificare', 'rezolvat'] as FeedbackStatus[]).map((st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                data-testid={`admin-feedback-set-${fb.id}-${st}`}
+                                onClick={() => handleUpdateFeedbackStatus(fb.id, st)}
+                                disabled={fb.status === st}
+                                className={`rounded px-2 py-1 text-[10px] font-bold transition cursor-pointer ${
+                                  fb.status === st
+                                    ? 'bg-purple-500/30 text-purple-200 border border-purple-500/50 opacity-60 cursor-default'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {FEEDBACK_STATUS_LABELS[st]}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -914,19 +1192,218 @@ export const AdminView: React.FC = () => {
         </div>
       )}
 
+      {/* View User Profile & Match History Modal */}
+      {viewingUserProfile && (
+        <div
+          data-testid="admin-user-profile-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 sm:p-4 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setViewingUserProfile(null)}
+        >
+          <div
+            className="flex flex-col w-full max-w-2xl max-h-[88dvh] rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl text-left overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5 shrink-0">
+              <div>
+                <h3 className="font-serif text-lg font-bold text-slate-100">
+                  Profil Jucător: {viewingUserProfile.user.username}
+                </h3>
+                <p className="text-[11px] font-mono text-slate-400">
+                  ID: {viewingUserProfile.user.id} &bull; Email: {viewingUserProfile.user.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="close-admin-profile-modal-btn"
+                onClick={() => setViewingUserProfile(null)}
+                className="rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="text-[10px] text-slate-400 uppercase">Poziție Clasament</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-amber-300">
+                    #{viewingUserProfile.leaderboardRank ?? '-'}
+                    {typeof viewingUserProfile.user.manualRankOverride === 'number' && (
+                      <span className="ml-1 text-[10px] text-purple-300">
+                        (Fixat #{viewingUserProfile.user.manualRankOverride})
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="text-[10px] text-slate-400 uppercase">Rating Elo</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-amber-400">
+                    {viewingUserProfile.user.rating}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="text-[10px] text-slate-400 uppercase">Victorii / Meciuri</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-emerald-400">
+                    {viewingUserProfile.user.wins} / {viewingUserProfile.user.matchesPlayed}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="text-[10px] text-slate-400 uppercase">Teritorii / Scor Max</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-sky-400">
+                    {viewingUserProfile.user.territoriesConquered} / {viewingUserProfile.user.highestScore}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-300 mb-2 uppercase tracking-wider text-[11px]">
+                  Istoric Meciuri Recente ({viewingUserProfile.recentGames.length})
+                </h4>
+                {viewingUserProfile.recentGames.length === 0 ? (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-center text-slate-500">
+                    Acest jucător nu are meciuri finalizate în istoric.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {viewingUserProfile.recentGames.map((g: any) => (
+                      <div
+                        key={g.id}
+                        className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-2.5"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-200">
+                            Camera #{g.roomId} &bull; Câștigător: {g.winnerUsername}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-400">
+                            {new Date(g.createdAt).toLocaleString('ro-RO')} &bull; Durată: {g.durationSeconds}s
+                          </div>
+                        </div>
+                        <span
+                          className={`rounded-lg px-2 py-0.5 text-[10px] font-bold ${
+                            g.winnerId === viewingUserProfile.user.id
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {g.winnerId === viewingUserProfile.user.id ? 'Victorie' : 'Participare'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-950/90 px-5 py-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = viewingUserProfile.user;
+                  setViewingUserProfile(null);
+                  openAdjustModal(target);
+                }}
+                className="rounded-xl border border-amber-500/40 bg-amber-500/15 px-3.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer"
+              >
+                Ajustează Clasament
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingUserProfile(null)}
+                className="rounded-xl border border-slate-700 px-4 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
+              >
+                Închide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {deletingUser && (
+        <div
+          data-testid="admin-delete-user-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 sm:p-4 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setDeletingUser(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-rose-500/40 bg-slate-900 p-6 shadow-2xl text-left space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-serif text-lg font-bold text-rose-300 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-rose-400" />
+              <span>Confirmare Ștergere Cont: {deletingUser.username}</span>
+            </h3>
+
+            <div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3.5 text-xs text-slate-200 space-y-2 leading-relaxed">
+              <div>
+                <strong className="text-rose-300 block">🗑️ Date care vor fi șterse definitiv:</strong>
+                <span>
+                  Contul utilizatorului ({deletingUser.email}), credențialele de autentificare, lista de prietenii, notificările, tokenurile de resetare parolă și prezența din camerele active.
+                </span>
+              </div>
+              <div>
+                <strong className="text-emerald-300 block">🏛️ Date păstrate în istoric:</strong>
+                <span>
+                  Istoricul meciurilor finalizate (`games` și `game_player_results`) și jurnalul de audit administrativ sunt păstrate intacte pentru integritatea clasamentelor și a rapoartelor istorice.
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-300 block mb-1 text-xs">
+                Motivul ștergerii (înregistrat în Jurnalul de Audit):
+              </label>
+              <input
+                type="text"
+                data-testid="delete-user-reason-input"
+                value={deleteUserReason}
+                onChange={(e) => setDeleteUserReason(e.target.value)}
+                placeholder="ex: Solicitare ștergere cont / cont duplicat..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-slate-200"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeletingUser(null)}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
+              >
+                Anulează
+              </button>
+              <button
+                type="button"
+                data-testid="confirm-delete-user-btn"
+                onClick={handleConfirmDeleteUser}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-500 cursor-pointer"
+              >
+                Confirmă Ștergerea Contului
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Adjust User Leaderboard / Stats Modal */}
       {adjustingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl text-left">
+        <div
+          data-testid="admin-adjust-user-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+        >
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl text-left">
             <h3 className="font-serif text-lg font-bold text-slate-100">
               Ajustare Clasament & Profil: {adjustingUser.username}
             </h3>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Modificările sunt salvate pe server, înregistrate în audit și protejate împotriva suprascrierii automate la finalul meciurilor.
+            </p>
             <form onSubmit={handleAdjustStatsSubmit} className="mt-4 space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-slate-300 block mb-1">Rating</label>
+                  <label className="font-bold text-slate-300 block mb-1">Rating Elo</label>
                   <input
                     type="number"
+                    data-testid="adjust-rating-input"
                     min={0}
                     required
                     value={adjustForm.rating}
@@ -938,6 +1415,7 @@ export const AdminView: React.FC = () => {
                   <label className="font-bold text-slate-300 block mb-1">Scor Maxim</label>
                   <input
                     type="number"
+                    data-testid="adjust-score-input"
                     min={0}
                     required
                     value={adjustForm.highestScore}
@@ -949,6 +1427,7 @@ export const AdminView: React.FC = () => {
                   <label className="font-bold text-slate-300 block mb-1">Victorii</label>
                   <input
                     type="number"
+                    data-testid="adjust-wins-input"
                     min={0}
                     required
                     value={adjustForm.wins}
@@ -979,7 +1458,19 @@ export const AdminView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-300 block mb-1">Titlu</label>
+                  <label className="font-bold text-slate-300 block mb-1">Teritorii Cucerite</label>
+                  <input
+                    type="number"
+                    data-testid="adjust-territories-input"
+                    min={0}
+                    required
+                    value={adjustForm.territoriesConquered}
+                    onChange={(e) => setAdjustForm({ ...adjustForm, territoriesConquered: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-300 block mb-1">Titlu Jucător</label>
                   <input
                     type="text"
                     required
@@ -988,14 +1479,30 @@ export const AdminView: React.FC = () => {
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-slate-200"
                   />
                 </div>
+                <div>
+                  <label className="font-bold text-purple-300 block mb-1">
+                    Poziție Manuală Clasament (opțional)
+                  </label>
+                  <input
+                    type="number"
+                    data-testid="adjust-manual-rank-input"
+                    min={1}
+                    max={1000}
+                    value={adjustForm.manualRankOverride}
+                    onChange={(e) => setAdjustForm({ ...adjustForm, manualRankOverride: e.target.value })}
+                    placeholder="Gol = calcul automat"
+                    className="w-full rounded-xl border border-purple-500/40 bg-slate-950 p-2 text-purple-200 font-mono placeholder-slate-500"
+                  />
+                </div>
               </div>
               <div>
                 <label className="font-bold text-slate-300 block mb-1">Motiv Audit (Opțional)</label>
                 <input
                   type="text"
+                  data-testid="adjust-reason-input"
                   value={adjustForm.reason}
                   onChange={(e) => setAdjustForm({ ...adjustForm, reason: e.target.value })}
-                  placeholder="ex: Corecție scor după deconectare..."
+                  placeholder="ex: Corecție scor / poziție clasament..."
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-slate-200"
                 />
               </div>
@@ -1003,13 +1510,14 @@ export const AdminView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setAdjustingUser(null)}
-                  className="rounded-xl border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800"
+                  className="rounded-xl border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
                 >
                   Anulează
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-amber-500 px-4 py-2 font-bold text-slate-950 hover:bg-amber-400"
+                  data-testid="confirm-adjust-user-btn"
+                  className="rounded-xl bg-amber-500 px-4 py-2 font-bold text-slate-950 hover:bg-amber-400 cursor-pointer"
                 >
                   Salvează & Auditează
                 </button>

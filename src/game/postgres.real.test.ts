@@ -858,6 +858,28 @@ test('V9.2 REAL PostgreSQL Test 6: Migrare JSON -> PostgreSQL executată de dou�
     const pgAuditRows = await pool.query('SELECT * FROM audit_logs WHERE id = $1', [auditRec.id]);
     assert.equal(pgAuditRows.rows.length, 1, 'Înregistrarea de audit există în tabelul PostgreSQL audit_logs');
     assert.equal(pgAuditRows.rows[0].action, 'ADMIN_TEST_PG_AUDIT');
+
+    // Verify 004_admin_and_feedback.sql (manual_rank_override and app_feedback) in real PostgreSQL
+    await db.updateUserProfile('u_real_pg_2', { manualRankOverride: 2 });
+    const pgManualRank = await pool.query(
+      'SELECT manual_rank_override FROM users WHERE id = $1',
+      ['u_real_pg_2']
+    );
+    assert.equal(pgManualRank.rows[0].manual_rank_override, 2);
+
+    const fbRec = await db.createFeedback({
+      userId: 'u_real_pg_2',
+      username: 'MirceaRealPG',
+      category: 'problema_tehnica',
+      message: 'Test feedback salvat în PostgreSQL real',
+      roomId: 'RO1395',
+    });
+    const pgFbRows = await pool.query('SELECT * FROM app_feedback WHERE id = $1', [fbRec.id]);
+    assert.equal(pgFbRows.rows.length, 1);
+    assert.equal(pgFbRows.rows[0].status, 'nou');
+    await db.updateFeedbackStatus(fbRec.id, 'rezolvat');
+    const pgFbUpdated = await pool.query('SELECT status FROM app_feedback WHERE id = $1', [fbRec.id]);
+    assert.equal(pgFbUpdated.rows[0].status, 'rezolvat');
   } finally {
     await restorePool.end();
     if (fs.existsSync(backupDir)) {

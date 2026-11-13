@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
-import { Question, UserProfile } from '../src/types/game';
+import { Question, UserProfile, FeedbackRecord, FeedbackCategory, FeedbackStatus } from '../src/types/game';
 import { INITIAL_QUESTIONS, normalizeQuestionText } from './questionsData';
 import {
   isPlaceholderValue,
@@ -24,6 +24,8 @@ import {
   deleteFriendFromPostgres,
   upsertNotificationToPostgres,
   insertAuditLogToPostgres,
+  insertFeedbackToPostgres,
+  updateFeedbackStatusInPostgres,
   createPasswordResetTokenToPostgres,
   invalidatePasswordResetTokenInPostgres,
   consumePasswordResetTokenAndUpdatePasswordInPostgres,
@@ -110,6 +112,7 @@ export interface DatabaseSchema {
   friends: FriendRecord[];
   notifications: NotificationRecord[];
   auditLogs?: AuditLogRecord[];
+  feedback?: FeedbackRecord[];
 }
 
 const DB_DIR = path.resolve(process.cwd(), 'data');
@@ -161,7 +164,7 @@ export class Database {
     }
 
     const adminResult = this.addConfiguredAdmin(pgData);
-    if (adminResult.adminUser) {
+    if (adminResult.changed && adminResult.adminUser) {
       await upsertUserToPostgres(adminResult.adminUser);
     }
 
@@ -232,10 +235,25 @@ export class Database {
     };
   }
 
+  /**
+   * Creează contul inițial de administrator la prima pornire a bazei de date, folosind
+   * `ADMIN_EMAIL`, `ADMIN_USERNAME` și `ADMIN_PASSWORD`.
+   *
+   * IMPORTANT (Secțiunea 2 - Persistența parolei de administrator la redeploy):
+   * - Dacă un cont de administrator există deja în baza de date (`existingAdmin`), NU îi suprascriem
+   *   niciodată `passwordHash`, `email`, `username` sau `tokenVersion` la restart / redeploy!
+   * - Astfel, orice schimbare de parolă făcută de administrator în aplicație rămâne intactă
+   *   după `git pull`, `docker compose up -d --build` sau repornirea serverului.
+   */
   public addConfiguredAdmin(
     data: DatabaseSchema,
     env: NodeJS.ProcessEnv = process.env
   ): { changed: boolean; adminUser?: UserRecord } {
+    const existingAdmin = Object.values(data.users || {}).find((u) => u.role === 'admin');
+    if (existingAdmin) {
+      return { changed: false };
+    }
+
     const email = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
     const username = String(env.ADMIN_USERNAME || 'conquiz-admin').trim();
     const password = String(env.ADMIN_PASSWORD || '');
@@ -279,25 +297,6 @@ export class Database {
         );
         return { changed: false };
       }
-    }
-
-    const existingAdmin = Object.values(data.users || {}).find((u) => u.role === 'admin');
-    if (existingAdmin) {
-      const passwordMatches = bcrypt.compareSync(password, existingAdmin.passwordHash);
-      if (
-        existingAdmin.email.toLowerCase() === email &&
-        existingAdmin.username === username &&
-        passwordMatches
-      ) {
-        return { changed: false };
-      }
-      existingAdmin.email = email;
-      existingAdmin.username = username;
-      existingAdmin.passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(12));
-      existingAdmin.tokenVersion = (existingAdmin.tokenVersion ?? 1) + 1;
-      existingAdmin.profile.email = email;
-      existingAdmin.profile.username = username;
-      return { changed: true, adminUser: existingAdmin };
     }
 
     if (
@@ -409,6 +408,7 @@ export class Database {
             )
           : [];
         rawObj.auditLogs = Array.isArray(rawObj.auditLogs) ? rawObj.auditLogs : [];
+        rawObj.feedback = Array.isArray(rawObj.feedback) ? rawObj.feedback : [];
 
         delete rawObj.achievements;
         delete rawObj.userAchievements;
@@ -437,6 +437,7 @@ export class Database {
         friends: [],
         notifications: [],
         auditLogs: [],
+        feedback: [],
       };
     }
 
@@ -565,12 +566,30 @@ export class Database {
     return !!updatedUser.isBanned;
   }
 
+  /**
+   * Șterge contul unui utilizator cu păstrarea integrității referințelor:
+   * - Șterge contul din `users`, relațiile din `friends`, notificările personale din `notifications`
+   *   și tokenurile de resetare a parolei.
+   * - Păstrează istoricul meciurilor (`games` și `game_player_results`) și jurnalul de audit (`auditLogs`)
+   *   pentru consistența statisticilor istorice ale celorlalți jucători.
+   */
   public async deleteUser(userId: string): Promise<boolean> {
     if (!this.data.users[userId]) return false;
     if (isPostgresConfigured()) {
       await deleteUserFromPostgres(userId);
     }
     delete this.data.users[userId];
+    this.data.friends = (this.data.friends || []).filter(
+      (f) => f.requesterId !== userId && f.recipientId !== userId
+    );
+    this.data.notifications = (this.data.notifications || []).filter(
+      (n) => n.userId !== userId
+    );
+    for (const [hash, tokenRec] of this.memoryResetTokens.entries()) {
+      if (tokenRec.userId === userId) {
+        this.memoryResetTokens.delete(hash);
+      }
+    }
     this.save();
     return true;
   }
@@ -985,6 +1004,90 @@ export class Database {
     }
     return this.data.auditLogs.slice(0, limit);
   }
+
+  // --- FEEDBACK UTILIZATORI ---
+  public async createFeedback(params: {
+    userId?: string | null;
+    username?: string;
+    category: FeedbackCategory;
+    message: string;
+    roomId?: string | null;
+  }): Promise<FeedbackRecord> {
+    const nowIso = new Date().toISOString();
+    const record: FeedbackRecord = {
+      id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      userId: params.userId || null,
+      username: (params.username || 'Anonim').trim().slice(0, 60) || 'Anonim',
+      category: params.category,
+      message: params.message.trim(),
+      roomId: params.roomId ? String(params.roomId).trim().slice(0, 20) : null,
+      status: 'nou',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    if (isPostgresConfigured()) {
+      await insertFeedbackToPostgres(record);
+    }
+    if (!Array.isArray(this.data.feedback)) {
+      this.data.feedback = [];
+    }
+    this.data.feedback.unshift(record);
+    if (this.data.feedback.length > 500) {
+      this.data.feedback.pop();
+    }
+    this.save();
+    return record;
+  }
+
+  public getFeedbackList(filters?: {
+    status?: FeedbackStatus | 'all';
+    category?: FeedbackCategory | 'all';
+    limit?: number;
+  }): FeedbackRecord[] {
+    if (!Array.isArray(this.data.feedback)) {
+      this.data.feedback = [];
+    }
+    let list = [...this.data.feedback];
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((f) => f.status === filters.status);
+    }
+    if (filters?.category && filters.category !== 'all') {
+      list = list.filter((f) => f.category === filters.category);
+    }
+    const max = filters?.limit ?? 200;
+    return list.slice(0, max);
+  }
+
+  public getFeedbackById(id: string): FeedbackRecord | undefined {
+    if (!Array.isArray(this.data.feedback)) return undefined;
+    return this.data.feedback.find((f) => f.id === id);
+  }
+
+  public async updateFeedbackStatus(
+    id: string,
+    status: FeedbackStatus
+  ): Promise<FeedbackRecord | null> {
+    if (!Array.isArray(this.data.feedback)) {
+      this.data.feedback = [];
+    }
+    const idx = this.data.feedback.findIndex((f) => f.id === id);
+    if (idx === -1) return null;
+
+    const updatedAtIso = new Date().toISOString();
+    const updated: FeedbackRecord = {
+      ...this.data.feedback[idx],
+      status,
+      updatedAt: updatedAtIso,
+    };
+
+    if (isPostgresConfigured()) {
+      await updateFeedbackStatusInPostgres(id, status, updatedAtIso);
+    }
+    this.data.feedback[idx] = updated;
+    this.save();
+    return updated;
+  }
 }
 
 export const db = new Database();
+
