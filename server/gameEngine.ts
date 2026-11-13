@@ -3770,10 +3770,10 @@ export class GameManager {
     for (const roomId of this.games.keys()) {
       this.clearRoomTimers(roomId);
     }
-    for (const timer of this.emptyRoomTimers.values()) {
+    for (const timer of this.emptyRoomCleanupTimers.values()) {
       clearTimeout(timer);
     }
-    this.emptyRoomTimers.clear();
+    this.emptyRoomCleanupTimers.clear();
     this.games.clear();
   }
 
