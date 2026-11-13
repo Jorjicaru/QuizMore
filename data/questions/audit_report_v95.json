@@ -8,12 +8,12 @@
   "keptChoice": 299,
   "disabledFromPreviousActiveChoice": 868,
   "replacedChoiceWithNewCurated": 271,
-  "finalActiveChoice": 570,
+  "finalActiveChoice": 1066,
   "keptEstimation": 0,
   "disabledFromPreviousActiveEstimation": 0,
   "replacedEstimationWithNewCurated": 140,
-  "finalActiveEstimation": 140,
-  "finalActiveTotal": 710,
+  "finalActiveEstimation": 228,
+  "finalActiveTotal": 1294,
   "disabledReasonsBreakdown": {
     "template_chemistry_academic": 72,
     "template_county_series": 143,
@@ -516,5 +516,8 @@
       "question": "Ce regizor a realizat filmele „Jurassic Park” și „E.T. Extraterestrul”?",
       "answer": "Steven Spielberg"
     }
-  ]
+  ],
+  "restoredApprovedChoice": 496,
+  "restoredApprovedEstimation": 88,
+  "replacedMetricEstimationWithGeneralKnowledge": 11
 }
