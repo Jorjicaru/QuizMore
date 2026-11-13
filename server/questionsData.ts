@@ -762,6 +762,10 @@ function loadCanonicalQuestionBank(): Question[] {
 
     const enriched: Question = {
       ...q,
+      question:
+        q.id === 'geo_world_curr_spania'
+          ? 'Ce piesă vestimentară tradițională, brodată manual, a fost inclusă în patrimoniul UNESCO?'
+          : q.question,
       unit:
         q.type === 'estimation'
           ? q.unit && q.unit.trim().length > 0
