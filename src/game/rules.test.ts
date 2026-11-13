@@ -3661,7 +3661,10 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
       gm.selectTerritory(cRoom.roomId, activePid, validBase.id);
     }
 
-    // Right after base_selection -> phase is 'conquest', waiting 1.5s for first question (no conquestPickerId yet)
+    // Freeze the pre-question window so the 1.5s room timer cannot race this assertion.
+    (gm as any).clearRoomTimers(cRoom.roomId);
+    cGame.currentQuestion = null;
+    cGame.conquestPickerId = null;
     assert.equal(cGame.phase, 'conquest');
     assert.equal(Boolean(cGame.conquestPickerId), false);
     assert.equal(
