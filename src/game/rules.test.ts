@@ -3711,7 +3711,6 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
       'Cât timp fereastra de rezultat a întrebării este activă, instrucțiunea pe hartă încă nu apare'
     );
 
-    const cq1 = (cGame as GameState).currentQuestion as unknown as NonNullable<GameState['currentQuestion']>;
     // Advance past the 2.8s question result reveal timer into territory picking
     (gm as any).clearRoomTimers(cRoom.roomId);
     cGame.conquestPickQueue = [...(cq1.winnerIds || [])];
