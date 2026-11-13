@@ -70,8 +70,18 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialZoom: number;
+    initialPanX: number;
+    initialPanY: number;
+    midSvgX: number;
+    midSvgY: number;
+  } | null>(null);
+  const suppressClickUntilRef = useRef<number>(0);
   const didDragRef = useRef<boolean>(false);
   const mapWrapperRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -171,7 +181,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       ? Boolean(
           warRound.status === 'selecting_targets' &&
             myWarBattle &&
-            myWarBattle.targetTerritoryId === null
+            myWarBattle.targetTerritoryId === null &&
+            !myWarBattle.warActionType
         )
       : activePlayerId === currentUserId);
 
@@ -214,7 +225,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   };
 
   const handleTerritoryClick = (t: Territory) => {
-    if (didDragRef.current) {
+    if (didDragRef.current || Date.now() < suppressClickUntilRef.current) {
       didDragRef.current = false;
       return;
     }
@@ -249,9 +260,28 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     };
   };
 
+  const clientToSvgCoords = (
+    clientX: number,
+    clientY: number,
+    currentZoom: number,
+    currentPan: { x: number; y: number }
+  ) => {
+    const svgEl = svgRef.current;
+    if (!svgEl) {
+      return { svgX: 480, svgY: 330 };
+    }
+    const rect = svgEl.getBoundingClientRect();
+    const relX = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0.5;
+    const relY = rect.height > 0 ? Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) : 0.5;
+    return {
+      svgX: currentPan.x + relX * (960 / currentZoom),
+      svgY: currentPan.y + relY * (660 / currentZoom),
+    };
+  };
+
   const handleZoomIn = () => {
     setZoom((prev) => {
-      const next = Math.min(2.5, Number((prev + 0.4).toFixed(2)));
+      const next = Math.min(3, Number((prev + 0.4).toFixed(2)));
       const prevW = 960 / prev;
       const prevH = 660 / prev;
       const nextW = 960 / next;
@@ -280,9 +310,13 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   const handleResetZoom = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    pinchStateRef.current = null;
+    dragStartRef.current = null;
+    setIsDragging(false);
   };
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch') return;
     if (zoom <= 1) return;
     setIsDragging(true);
     didDragRef.current = false;
@@ -295,13 +329,15 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch') return;
     if (!isDragging || !dragStartRef.current || zoom <= 1) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     if (Math.hypot(dx, dy) > 6) {
       didDragRef.current = true;
+      suppressClickUntilRef.current = Date.now() + 200;
     }
-    const scaleFactor = (960 / zoom) / Math.max(320, containerWidth);
+    const scaleFactor = (960 / zoom) / Math.max(280, containerWidth);
     const nextPan = clampPan(
       dragStartRef.current.panX - dx * scaleFactor,
       dragStartRef.current.panY - dy * scaleFactor,
@@ -310,9 +346,109 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     setPan(nextPan);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch') return;
     setIsDragging(false);
     dragStartRef.current = null;
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 2) {
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const midClientX = (t0.clientX + t1.clientX) / 2;
+      const midClientY = (t0.clientY + t1.clientY) / 2;
+      const { svgX, svgY } = clientToSvgCoords(midClientX, midClientY, zoom, pan);
+
+      didDragRef.current = true;
+      suppressClickUntilRef.current = Date.now() + 450;
+      setIsDragging(false);
+      dragStartRef.current = null;
+      pinchStateRef.current = {
+        initialDistance: Math.max(20, dist),
+        initialZoom: zoom,
+        initialPanX: pan.x,
+        initialPanY: pan.y,
+        midSvgX: svgX,
+        midSvgY: svgY,
+      };
+    } else if (e.touches.length === 1 && !pinchStateRef.current) {
+      if (zoom > 1) {
+        setIsDragging(true);
+        didDragRef.current = false;
+        dragStartRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          panX: pan.x,
+          panY: pan.y,
+        };
+      } else {
+        setIsDragging(false);
+        dragStartRef.current = null;
+        didDragRef.current = false;
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 2 && pinchStateRef.current) {
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const pinch = pinchStateRef.current;
+      const ratio = dist / pinch.initialDistance;
+      const nextZoom = Math.max(1, Math.min(3, Number((pinch.initialZoom * ratio).toFixed(2))));
+
+      didDragRef.current = true;
+      suppressClickUntilRef.current = Date.now() + 450;
+
+      if (nextZoom <= 1.01) {
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+      } else {
+        const initVW = 960 / pinch.initialZoom;
+        const initVH = 660 / pinch.initialZoom;
+        const relX = (pinch.midSvgX - pinch.initialPanX) / initVW;
+        const relY = (pinch.midSvgY - pinch.initialPanY) / initVH;
+        const nextVW = 960 / nextZoom;
+        const nextVH = 660 / nextZoom;
+        const rawPanX = pinch.midSvgX - relX * nextVW;
+        const rawPanY = pinch.midSvgY - relY * nextVH;
+        setZoom(nextZoom);
+        setPan(clampPan(rawPanX, rawPanY, nextZoom));
+      }
+    } else if (
+      e.touches.length === 1 &&
+      isDragging &&
+      dragStartRef.current &&
+      zoom > 1 &&
+      !pinchStateRef.current
+    ) {
+      const dx = e.touches[0].clientX - dragStartRef.current.x;
+      const dy = e.touches[0].clientY - dragStartRef.current.y;
+      if (Math.hypot(dx, dy) > 6) {
+        didDragRef.current = true;
+        suppressClickUntilRef.current = Date.now() + 280;
+      }
+      const scaleFactor = (960 / zoom) / Math.max(280, containerWidth);
+      const nextPan = clampPan(
+        dragStartRef.current.panX - dx * scaleFactor,
+        dragStartRef.current.panY - dy * scaleFactor,
+        zoom
+      );
+      setPan(nextPan);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length < 2) {
+      pinchStateRef.current = null;
+    }
+    if (e.touches.length === 0) {
+      setIsDragging(false);
+      dragStartRef.current = null;
+    }
   };
 
   const territoryList = Object.values(territories);
@@ -465,6 +601,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           onClick={handleZoomIn}
           title="Mărește Harta (Zoom In)"
           aria-label="Zoom In"
+          data-testid="map-zoom-in"
           className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-amber-300 hover:bg-stone-800 active:scale-95 transition"
         >
           <ZoomIn className="h-4 w-4" />
@@ -475,21 +612,27 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           disabled={zoom <= 1}
           title="Micșorează Harta (Zoom Out)"
           aria-label="Zoom Out"
+          data-testid="map-zoom-out"
           className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-stone-900 text-stone-300 hover:bg-stone-800 disabled:opacity-40 active:scale-95 transition"
         >
           <ZoomOut className="h-4 w-4" />
         </button>
-        {zoom > 1 && (
-          <button
-            type="button"
-            onClick={handleResetZoom}
-            title="Încadrează toată harta (Fit to Screen)"
-            aria-label="Reset Zoom"
-            className="flex h-8 w-8 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 active:scale-95 transition"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleResetZoom}
+          disabled={zoom <= 1 && pan.x === 0 && pan.y === 0}
+          title="Încadrează toată harta în ecran (Reset Zoom)"
+          aria-label="Reset Zoom"
+          data-testid="map-zoom-reset"
+          className={`flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-bold transition active:scale-95 ${
+            zoom > 1
+              ? 'bg-amber-500/25 text-amber-200 border border-amber-500/50 hover:bg-amber-500/35'
+              : 'bg-stone-900/60 text-stone-500 opacity-50'
+          }`}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>1:1</span>
+        </button>
         <button
           type="button"
           onClick={() => setShowInternalCounties((prev) => !prev)}
@@ -510,9 +653,9 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         </button>
       </div>
 
-      {/* Bottom-Right Compact Round Tracker Overlay */}
+      {/* Bottom-Right Compact Round Tracker Overlay (desktop/tablet only so mobile southern map is unobstructed) */}
       {game && (
-        <div className="pointer-events-none absolute bottom-9 sm:bottom-10 right-2 z-20">
+        <div className="pointer-events-none hidden sm:block absolute bottom-10 right-2 z-20">
           <RoundTracker game={game} />
         </div>
       )}
@@ -520,6 +663,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
       {/* SVG Canvas Container */}
       <div className="w-full flex-1 min-h-0 flex items-center justify-center p-1 sm:p-2 overflow-hidden">
         <svg
+          ref={svgRef}
           data-testid="romania-map-svg"
           viewBox={viewBoxStr}
           preserveAspectRatio="xMidYMid meet"
@@ -527,6 +671,11 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          style={{ touchAction: zoom > 1 ? 'none' : 'manipulation' }}
           className={`w-full h-full max-h-full aspect-[960/660] filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.95)] ${
             zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''
           }`}
@@ -979,7 +1128,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           </g>
 
           {/* ============================================================
-              LAYER 3: CASTLE MEDALLIONS, TOWERS, 1000 SCORES & NAMEPLATES
+              LAYER 3: CASTLE MEDALLIONS, ENLARGED 3 TOWERS, 1000 SCORES & NAMEPLATES
           ============================================================ */}
           <g id="layer-castles" className="pointer-events-none">
             {territoryList.map((t) => {
@@ -987,9 +1136,17 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               if (!t.isBase || !owner) return null;
 
               const placement = baseLabelPlacements[t.id];
+              const isTowerHit = activeTransitions[t.id]?.type === 'tower_hit';
+              const towerScale = isMobileMap ? 1.32 : 1.18;
+              const intactCount = Math.max(0, Math.min(3, t.castleTowers ?? 3));
 
               return (
-                <g key={`castle_${t.id}`}>
+                <g
+                  key={`castle_${t.id}`}
+                  data-testid={`castle-${t.id}`}
+                  data-towers={intactCount}
+                  className={isTowerHit ? 'animate-castle-shake' : undefined}
+                >
                   {placement && placement.hasLeader && (
                     <line
                       x1={t.labelX}
@@ -1006,84 +1163,119 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   <g transform={`translate(${t.labelX}, ${t.labelY})`}>
                     <circle
                       cx="0"
-                      cy="2"
-                      r="16"
+                      cy="0"
+                      r="16.5"
                       fill={owner.color}
                       stroke="#fef08a"
-                      strokeWidth="2.5"
-                      filter="drop-shadow(0 2px 5px rgba(0,0,0,0.85))"
+                      strokeWidth="2.6"
+                      filter="drop-shadow(0 2px 5px rgba(0,0,0,0.88))"
                     />
                     <circle
                       cx="0"
-                      cy="2"
-                      r="13"
+                      cy="0"
+                      r="13.2"
                       fill="none"
                       stroke="#b45309"
                       strokeWidth="1.5"
                     />
                     <text
                       x="0"
-                      y="7.5"
+                      y="5.5"
                       textAnchor="middle"
-                      fontSize="14"
+                      fontSize="14.5"
                       fill="#fef08a"
                       fontWeight="bold"
                     >
                       ♞
                     </text>
 
-                    <g transform="translate(0, 23)">
+                    {/* Enlarged, high-contrast 3 Castle Towers bar */}
+                    <g
+                      transform={`translate(0, 22) scale(${towerScale})`}
+                      data-testid={`castle-towers-${t.id}`}
+                    >
+                      <rect
+                        x="-21"
+                        y="-8.5"
+                        width="42"
+                        height="14.5"
+                        rx="3.5"
+                        fill="#0c0a09"
+                        fillOpacity="0.92"
+                        stroke={isTowerHit ? '#fb7185' : '#f59e0b'}
+                        strokeWidth="1.1"
+                      />
                       {[0, 1, 2].map((idx) => {
-                        const intact = idx < (t.castleTowers ?? 3);
-                        const posX = (idx - 1) * 9;
+                        const intact = idx < intactCount;
+                        const posX = (idx - 1) * 12;
                         return (
-                          <g key={idx} transform={`translate(${posX}, 0)`}>
+                          <g
+                            key={idx}
+                            data-testid={`castle-tower-${t.id}-${idx}`}
+                            data-intact={intact ? 'true' : 'false'}
+                            transform={`translate(${posX}, 0)`}
+                          >
                             <rect
-                              x="-3.5"
-                              y="-5"
-                              width="7"
-                              height="8"
-                              rx="1.5"
-                              fill={intact ? '#f59e0b' : '#3f3f46'}
-                              stroke={intact ? '#fef08a' : '#18181b'}
-                              strokeWidth="0.9"
+                              x="-4.2"
+                              y="-4.5"
+                              width="8.4"
+                              height="9"
+                              rx="1.4"
+                              fill={intact ? '#f59e0b' : '#27272a'}
+                              stroke={intact ? '#fef08a' : '#71717a'}
+                              strokeWidth="1"
+                            />
+                            {/* Battlements (creneluri) */}
+                            <rect
+                              x="-4.2"
+                              y="-6.8"
+                              width="2.4"
+                              height="2.4"
+                              fill={intact ? '#fef08a' : '#52525b'}
                             />
                             <rect
-                              x="-3.5"
-                              y="-7"
+                              x="-1"
+                              y="-6.8"
                               width="2"
-                              height="2"
-                              fill={intact ? '#fef08a' : '#71717a'}
+                              height="2.4"
+                              fill={intact ? '#fef08a' : '#52525b'}
                             />
                             <rect
-                              x="1.5"
-                              y="-7"
-                              width="2"
-                              height="2"
-                              fill={intact ? '#fef08a' : '#71717a'}
+                              x="1.8"
+                              y="-6.8"
+                              width="2.4"
+                              height="2.4"
+                              fill={intact ? '#fef08a' : '#52525b'}
                             />
+                            {!intact && (
+                              <g stroke="#fb7185" strokeWidth="1.3" strokeLinecap="round">
+                                <line x1="-2.5" y1="-2.5" x2="2.5" y2="2.5" />
+                                <line x1="2.5" y1="-2.5" x2="-2.5" y2="2.5" />
+                              </g>
+                            )}
                           </g>
                         );
                       })}
                     </g>
 
-                    <g transform="translate(0, 36)">
+                    {/* Base Score 1000 only */}
+                    <g transform={`translate(0, ${22 + 15 * towerScale})`}>
                       <rect
-                        x="-18"
+                        x="-19"
                         y="-7"
-                        width="36"
-                        height="13"
+                        width="38"
+                        height="13.5"
                         rx="4"
                         fill="#1c1109"
-                        fillOpacity="0.88"
+                        fillOpacity="0.9"
                         stroke="#eab308"
-                        strokeWidth="0.9"
+                        strokeWidth="1"
                       />
                       <text
                         x="0"
-                        y="2.5"
+                        y="2.8"
                         textAnchor="middle"
-                        fontSize="9.5"
+                        fontSize="10"
                         fontWeight="900"
                         fill="#fef08a"
                         fontFamily="Georgia, serif"
@@ -1126,13 +1318,11 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           </g>
 
           {/* ============================================================
-              LAYER 4: WAR ATTACK VECTORS (ORIGIN -> TARGET ARROWS & CALLOUTS)
+              LAYER 4: WAR ATTACK VECTORS (ORIGIN -> TARGET ARROWS ONLY, NO OVERLAPPING TEXT)
           ============================================================ */}
           <g id="layer-attack-vectors" className="pointer-events-none">
             {activeAttackVectors.map((vec) => {
               const pathD = `M ${vec.fromX} ${vec.fromY} Q ${vec.controlX} ${vec.controlY} ${vec.toX} ${vec.toY}`;
-              const calloutText = `${vec.attackerName} ⚔️ ${vec.targetTerritoryName} (${vec.defenderName})`;
-              const calloutW = Math.max(110, Math.min(240, calloutText.length * 5.6 + 22));
 
               return (
                 <g
@@ -1228,32 +1418,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       strokeDasharray="5 4"
                     />
                   </g>
-
-                  {/* Mid-Vector Battle Callout Pill (Attacker ⚔️ Target (Defender)) */}
-                  <g transform={`translate(${vec.midX}, ${vec.midY - 12})`}>
-                    <rect
-                      x={-calloutW / 2}
-                      y="-10"
-                      width={calloutW}
-                      height="20"
-                      rx="6"
-                      fill="#0f172a"
-                      fillOpacity="0.94"
-                      stroke={vec.attackerColor}
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x="0"
-                      y="3.5"
-                      textAnchor="middle"
-                      fontSize="9.5"
-                      fontWeight="800"
-                      fill="#fef08a"
-                      fontFamily="sans-serif"
-                    >
-                      {calloutText}
-                    </text>
-                  </g>
                 </g>
               );
             })}
@@ -1300,12 +1464,10 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
           </g>
 
           {/* ============================================================
-              LAYER 5: POST-BATTLE OUTCOME EFFECTS (CONQUEST PULSE & DEFENSE SHIELD)
+              LAYER 5: POST-BATTLE OUTCOME EFFECTS (RINGS & SHIELD/IMPACT EMBLEMS ONLY)
           ============================================================ */}
           <g id="layer-battle-outcomes" className="pointer-events-none">
             {Object.values(activeTransitions).map((tr) => {
-              const badgeW = Math.max(96, tr.badgeTextRo.length * 5.8 + 18);
-
               if (tr.type === 'neutral_conquest' || tr.type === 'war_conquest') {
                 return (
                   <g
@@ -1332,35 +1494,11 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       strokeWidth="2.2"
                       className="animate-conquest-ring"
                     />
-                    <g transform="translate(0, -26)">
-                      <rect
-                        x={-badgeW / 2}
-                        y="-10"
-                        width={badgeW}
-                        height="20"
-                        rx="6"
-                        fill="#1c1109"
-                        fillOpacity="0.94"
-                        stroke={tr.color}
-                        strokeWidth="1.6"
-                      />
-                      <text
-                        x="0"
-                        y="3.5"
-                        textAnchor="middle"
-                        fontSize="9.5"
-                        fontWeight="800"
-                        fill="#fef08a"
-                        fontFamily="sans-serif"
-                      >
-                        {tr.badgeTextRo}
-                      </text>
-                    </g>
                   </g>
                 );
               }
 
-              // war_defense or tower_hit
+              // war_defense or tower_hit: shield / explosion ripple without overlapping text labels
               const isShield = tr.type === 'war_defense';
               const ringStroke = isShield ? '#34d399' : '#fb7185';
               const emblemFill = isShield ? '#059669' : '#e11d48';
@@ -1375,10 +1513,10 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                   <circle
                     cx="0"
                     cy="0"
-                    r="28"
+                    r="30"
                     fill="none"
                     stroke={ringStroke}
-                    strokeWidth="3.5"
+                    strokeWidth="3.8"
                     className="animate-defense-ripple"
                   />
                   <g className="animate-defense-shield">
@@ -1398,30 +1536,6 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                       fill="#ffffff"
                     >
                       {isShield ? '🛡️' : '💥'}
-                    </text>
-                  </g>
-                  <g transform="translate(0, -28)">
-                    <rect
-                      x={-badgeW / 2}
-                      y="-10"
-                      width={badgeW}
-                      height="20"
-                      rx="6"
-                      fill="#064e3b"
-                      fillOpacity="0.95"
-                      stroke={ringStroke}
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x="0"
-                      y="3.5"
-                      textAnchor="middle"
-                      fontSize="9.5"
-                      fontWeight="800"
-                      fill="#ecfdf5"
-                      fontFamily="sans-serif"
-                    >
-                      {tr.badgeTextRo}
                     </text>
                   </g>
                 </g>

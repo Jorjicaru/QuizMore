@@ -75,6 +75,9 @@ export interface NotificationRecord {
   title: string;
   message: string;
   type: 'friend_request' | 'game_invite' | 'system';
+  roomId?: string;
+  senderId?: string;
+  senderUsername?: string;
   isRead: boolean;
   createdAt: string;
 }

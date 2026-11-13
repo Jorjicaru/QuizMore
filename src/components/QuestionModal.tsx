@@ -68,6 +68,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
   const [timeLeft, setTimeLeft] = useState<number>(durationSeconds);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [numericInput, setNumericInput] = useState<string>('');
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -110,6 +111,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     setSubmitStatus('idle');
     setSubmitError(null);
     setSelectedOption(null);
+    setNumericInput('');
   }, [instanceKey]);
 
   // Sync with server state if server already recorded our answer
@@ -198,6 +200,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       const mySub = playerAnswers[currentUserId];
       if (mySub.answer === null || mySub.answerStatus === 'NO_RESPONSE') {
         sound.playWrong();
+      } else if (question.type === 'estimation') {
+        if (winnerIds?.includes(currentUserId)) {
+          sound.playConquer();
+        } else {
+          sound.playWrong();
+        }
       } else if (Number(mySub.answer) === question.correctAnswerIndex) {
         if (winnerIds?.includes(currentUserId)) {
           sound.playConquer();
@@ -248,13 +256,61 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     );
   };
 
+  const handleSubmitNumeric = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (submittingLockRef.current || isLocked) return;
+    const cleaned = numericInput.trim().replace(',', '.');
+    if (!/^-?\d+(\.\d+)?$/.test(cleaned) || !Number.isFinite(Number(cleaned))) {
+      sound.playWrong();
+      setSubmitError('Introdu un număr valid pentru departajare.');
+      return;
+    }
+
+    submittingLockRef.current = true;
+    const currentKey = instanceKey;
+    sound.playClick();
+    setSubmitStatus('submitting');
+    setSubmitError(null);
+
+    onSubmitAnswer(
+      Number(cleaned),
+      (res) => {
+        if (activeInstanceKeyRef.current !== currentKey) return;
+        if (!res || res.timedOut || res.code === 'ACK_TIMEOUT') {
+          setSubmitStatus('submitting');
+          return;
+        }
+        if (res.success || res.code === 'DUPLICATE' || res.message?.includes('deja')) {
+          setSubmitStatus('accepted');
+          setSubmitError(null);
+        } else if (
+          res.code === 'EXPIRED' ||
+          res.code === 'STALE_INSTANCE' ||
+          res.message?.includes('expirat')
+        ) {
+          setSubmitStatus('expired');
+          setSubmitError(res.message || 'Timpul a expirat.');
+        } else {
+          submittingLockRef.current = false;
+          setSubmitStatus('rejected');
+          setSubmitError(res.message || 'Răspuns respins de server.');
+        }
+      },
+      currentKey
+    );
+  };
+
+  const isRegenQuestion = activeQuestion.warActionType === 'regenerate_tower';
+
   const phaseBadgeLabel =
     phaseContext === 'conquest'
       ? 'Cucerire (+200 pct)'
       : phaseContext === 'allocation'
       ? 'Departajare (+300 pct)'
+      : isRegenQuestion
+      ? '🏰 Regenerare Turn (+1 Turn)'
       : activeQuestion.isTiebreak
-      ? 'Departajare Atac (+400 pct)'
+      ? '⚔️ Departajare Numerică (+400 pct)'
       : 'Atac (+400 pct)';
 
   // Count how many participants have answered so far
@@ -283,7 +339,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   const warTargetTerritory = warTargetId && territories ? territories[warTargetId] : undefined;
 
   const warAttackAnnouncement =
-    phaseContext === 'war' && warAttacker && warDefender
+    phaseContext === 'war' && !isRegenQuestion && warAttacker && warDefender
       ? formatWarAttackAnnouncement({
           attacker: warAttacker,
           defender: warDefender,
@@ -298,13 +354,36 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     const mySub = playerAnswers[currentUserId];
     const isNoResponse = !mySub || mySub.answer === null || mySub.answerStatus === 'NO_RESPONSE';
     const isWinner = Boolean(winnerIds?.includes(currentUserId));
-    const isCorr = !isNoResponse && Number(mySub.answer) === question.correctAnswerIndex;
+    const isCorr =
+      !isNoResponse &&
+      (question.type === 'estimation'
+        ? isWinner
+        : Number(mySub.answer) === question.correctAnswerIndex);
 
     if (isNoResponse) {
       return (
         <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-stone-600 bg-stone-900/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-stone-300">
           <Clock className="h-4 w-4 text-amber-400 shrink-0" />
           <span>TIMP EXPIRAT — Nu ai trimis niciun răspuns la această întrebare.</span>
+        </div>
+      );
+    }
+
+    if (question.type === 'estimation') {
+      if (isWinner) {
+        return (
+          <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-emerald-400 bg-emerald-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-emerald-200 shadow-lg">
+            <Trophy className="h-4 w-4 text-amber-400 shrink-0" />
+            <span>
+              AI CÂȘTIGAT DEPARTAJAREA NUMERICĂ! Estimarea ta a fost cea mai apropiată!
+            </span>
+          </div>
+        );
+      }
+      return (
+        <div className="mb-2.5 flex items-center justify-center gap-2 rounded-xl border border-red-500/70 bg-red-950/90 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-200">
+          <XCircle className="h-4 w-4 text-red-400 shrink-0" />
+          <span>Adversarul a fost mai aproape de valoarea exactă în departajare.</span>
         </div>
       );
     }
@@ -342,9 +421,11 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           <span>
             {phaseContext === 'conquest'
-              ? 'RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu învecinat (+200 PCT)!'
+              ? 'RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu (+200 PCT)!'
+              : isRegenQuestion
+              ? 'RĂSPUNS CORECT! Ai regenerat 1 turn în cetatea ta de bază!'
               : activeQuestion.isTiebreak && isWinner
-              ? 'AI CÂȘTIGAT DEPARTAJAREA PRIN VITEZĂ ȘI RĂSPUNS CORECT!'
+              ? 'AI CÂȘTIGAT DEPARTAJAREA!'
               : 'RĂSPUNS CORECT!'}
           </span>
         </div>
@@ -357,6 +438,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
         <span>
           {phaseContext === 'conquest'
             ? 'RĂSPUNS GREȘIT! Nu primești teritoriu în această rundă.'
+            : isRegenQuestion
+            ? 'RĂSPUNS GREȘIT! Numărul de turnuri rămâne neschimbat.'
             : 'RĂSPUNS GREȘIT!'}
         </span>
       </div>
@@ -403,7 +486,27 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             </div>
           </div>
 
-          {/* Individual War Attack Banner (Always visible during the question, showing who attacks whom and who must answer) */}
+          {/* Tower Regeneration Banner */}
+          {phaseContext === 'war' && isRegenQuestion && warAttacker && (
+            <div
+              data-testid="war-modal-regen-banner"
+              className="mt-2 rounded-xl border border-emerald-400/60 bg-stone-950/90 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-left"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <p className="font-serif text-xs sm:text-sm font-black text-emerald-200 leading-snug">
+                  🏰 REGENERARE TURN: {warAttacker.username} reconstruiește un turn în Cetatea{' '}
+                  {warTargetTerritory?.name || 'de bază'} ({warTargetTerritory?.castleTowers ?? 2}/3)
+                </p>
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/50 bg-emerald-500/20 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-emerald-200">
+                  {currentUserId === warAttacker.id
+                    ? 'Răspunde corect pentru +1 turn!'
+                    : `Răspunde doar ${warAttacker.username}`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Individual War Attack Banner */}
           {phaseContext === 'war' && warAttackAnnouncement && warAttacker && warDefender && (
             <div
               data-testid="war-modal-attack-banner"
@@ -414,6 +517,11 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                   <Swords className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400 shrink-0" />
                   <p className="font-serif text-xs sm:text-sm font-black text-amber-100 leading-snug break-words">
                     {warAttackAnnouncement.headline}
+                    {warTargetTerritory?.isBase && (
+                      <span className="ml-1.5 inline-flex items-center rounded bg-rose-500/25 border border-rose-400/50 px-1.5 py-0.5 font-mono text-[10px] text-rose-200">
+                        🏰 {warTargetTerritory.castleTowers ?? 3}/3 turnuri
+                      </span>
+                    )}
                   </p>
                 </div>
 
@@ -467,10 +575,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             <div
               data-testid="war-modal-outcome-box"
               className={`mb-3 rounded-xl border-2 px-3 py-2 text-left shadow-lg ${
-                warRound?.lastBattleResult?.headline === 'Atac reușit' ||
+                warRound?.lastBattleResult?.outcome === 'attacker_won' ||
                 activeWarBattle?.outcome === 'attacker_won'
                   ? 'border-emerald-400/80 bg-emerald-950/90'
-                  : warRound?.lastBattleResult?.headline === 'Apărare reușită' ||
+                  : warRound?.lastBattleResult?.outcome === 'defender_won' ||
                     activeWarBattle?.outcome === 'defender_won' ||
                     activeWarBattle?.outcome === 'draw_no_bonus'
                   ? 'border-sky-400/80 bg-sky-950/90'
@@ -479,15 +587,25 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             >
               {warRound?.lastBattleResult ? (
                 <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-1.5">
-                    {warRound.lastBattleResult.headline === 'Atac reușit' ? (
-                      <Swords className="h-4 w-4 text-emerald-300 shrink-0" />
-                    ) : (
-                      <Shield className="h-4 w-4 text-sky-300 shrink-0" />
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      {warRound.lastBattleResult.outcome === 'attacker_won' ? (
+                        <Swords className="h-4 w-4 text-emerald-300 shrink-0" />
+                      ) : (
+                        <Shield className="h-4 w-4 text-sky-300 shrink-0" />
+                      )}
+                      <span
+                        data-testid="war-modal-outcome-headline"
+                        className="font-serif text-xs sm:text-sm font-black uppercase tracking-wide text-white"
+                      >
+                        {warRound.lastBattleResult.headline}
+                      </span>
+                    </div>
+                    {warRound.lastBattleResult.effectBadge && (
+                      <span className="rounded-full border border-white/25 bg-black/45 px-2 py-0.5 font-mono text-[10px] font-black text-amber-200">
+                        {warRound.lastBattleResult.effectBadge}
+                      </span>
                     )}
-                    <span className="font-serif text-xs sm:text-sm font-black uppercase tracking-wide text-white">
-                      {warRound.lastBattleResult.headline} — {warRound.lastBattleResult.attackerName} vs {warRound.lastBattleResult.defenderName}
-                    </span>
                   </div>
                   <p className="text-xs font-semibold text-stone-100">
                     {warRound.lastBattleResult.details}
@@ -497,7 +615,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-amber-200">
                   <Swords className="h-4 w-4 text-amber-300 shrink-0" />
                   <span>
-                    Egalitate între {warAttacker?.username} și {warDefender?.username}! Urmează întrebarea de departajare!
+                    Ambii jucători au răspuns corect! Urmează întrebarea numerică de departajare!
                   </span>
                 </div>
               ) : null}
@@ -509,15 +627,154 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             <h3 className="font-serif text-sm sm:text-xl font-bold leading-snug sm:leading-relaxed text-amber-50 break-words">
               {question.question}
             </h3>
-            {(phaseContext === 'allocation' || activeQuestion.isTiebreak) && !resolved && (
+            {question.type === 'estimation' && !resolved && (
               <p className="mt-1 text-[11px] sm:text-xs text-amber-300/90 font-semibold">
-                Alege varianta corectă cât mai rapid pentru a câștiga departajarea!
+                Introdu un număr întreg — câștigă jucătorul cu estimarea cea mai apropiată!
               </p>
             )}
+            {question.type === 'choice' &&
+              (phaseContext === 'allocation' || activeQuestion.isTiebreak) &&
+              !resolved && (
+                <p className="mt-1 text-[11px] sm:text-xs text-amber-300/90 font-semibold">
+                  Alege varianta corectă cât mai rapid pentru a câștiga departajarea!
+                </p>
+              )}
           </div>
 
+          {/* NUMERIC ESTIMATION TIEBREAK INPUT & RESOLUTION */}
+          {question.type === 'estimation' && (
+            <div data-testid="numeric-tiebreak-panel" className="max-w-md mx-auto space-y-3">
+              {!resolved ? (
+                isParticipant ? (
+                  <form onSubmit={handleSubmitNumeric} className="space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        data-testid="numeric-tiebreak-input"
+                        disabled={isLocked}
+                        value={numericInput}
+                        onChange={(e) => {
+                          setSubmitError(null);
+                          setNumericInput(e.target.value.replace(/[^0-9.-]/g, ''));
+                        }}
+                        placeholder="Scrie numărul estimat..."
+                        className="flex-1 rounded-xl border-2 border-amber-500/50 bg-stone-950 px-3.5 py-2.5 text-center font-mono text-lg sm:text-xl font-black text-amber-100 placeholder-stone-500 focus:border-amber-400 focus:outline-none disabled:opacity-60"
+                      />
+                      <button
+                        type="submit"
+                        data-testid="numeric-tiebreak-submit"
+                        disabled={isLocked || numericInput.trim().length === 0}
+                        className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 font-serif text-xs sm:text-sm font-black uppercase tracking-wider text-stone-950 shadow-lg hover:brightness-110 disabled:opacity-45 active:scale-95 transition shrink-0"
+                      >
+                        Trimite
+                      </button>
+                    </div>
+
+                    {/* Compact Touch Keypad for Mobile */}
+                    {!isLocked && (
+                      <div
+                        data-testid="numeric-tiebreak-keypad"
+                        className="grid grid-cols-6 gap-1.5 pt-1"
+                      >
+                        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((digit) => (
+                          <button
+                            key={digit}
+                            type="button"
+                            onClick={() => {
+                              sound.playClick();
+                              setNumericInput((prev) => (prev.length < 12 ? prev + digit : prev));
+                            }}
+                            className="h-9 sm:h-10 rounded-lg border border-stone-700 bg-stone-900/90 font-mono text-sm font-bold text-stone-100 hover:bg-stone-800 active:scale-95 transition"
+                          >
+                            {digit}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sound.playClick();
+                            setNumericInput((prev) => prev.slice(0, -1));
+                          }}
+                          className="col-span-2 h-9 sm:h-10 rounded-lg border border-red-500/40 bg-red-950/50 font-sans text-xs font-bold text-red-200 hover:bg-red-900/60 active:scale-95 transition"
+                        >
+                          ⌫ Șterge
+                        </button>
+                      </div>
+                    )}
+                  </form>
+                ) : null
+              ) : (
+                <div
+                  data-testid="numeric-tiebreak-resolved"
+                  className="space-y-2.5 rounded-2xl border border-amber-500/40 bg-stone-950/90 p-3 sm:p-4"
+                >
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-950/70 px-3 py-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span className="font-serif text-xs sm:text-sm font-bold text-emerald-200">
+                      Valoarea exactă:{' '}
+                      <strong className="font-mono text-sm sm:text-base text-white">
+                        {question.targetNumber}
+                      </strong>
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {effectiveParticipants.map((pid) => {
+                      const p = players.find((x) => x.id === pid);
+                      if (!p) return null;
+                      const sub = playerAnswers[pid];
+                      const hasAns =
+                        sub && sub.answer !== null && sub.answer !== undefined && sub.answerStatus !== 'NO_RESPONSE';
+                      const isWin = Boolean(winnerIds?.includes(pid));
+                      const diff =
+                        hasAns && question.targetNumber !== undefined
+                          ? Math.abs(Number(sub.answer) - question.targetNumber)
+                          : null;
+
+                      return (
+                        <div
+                          key={pid}
+                          className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${
+                            isWin
+                              ? 'border-amber-400 bg-amber-500/20 text-white font-bold'
+                              : 'border-stone-800 bg-stone-900/80 text-stone-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: p.color }}
+                            />
+                            <span>{p.username}</span>
+                            {isWin && <span className="text-amber-300">👑 Câștigător</span>}
+                          </div>
+                          {hasAns ? (
+                            <div className="flex items-center gap-2 font-mono text-[11px] sm:text-xs">
+                              <span className="text-amber-200 font-bold">
+                                Răspuns: {sub.answer}
+                              </span>
+                              {diff !== null && (
+                                <span className="text-stone-300">(Δ {diff})</span>
+                              )}
+                              <span className="text-amber-300">
+                                {formatSubmitTimeSeconds(sub.submitTime)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="italic text-stone-400">Fără răspuns</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* MULTIPLE CHOICE (4 OPTIONS) */}
-          {question.options && (
+          {question.type !== 'estimation' && question.options && (
             <div
               data-testid={resolved ? 'choice-resolved-options' : 'choice-options'}
               className="space-y-2 sm:space-y-2.5 max-w-xl mx-auto"
@@ -707,7 +964,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
           {/* Observer notice */}
           {!isParticipant && !resolved && (
             <div className="mt-2.5 text-center text-xs text-stone-300 italic">
-              {phaseContext === 'war' && warAttacker && warDefender
+              {phaseContext === 'war' && isRegenQuestion && warAttacker
+                ? `Ești observator — răspunde doar ${warAttacker.username} pentru regenerarea turnului.`
+                : phaseContext === 'war' && warAttacker && warDefender
                 ? `Ești observator la acest atac — răspund doar ${warAttacker.username} și ${warDefender.username}.`
                 : 'Ești observator la această întrebare.'}
             </div>

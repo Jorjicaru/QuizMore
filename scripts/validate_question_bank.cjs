@@ -104,8 +104,8 @@ function validateQuestionBank() {
 
     activeCategoryBreakdown[q.category] = (activeCategoryBreakdown[q.category] || 0) + 1;
 
-    if (q.type !== 'choice') {
-      errors.push(`ID ${q.id}: Întrebările active trebuie să fie exclusiv de tip 'choice' (actual: ${q.type}).`);
+    if (q.type !== 'choice' && q.type !== 'estimation') {
+      errors.push(`ID ${q.id}: Tip de întrebare invalid (actual: ${q.type}).`);
     }
 
     if (!q.question || typeof q.question !== 'string' || q.question.trim().length < 10) {
@@ -150,50 +150,67 @@ function validateQuestionBank() {
       }
     }
 
-    if (!Array.isArray(q.options) || q.options.length !== 4) {
-      errors.push(`ID ${q.id}: Întrebarea choice trebuie să aibă exact 4 opțiuni.`);
-    } else {
-      for (const opt of q.options) {
-        const optText = String(opt || '').trim();
-        const optWords = optText.split(/\s+/).filter(Boolean).length;
-        if (!optText || optText.length > 36 || optWords > 5) {
-          errors.push(
-            `ID ${q.id}: Opțiunea "${optText}" este prea lungă pentru mobil (${optText.length} caractere, ${optWords} cuvinte; maxim permis 36 caractere / 5 cuvinte).`
-          );
-        }
-      }
-      const normOpts = new Set(q.options.map((o) => normalizeQuestionText(o)));
-      if (normOpts.size !== 4) {
-        errors.push(`ID ${q.id}: Opțiunile de răspuns conțin duplicate.`);
-      }
-      if (
-        !Number.isInteger(q.correctAnswerIndex) ||
-        q.correctAnswerIndex < 0 ||
-        q.correctAnswerIndex > 3
-      ) {
-        errors.push(`ID ${q.id}: correctAnswerIndex invalid (${q.correctAnswerIndex}).`);
+    if (q.type === 'choice') {
+      if (!Array.isArray(q.options) || q.options.length !== 4) {
+        errors.push(`ID ${q.id}: Întrebarea choice trebuie să aibă exact 4 opțiuni.`);
       } else {
-        // Check that the correct answer is NOT leaked in the question prompt
-        const correctOpt = q.options[q.correctAnswerIndex];
-        const normPrompt = normalizeQuestionText(q.question);
-        const normPromptTokens = new Set(normPrompt.split(' ').filter(Boolean));
-        const normCorrect = normalizeQuestionText(correctOpt);
-
-        if (normCorrect.length >= 2 && ` ${normPrompt} `.includes(` ${normCorrect} `)) {
-          errors.push(
-            `ID ${q.id}: Răspunsul corect "${correctOpt}" este scurs direct în enunț: "${q.question}"`
-          );
+        for (const opt of q.options) {
+          const optText = String(opt || '').trim();
+          const optWords = optText.split(/\s+/).filter(Boolean).length;
+          if (!optText || optText.length > 36 || optWords > 5) {
+            errors.push(
+              `ID ${q.id}: Opțiunea "${optText}" este prea lungă pentru mobil (${optText.length} caractere, ${optWords} cuvinte; maxim permis 36 caractere / 5 cuvinte).`
+            );
+          }
         }
+        const normOpts = new Set(q.options.map((o) => normalizeQuestionText(o)));
+        if (normOpts.size !== 4) {
+          errors.push(`ID ${q.id}: Opțiunile de răspuns conțin duplicate.`);
+        }
+        if (
+          !Number.isInteger(q.correctAnswerIndex) ||
+          q.correctAnswerIndex < 0 ||
+          q.correctAnswerIndex > 3
+        ) {
+          errors.push(`ID ${q.id}: correctAnswerIndex invalid (${q.correctAnswerIndex}).`);
+        } else {
+          // Check that the correct answer is NOT leaked in the question prompt
+          const correctOpt = q.options[q.correctAnswerIndex];
+          const normPrompt = normalizeQuestionText(q.question);
+          const normPromptTokens = new Set(normPrompt.split(' ').filter(Boolean));
+          const normCorrect = normalizeQuestionText(correctOpt);
 
-        for (const token of normCorrect.split(' ')) {
-          if (token.length >= 5 && !GENERIC_TOKENS.has(token) && !/^\d+$/.test(token)) {
-            if (normPromptTokens.has(token)) {
-              errors.push(
-                `ID ${q.id}: Cuvânt-cheie din răspuns ("${token}" din "${correctOpt}") scurs în enunț: "${q.question}"`
-              );
+          if (normCorrect.length >= 2 && ` ${normPrompt} `.includes(` ${normCorrect} `)) {
+            errors.push(
+              `ID ${q.id}: Răspunsul corect "${correctOpt}" este scurs direct în enunț: "${q.question}"`
+            );
+          }
+
+          for (const token of normCorrect.split(' ')) {
+            if (token.length >= 5 && !GENERIC_TOKENS.has(token) && !/^\d+$/.test(token)) {
+              if (normPromptTokens.has(token)) {
+                errors.push(
+                  `ID ${q.id}: Cuvânt-cheie din răspuns ("${token}" din "${correctOpt}") scurs în enunț: "${q.question}"`
+                );
+              }
             }
           }
         }
+      }
+    } else if (q.type === 'estimation') {
+      if (typeof q.targetNumber !== 'number' || !Number.isFinite(q.targetNumber)) {
+        errors.push(`ID ${q.id}: Întrebarea de estimare activă nu are targetNumber numeric valid (${q.targetNumber}).`);
+      } else {
+        const targetStr = String(q.targetNumber);
+        const normPrompt = normalizeQuestionText(q.question);
+        if (` ${normPrompt} `.includes(` ${targetStr} `)) {
+          errors.push(
+            `ID ${q.id}: Răspunsul numeric (${targetStr}) este scurs direct în enunțul întrebării de departajare: "${q.question}"`
+          );
+        }
+      }
+      if (!q.unit || typeof q.unit !== 'string' || q.unit.trim().length === 0) {
+        errors.push(`ID ${q.id}: Întrebarea de estimare activă nu are unitate validă.`);
       }
     }
 
@@ -229,8 +246,8 @@ function validateQuestionBank() {
   if (activeChoice < 1000) {
     errors.push(`Baza canonică are doar ${activeChoice} întrebări choice aprobate active (minim cerut: 1000).`);
   }
-  if (activeEstimation !== 0) {
-    errors.push(`Nu mai sunt permise întrebări de estimare active în fluxul de joc (găsite: ${activeEstimation}).`);
+  if (activeEstimation < 100) {
+    errors.push(`Baza canonică are doar ${activeEstimation} întrebări estimation de departajare aprobate active (minim cerut: 100).`);
   }
 
   for (const [url, count] of sourceUrlCounts.entries()) {

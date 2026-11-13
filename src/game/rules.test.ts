@@ -21,6 +21,8 @@ import {
   getLegalWarTargetsForAttacker,
   formatWarAttackAnnouncement,
   isShortReadableChoiceQuestion,
+  isValidNumericTiebreakQuestion,
+  canPlayerRegenerateTower,
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
   getLegalWarTargetsForPair,
@@ -890,7 +892,7 @@ test('V7: Smooth Timer - calcul continuu al raportului scaleX și gestionarea de
 // SECȚIUNEA V8.0: BANCA CANONICĂ DE ÎNTREBĂRI, NON-REPETIȚIE, CEAS SERVER & SOCKET.IO
 // ============================================================================
 
-test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1.070 întrebări active choice scurte verificate + 5.171 dezactivate), 0 duplicate și acoperă toate categoriile', () => {
+test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1.066 choice + 228 estimation departajare = 1.294 active aprobate + 4.947 dezactivate), 0 duplicate și acoperă toate categoriile', () => {
   assert.equal(
     INITIAL_QUESTIONS.length,
     6241,
@@ -898,15 +900,14 @@ test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1
   );
 
   const activeList = INITIAL_QUESTIONS.filter((q) => q.reviewStatus === 'approved' && !q.isDisabled);
+  const activeChoiceList = activeList.filter((q) => q.type === 'choice');
+  const activeEstimationList = activeList.filter((q) => q.type === 'estimation');
   const disabledList = INITIAL_QUESTIONS.filter((q) => q.isDisabled || q.reviewStatus === 'disabled');
 
-  assert.equal(activeList.length, 1070, `Exact 1070 întrebări active aprobate (actual: ${activeList.length})`);
-  assert.equal(disabledList.length, 5171, `Exact 5171 întrebări dezactivate (actual: ${disabledList.length})`);
-  assert.equal(
-    activeList.every((q) => q.type === 'choice'),
-    true,
-    'Toate întrebările active din fluxul de joc sunt cu variante de răspuns (choice)'
-  );
+  assert.equal(activeChoiceList.length, 1066, `Exact 1066 întrebări active choice (actual: ${activeChoiceList.length})`);
+  assert.equal(activeEstimationList.length, 228, `Exact 228 întrebări active estimation pentru departajare (actual: ${activeEstimationList.length})`);
+  assert.equal(activeList.length, 1294, `Exact 1294 întrebări active aprobate în total (actual: ${activeList.length})`);
+  assert.equal(disabledList.length, 4947, `Exact 4947 întrebări dezactivate (actual: ${disabledList.length})`);
 
   const seenIds = new Set<string>();
   for (const q of INITIAL_QUESTIONS) {
@@ -920,19 +921,22 @@ test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1
     assert.ok(fp.length >= 8 && !seenActiveFingerprints.has(fp), `Text activ duplicat: ${q.question}`);
     seenActiveFingerprints.add(fp);
 
-    assert.equal(q.options?.length, 4, `Întrebarea ${q.id} trebuie să aibă 4 opțiuni`);
-    assert.ok(
-      Number.isInteger(q.correctAnswerIndex) &&
-        q.correctAnswerIndex! >= 0 &&
-        q.correctAnswerIndex! <= 3
-    );
+    if (q.type === 'choice') {
+      assert.equal(q.options?.length, 4, `Întrebarea ${q.id} trebuie să aibă 4 opțiuni`);
+      assert.ok(
+        Number.isInteger(q.correctAnswerIndex) &&
+          q.correctAnswerIndex! >= 0 &&
+          q.correctAnswerIndex! <= 3
+      );
+    } else {
+      assert.equal(isValidNumericTiebreakQuestion(q), true, `Întrebarea numerică ${q.id} trebuie să fie validă`);
+    }
   }
 
   const maxBudget10 = GameManager.calculateMatchQuestionBudget(10, 38, 6);
-  assert.equal(maxBudget10.requiredEstimation, 0, 'Jocul nu mai cere întrebări de estimare numerică');
   assert.ok(
-    activeList.length >= maxBudget10.requiredChoice,
-    `Banca activă (${activeList.length}) acoperă bugetul pentru 10 jucători (${maxBudget10.requiredChoice})`
+    activeChoiceList.length >= maxBudget10.requiredChoice,
+    `Banca activă choice (${activeChoiceList.length}) acoperă bugetul pentru 10 jucători (${maxBudget10.requiredChoice})`
   );
 });
 
@@ -1325,7 +1329,7 @@ test('V9 Test 23: Audit editorial V9 (întrebări active reviewStatus === approv
   const activeQuestions = INITIAL_QUESTIONS.filter(
     (q) => q.reviewStatus === 'approved' && !q.isDisabled
   );
-  assert.equal(activeQuestions.length, 1070);
+  assert.equal(activeQuestions.length, 1294);
 
   for (const q of activeQuestions) {
     assert.equal(q.reviewStatus, 'approved', `Întrebarea ${q.id} trebuie să aibă reviewStatus=approved`);
@@ -2502,13 +2506,20 @@ test('V9.3 Test 33: Preluarea jocului de către bot la deconectare și revenirea
   assert.equal(guestPlayer.botControlled, true, 'Jucătorul deconectat este preluat temporar de bot (botControlled = true)');
   assert.equal(typeof guestPlayer.disconnectedAt, 'number', 'Timestamp-ul deconectării este înregistrat');
 
-  // Scenariul 4: Respingerea unui alt cont care încearcă să preia locul sau să intre în meciul început
+  // Scenariul 4: Un alt cont care intră cu codul în meciul deja pornit devine doar Spectator (nu poate prelua locul lui u_guest)
   const intruderAttempt = gm.joinRoom(lobbyRoom.roomId, {
     id: 'u_intruder_999',
     username: 'Intruder',
     avatar: 'av_mihai',
   });
-  assert.equal(intruderAttempt.success, false, 'Un alt cont nu poate prelua locul rezervat în meciul activ');
+  assert.equal(intruderAttempt.success, true, 'Un utilizator nou intră doar în modul Spectator');
+  assert.equal(intruderAttempt.isSpectator, true, 'Este marcat explicit ca Spectator');
+  assert.equal(
+    game.players.some((p) => p.id === 'u_intruder_999'),
+    false,
+    'Un alt cont nu poate prelua locul rezervat în game.players'
+  );
+  assert.equal(guestPlayer.botControlled, true, 'Locul lui u_guest rămâne rezervat sub controlul temporar al botului');
 
   // Scenariul 2: Botul preia locul și face mutări valide (ex: alegerea bazei când îi vine rândul)
   // Host selects base first
@@ -2588,13 +2599,13 @@ test('V9.3 Test 33: Preluarea jocului de către bot la deconectare și revenirea
   (gm as any).clearRoomTimers(lobbyRoom.roomId);
 });
 
-test('V9.3 Test 34: Toate întrebările aprobate sunt scurte (<= 14 cuvinte, <= 95 caractere, opțiuni <= 36 caractere) și timerul întrebărilor trivia este de 15 secunde', async () => {
+test('V9.3 Test 34: Toate întrebările choice aprobate sunt scurte (<= 14 cuvinte, <= 95 caractere, opțiuni <= 36 caractere) și timerul întrebărilor trivia este de 15 secunde', async () => {
   assert.equal(INITIAL_QUESTIONS.length, 6241, 'Banca canonică păstrează exact 6.241 de înregistrări');
 
   const activeQuestions = INITIAL_QUESTIONS.filter(
-    (q) => q.reviewStatus === 'approved' && !q.isDisabled
+    (q) => q.reviewStatus === 'approved' && !q.isDisabled && q.type === 'choice'
   );
-  assert.equal(activeQuestions.length, 1070, 'Există 1.070 de întrebări active aprobate');
+  assert.equal(activeQuestions.length, 1066, 'Există 1.066 de întrebări choice active aprobate');
 
   const countWords = (text: string) =>
     text
@@ -2673,11 +2684,11 @@ test('V9.3 Test 35: Jurnalul de audit admin, închiderea forțată a unei camere
   assert.equal(gm.getRoom(room.roomId), undefined, 'Camera a fost eliminată din memorie după închiderea forțată');
 });
 
-test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (21.2)/(#4), fără scurgerea răspunsului în enunț, fără estimări numerice/unități, amestec aleatoriu de subiecte și eliminarea etichetelor de domeniu din UI', () => {
+test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (21.2)/(#4), fără scurgerea răspunsului în enunț, întrebări choice + estimation curate și eliminarea etichetelor de domeniu din UI', () => {
   const activeQuestions = INITIAL_QUESTIONS.filter(
-    (q) => q.reviewStatus === 'approved' && !q.isDisabled
+    (q) => q.reviewStatus === 'approved' && !q.isDisabled && q.type === 'choice'
   );
-  assert.equal(activeQuestions.length, 1070, 'Există exact 1.070 de întrebări active aprobate');
+  assert.equal(activeQuestions.length, 1066, 'Există exact 1.066 de întrebări choice active aprobate');
 
   const STOPWORDS = new Set([
     'care', 'este', 'sunt', 'fost', 'pentru', 'prin', 'dintre', 'dupa', 'peste',
@@ -2825,15 +2836,15 @@ test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (
     `Întrebările extrase trebuie să amestece aleatoriu subiectele (găsite ${drawnCategories.size} categorii în 30 extrageri)`
   );
 
-  // 5. Verifică că QuestionModal.tsx nu mai conține tastatura numerică și nici eticheta de domeniu (categoryNames)
+  // 5. Verifică că QuestionModal.tsx conține inputul numeric pentru departajare și nu afișează eticheta de domeniu (categoryNames)
   const modalSource = fs.readFileSync(
     path.resolve(process.cwd(), 'src/components/QuestionModal.tsx'),
     'utf-8'
   );
   assert.equal(
-    modalSource.includes('estimation-input'),
-    false,
-    'QuestionModal.tsx nu trebuie să mai conțină câmpul numeric estimation-input'
+    modalSource.includes('numeric-tiebreak-input'),
+    true,
+    'QuestionModal.tsx conține câmpul numeric pentru departajare (numeric-tiebreak-input)'
   );
   assert.equal(
     modalSource.includes('categoryNames[question.category]'),
@@ -3301,6 +3312,254 @@ test('V9.6 Test 38: Flux de atac individual (ATAC: [Atacator] atacă [Teritoriu]
     'GameHUD.tsx nu mai afișează eticheta Dueluri simultane'
   );
 });
+
+test('V10 Test 39: Asediu continuu al bazei (3 -> 2 -> 1 -> 0 turnuri), regenerarea unui turn (+1 turn pe tura proprie), departajare numerică în duel, fallback neadiacent în conquest + allocation, camere publice/private și mod Spectator', () => {
+  const gm = new GameManager();
+
+  // 1. Camere publice vs camere private și mod Spectator
+  const pubRoom = gm.createRoom({
+    hostUser: { id: 'u_pub_host', username: 'PubHost', avatar: 'av_stefan' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: false,
+    roomName: 'Arena Publică V10',
+  });
+  const privRoom = gm.createRoom({
+    hostUser: { id: 'u_priv_host', username: 'PrivHost', avatar: 'av_vlad' },
+    maxPlayers: 2,
+    initialBotsCount: 0,
+    isPrivate: true,
+    roomName: 'Arena Privată V10',
+  });
+
+  try {
+    const publicRoomsList = gm.getPublicRooms();
+    assert.equal(
+      publicRoomsList.some((r) => r.roomId === pubRoom.roomId),
+      true,
+      'Camera publică apare în lista getPublicRooms()'
+    );
+    assert.equal(
+      publicRoomsList.some((r) => r.roomId === privRoom.roomId),
+      false,
+      'Camera privată NU apare în lista getPublicRooms()'
+    );
+
+    // Join second player into pubRoom and start match
+    gm.joinRoom(pubRoom.roomId, { id: 'u_pub_p2', username: 'PubP2', avatar: 'av_mihai' });
+    gm.setReady(pubRoom.roomId, 'u_pub_p2', true);
+    gm.startGame(pubRoom.roomId, 'u_pub_host');
+
+    // Third user enters code of already-started pubRoom -> joins as Spectator
+    const specJoin = gm.joinRoom(pubRoom.roomId, {
+      id: 'u_spec_1',
+      username: 'SpectatorUnu',
+      avatar: 'av_maria',
+    });
+    assert.equal(specJoin.success, true);
+    assert.equal(specJoin.isSpectator, true, 'Al treilea utilizator intră ca Spectator în meciul deja început');
+    assert.equal(gm.isSpectator(pubRoom.roomId, 'u_spec_1'), true);
+    assert.equal(pubRoom.spectators?.length, 1);
+
+    // Spectator cannot select territories, submit answers, or regenerate towers
+    const specSelect = gm.selectTerritory(pubRoom.roomId, 'u_spec_1', Object.keys(pubRoom.territories)[0]);
+    assert.equal(specSelect.success, false, 'Spectatorul nu poate selecta teritorii');
+    const specRegen = gm.regenerateTower(pubRoom.roomId, 'u_spec_1');
+    assert.equal(specRegen.success, false, 'Spectatorul nu poate regenera turnuri');
+
+    // 2. Fallback neadiacent în conquest și allocation când jucătorul are 0 vecini neutri
+    const fallbackMap: Record<string, Territory> = JSON.parse(JSON.stringify(mockTerritories));
+    fallbackMap.satu_mare.ownerId = 'player2';
+    fallbackMap.cluj.ownerId = 'player2';
+    assert.equal(getLegalNeutralTargetsForPlayer('player1', fallbackMap).length, 0);
+    assert.equal(
+      canTargetTerritory('bihor', player1, fallbackMap, 'conquest').allowed,
+      true,
+      'Când jucătorul nu mai are vecini liberi în conquest, poate alege orice teritoriu liber rămas pe hartă'
+    );
+    assert.equal(
+      canTargetTerritory('bihor', player1, fallbackMap, 'allocation').allowed,
+      true,
+      'Când jucătorul nu mai are vecini liberi în allocation, poate alege orice teritoriu liber rămas pe hartă'
+    );
+
+    // 3. Asediu continuu asupra bazei (3 -> 2 -> 1 -> 0 turnuri) + oprire dacă atacatorul greșește
+    const game = gm.getRoom(pubRoom.roomId)!;
+    const tIds = Object.keys(game.territories);
+    const baseHostId = tIds[0];
+    const baseP2Id = game.territories[baseHostId].neighbors[0];
+
+    tIds.forEach((tid, idx) => {
+      if (tid === baseHostId) {
+        game.territories[tid].ownerId = 'u_pub_host';
+        game.territories[tid].isBase = true;
+        game.territories[tid].points = SCORING.BASE;
+        game.territories[tid].castleTowers = 3;
+      } else if (tid === baseP2Id) {
+        game.territories[tid].ownerId = 'u_pub_p2';
+        game.territories[tid].isBase = true;
+        game.territories[tid].points = SCORING.BASE;
+        game.territories[tid].castleTowers = 3;
+      } else {
+        game.territories[tid].ownerId = idx % 2 === 0 ? 'u_pub_host' : 'u_pub_p2';
+        game.territories[tid].isBase = false;
+        game.territories[tid].points = SCORING.CONQUEST;
+        game.territories[tid].castleTowers = 0;
+      }
+    });
+    game.players[0].baseTerritoryId = baseHostId;
+    game.players[0].castleTowers = 3;
+    game.players[1].baseTerritoryId = baseP2Id;
+    game.players[1].castleTowers = 3;
+    (gm as any).recalculatePlayerScores(game);
+    (gm as any).enterWarPhase(game);
+
+    // Force u_pub_host as active attacker targeting baseP2Id (which has 3 towers)
+    game.warTurnQueue = ['u_pub_p2'];
+    game.warRound = {
+      roundId: 'wr_siege_v10',
+      roundNumber: 1,
+      status: 'selecting_targets',
+      selectionDeadline: Date.now() + 15000,
+      questionDeadline: 0,
+      attackerIds: ['u_pub_host'],
+      defenderIds: [],
+      byePlayerIds: [],
+      battles: [
+        {
+          battleId: 'b_siege_1',
+          attackerId: 'u_pub_host',
+          defenderId: '',
+          targetTerritoryId: null,
+          status: 'selecting_target',
+          siegeStreak: 1,
+        },
+      ],
+    };
+
+    const targetRes = gm.selectTerritory(pubRoom.roomId, 'u_pub_host', baseP2Id);
+    assert.equal(targetRes.success, true, 'Atacatorul selectează baza inamică adiacentă');
+    assert.equal(game.warRound!.status, 'attack_preview');
+
+    // Launch 1st siege question immediately
+    (gm as any).launchSimultaneousWarChoiceQuestion(game);
+    assert.ok(game.currentQuestion);
+    const q1 = game.currentQuestion!;
+    const q1Correct = q1.question.correctAnswerIndex!;
+    const q1Wrong = (q1Correct + 1) % 4;
+
+    // Attacker answers right, defender answers wrong -> 1st tower destroyed (3 -> 2), siegeContinues = true!
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_host', q1Correct, q1.questionInstanceId);
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_p2', q1Wrong, q1.questionInstanceId);
+
+    assert.equal(game.territories[baseP2Id].castleTowers, 2, 'După primul asediu câștigat, baza mai are 2 turnuri');
+    assert.equal(game.players[1].castleTowers, 2);
+    assert.equal(game.warRound!.lastBattleResult?.siegeContinues, true, 'Asediul continuă deoarece baza mai are 2 turnuri');
+    assert.equal(game.warRound!.lastBattleResult?.remainingTowers, 2);
+    assert.match(game.warRound!.lastBattleResult?.effectBadge || '', /Turn distrus — 2\/3 rămase/i);
+
+    // Simulate post-battle step -> starts 2nd siege duel against the SAME base immediately
+    (gm as any).clearRoomTimers(pubRoom.roomId);
+    const bAfter1 = game.warRound!.battles[0];
+    game.warRound!.status = 'attack_preview';
+    bAfter1.status = 'ready';
+    bAfter1.siegeStreak = 2;
+    (gm as any).launchSimultaneousWarChoiceQuestion(game);
+
+    // 4. Test Numeric Tiebreak in the 2nd siege duel (both answer choice right -> triggers numeric estimation tiebreak!)
+    const q2 = game.currentQuestion!;
+    const q2Correct = q2.question.correctAnswerIndex!;
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_host', q2Correct, q2.questionInstanceId);
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_p2', q2Correct, q2.questionInstanceId);
+
+    assert.equal(bAfter1.outcome, 'needs_tiebreak');
+    assert.equal(bAfter1.status, 'numeric_tiebreak', 'La egalitate (ambii răspund corect), duelul intră în numeric_tiebreak');
+    (gm as any).clearRoomTimers(pubRoom.roomId);
+    (gm as any).launchWarTiebreakQuestion(game, [bAfter1]);
+
+    assert.equal(game.warRound!.status, 'numeric_tiebreak');
+    assert.ok(game.currentQuestion, 'Întrebarea de departajare numerică este activă');
+    assert.equal(game.currentQuestion!.isTiebreak, true);
+    assert.equal(game.currentQuestion!.question.type, 'estimation', 'Departajarea folosește o întrebare cu răspuns numeric');
+
+    const tbQ = game.currentQuestion!;
+    const exactTarget = tbQ.question.targetNumber!;
+    // Attacker guesses exactTarget, defender guesses exactTarget + 500 -> Attacker wins tiebreak -> 2nd tower destroyed (2 -> 1)!
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_host', exactTarget, tbQ.questionInstanceId);
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_p2', exactTarget + 500, tbQ.questionInstanceId);
+
+    assert.equal(game.territories[baseP2Id].castleTowers, 1, 'După al doilea duel câștigat la departajare numerică, baza mai are 1 turn');
+    assert.equal(game.warRound!.lastBattleResult?.siegeContinues, true, 'Asediul continuă pentru ultimul turn');
+    assert.equal(game.warRound!.lastBattleResult?.remainingTowers, 1);
+    assert.match(game.warRound!.lastBattleResult?.effectBadge || '', /Turn distrus — 1\/3 rămase/i);
+
+    // 5. Acum testăm oprirea asediului când apărătorul reușește să se apere la turnul 1/3 -> rămâne cu 1 turn, rândul trece la u_pub_p2!
+    (gm as any).clearRoomTimers(pubRoom.roomId);
+    game.warRound!.status = 'attack_preview';
+    bAfter1.status = 'ready';
+    bAfter1.siegeStreak = 3;
+    (gm as any).launchSimultaneousWarChoiceQuestion(game);
+
+    const q3 = game.currentQuestion!;
+    const q3Correct = q3.question.correctAnswerIndex!;
+    const q3Wrong = (q3Correct + 1) % 4;
+    // Attacker answers wrong, defender answers right -> defense succeeds, siege stops!
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_host', q3Wrong, q3.questionInstanceId);
+    gm.submitAnswer(pubRoom.roomId, 'u_pub_p2', q3Correct, q3.questionInstanceId);
+
+    assert.equal(game.territories[baseP2Id].castleTowers, 1, 'La apărare reușită, baza păstrează turnul rămas (1/3)');
+    assert.equal(Boolean(game.warRound!.lastBattleResult?.siegeContinues), false, 'Asediul se oprește când atacatorul greșește');
+
+    // 6. Testăm Regenerarea unui turn (u_pub_p2 are 1/3 turnuri și îi vine rândul în război)
+    (gm as any).clearRoomTimers(pubRoom.roomId);
+    (gm as any).advanceToNextWarTurnOrRound(game);
+    assert.equal(game.warRound!.status, 'selecting_targets');
+    assert.equal(game.warRound!.battles[0].attackerId, 'u_pub_p2', 'Rândul a trecut la u_pub_p2');
+    assert.equal(
+      canPlayerRegenerateTower('u_pub_p2', game.territories),
+      true,
+      'u_pub_p2 are 1/3 turnuri și poate folosi acțiunea Regenerează un turn'
+    );
+    assert.equal(
+      canPlayerRegenerateTower('u_pub_host', game.territories),
+      false,
+      'u_pub_host are 3/3 turnuri și NU poate regenera turn'
+    );
+
+    // u_pub_host cannot regenerate out of turn
+    assert.equal(gm.regenerateTower(pubRoom.roomId, 'u_pub_host').success, false);
+
+    // u_pub_p2 chooses to regenerate a tower instead of attacking
+    const regenStart = gm.regenerateTower(pubRoom.roomId, 'u_pub_p2');
+    assert.equal(regenStart.success, true, 'Regenerarea turnului pornește întrebarea individuală');
+    assert.ok(game.currentQuestion);
+    assert.equal(game.currentQuestion!.warActionType, 'regenerate_tower');
+    assert.deepEqual(
+      game.currentQuestion!.participantIds,
+      ['u_pub_p2'],
+      'Întrebarea de regenerare este adresată exclusiv jucătorului care își regenerează turnul'
+    );
+
+    // Duplicate regenerate or attack in the same turn is blocked
+    assert.equal(gm.regenerateTower(pubRoom.roomId, 'u_pub_p2').success, false);
+
+    // u_pub_p2 answers the regeneration question correctly -> castleTowers increases from 1 to 2!
+    const regenQ = game.currentQuestion!;
+    gm.submitAnswer(
+      pubRoom.roomId,
+      'u_pub_p2',
+      regenQ.question.correctAnswerIndex!,
+      regenQ.questionInstanceId
+    );
+    assert.equal(game.territories[baseP2Id].castleTowers, 2, 'Răspunsul corect regenerează +1 turn (de la 1/3 la 2/3)');
+    assert.equal(game.players[1].castleTowers, 2);
+    assert.equal(game.warRound!.lastBattleResult?.isTowerRegenerated, true);
+  } finally {
+    (gm as any).clearRoomTimers(pubRoom.roomId);
+    (gm as any).clearRoomTimers(privRoom.roomId);
+  }
+});
+
 
 
 

@@ -26,6 +26,8 @@ import {
   getLegalWarTargetsForAttacker,
   formatWarAttackAnnouncement,
   isShortReadableChoiceQuestion,
+  isValidNumericTiebreakQuestion,
+  canPlayerRegenerateTower,
   resolveAttackOriginTerritory,
   evaluateWarBattleChoiceOutcome,
   evaluateWarBattleTiebreakOutcome,
@@ -182,28 +184,40 @@ export class GameManager {
     };
   }
 
-  public getRandomQuestion(game: GameState, _type?: 'choice' | 'estimation'): Question | null {
+  public getRandomQuestion(
+    game: GameState,
+    type: 'choice' | 'estimation' = 'choice'
+  ): Question | null {
     const selectedCategories = game.selectedCategories || [];
     const usedIds = new Set(game.usedQuestionIds || []);
     const usedFacts = new Set(game.usedFactKeys || []);
     game.categoryUsageCounts = game.categoryUsageCounts || {};
 
-    // Trivia gameplay uses exclusively short, readable, approved multiple-choice ('choice') questions
     const allAvailable = db
       .getAllQuestions()
-      .filter(
-        (question) =>
-          isShortReadableChoiceQuestion(question) &&
+      .filter((question) => {
+        const isValidType =
+          type === 'estimation'
+            ? isValidNumericTiebreakQuestion(question)
+            : isShortReadableChoiceQuestion(question);
+        return (
+          isValidType &&
           !usedIds.has(question.id) &&
           (!question.factKey || !usedFacts.has(question.factKey))
-      );
+        );
+      });
 
-    // Respect selectedCategories when the host selected specific categories
+    // Respect selectedCategories when the host selected specific categories (fallback to allAvailable for estimation tiebreaks if category pool is empty)
     const filteredPool = allAvailable.filter(
       (question) =>
         !selectedCategories.length || selectedCategories.includes(question.category)
     );
-    const pool = filteredPool.length > 0 ? filteredPool : selectedCategories.length ? [] : allAvailable;
+    const pool =
+      filteredPool.length > 0
+        ? filteredPool
+        : type === 'estimation' || !selectedCategories.length
+        ? allAvailable
+        : [];
 
     if (!pool.length) return null;
 
@@ -354,6 +368,7 @@ export class GameManager {
       allocationPickReady: false,
       warRound: null,
       warRoleHistory: {},
+      spectators: [],
     };
 
     this.games.set(roomId, state);
@@ -410,10 +425,17 @@ export class GameManager {
     return list;
   }
 
+  public isSpectator(roomId: string, userId: string): boolean {
+    const game = this.games.get(roomId);
+    if (!game) return false;
+    if (game.players.some((p) => p.id === userId)) return false;
+    return Boolean(game.spectators?.some((s) => s.id === userId));
+  }
+
   public joinRoom(
     roomId: string,
     user: { id: string; username: string; avatar: string }
-  ): { success: boolean; message: string; game?: GameState } {
+  ): { success: boolean; message: string; game?: GameState; isSpectator?: boolean } {
     const game = this.games.get(roomId);
     if (!game) return { success: false, message: 'Camera nu a fost găsită.' };
 
@@ -424,6 +446,9 @@ export class GameManager {
       existing.isConnected = true;
       existing.botControlled = false;
       delete existing.disconnectedAt;
+      if (game.spectators) {
+        game.spectators = game.spectators.filter((s) => s.id !== user.id);
+      }
 
       if (wasDisconnected && game.phase !== 'waiting' && game.phase !== 'finished') {
         game.gameLog.push({
@@ -436,15 +461,45 @@ export class GameManager {
       this.notifyUpdate(roomId);
       return {
         success: true,
+        isSpectator: false,
         message: 'Reconectat în cameră.',
         game: this.getClientState(roomId),
       };
     }
 
     if (game.phase !== 'waiting') {
+      if (game.phase === 'finished') {
+        return {
+          success: false,
+          message: 'Acest meci s-a încheiat deja.',
+        };
+      }
+      game.spectators = game.spectators || [];
+      const existingSpectator = game.spectators.find((s) => s.id === user.id);
+      if (existingSpectator) {
+        existingSpectator.isConnected = true;
+        existingSpectator.username = user.username;
+        existingSpectator.avatar = user.avatar || 'av_vlad';
+      } else {
+        game.spectators.push({
+          id: user.id,
+          username: user.username,
+          avatar: user.avatar || 'av_vlad',
+          isConnected: true,
+        });
+        game.gameLog.push({
+          id: this.makeLogId(),
+          text: `👁️ ${user.username} urmărește meciul ca spectator.`,
+          timestamp: Date.now(),
+          type: 'info',
+        });
+      }
+      this.notifyUpdate(roomId);
       return {
-        success: false,
-        message: 'Jocul este deja în desfășurare. Doar jucătorii din meci pot reveni pe locurile lor.',
+        success: true,
+        isSpectator: true,
+        message: 'Ai intrat ca spectator în meci!',
+        game: this.getClientState(roomId),
       };
     }
     if (game.players.length >= game.maxPlayers) {
@@ -481,6 +536,7 @@ export class GameManager {
     this.notifyUpdate(roomId);
     return {
       success: true,
+      isSpectator: false,
       message: 'Te-ai alăturat cu succes!',
       game: this.getClientState(roomId),
     };
@@ -513,7 +569,13 @@ export class GameManager {
   public handleSocketDisconnect(roomId: string, userId: string): void {
     const game = this.games.get(roomId);
     if (!game) return;
+    const spectator = game.spectators?.find((s) => s.id === userId);
     const player = game.players.find((p) => p.id === userId);
+    if (!player && spectator) {
+      spectator.isConnected = false;
+      this.notifyUpdate(roomId);
+      return;
+    }
     if (!player || player.isAi) return;
 
     if (game.phase !== 'waiting' && game.phase !== 'finished') {
@@ -544,7 +606,13 @@ export class GameManager {
     const game = this.games.get(roomId);
     if (!game) return;
     const leavingPlayer = game.players.find((p) => p.id === userId);
-    if (!leavingPlayer) return;
+    if (!leavingPlayer) {
+      if (game.spectators?.some((s) => s.id === userId)) {
+        game.spectators = game.spectators.filter((s) => s.id !== userId);
+        this.notifyUpdate(roomId);
+      }
+      return;
+    }
 
     if (game.phase !== 'waiting' && game.phase !== 'finished') {
       // Keep the player record and owned territories stable during an active match and activate bot takeover.
@@ -790,7 +858,7 @@ export class GameManager {
     // INDIVIDUAL WAR TARGET SELECTION TIMEOUT
     if (game.phase === 'war' && game.warRound && game.warRound.status === 'selecting_targets') {
       for (const battle of game.warRound.battles) {
-        if (!battle.targetTerritoryId && battle.status !== 'skipped') {
+        if (!battle.targetTerritoryId && !battle.warActionType && battle.status !== 'skipped') {
           const validIds = battle.defenderId
             ? getLegalWarTargetsForPair(battle.attackerId, battle.defenderId, game.territories)
             : getLegalWarTargetsForAttacker(battle.attackerId, game.territories);
@@ -798,6 +866,7 @@ export class GameManager {
           if (validIds.length > 0) {
             const pickId = validIds[Math.floor(Math.random() * validIds.length)];
             const targetTerr = game.territories[pickId];
+            battle.warActionType = 'attack';
             battle.targetTerritoryId = pickId;
             if (targetTerr?.ownerId) {
               battle.defenderId = targetTerr.ownerId;
@@ -830,6 +899,9 @@ export class GameManager {
               timestamp: Date.now(),
               type: 'battle',
             });
+          } else if (canPlayerRegenerateTower(battle.attackerId, game.territories)) {
+            this.regenerateTower(roomId, battle.attackerId);
+            return;
           } else {
             battle.status = 'skipped';
             battle.outcome = 'skipped';
@@ -973,6 +1045,105 @@ export class GameManager {
     }
   }
 
+  public regenerateTower(
+    roomId: string,
+    userId: string
+  ): { success: boolean; message: string } {
+    const game = this.games.get(roomId);
+    if (!game) return { success: false, message: 'Jocul nu a fost găsit.' };
+    if (this.isSpectator(roomId, userId)) {
+      return { success: false, message: 'Spectatorii nu pot efectua acțiuni în timpul meciului.' };
+    }
+    if (game.phase !== 'war' || !game.warRound || game.warRound.status !== 'selecting_targets') {
+      return {
+        success: false,
+        message: 'Regenerarea unui turn este disponibilă doar la începutul turei tale de război!',
+      };
+    }
+    if (game.currentQuestion) {
+      return { success: false, message: 'Așteaptă rezolvarea întrebării curente.' };
+    }
+
+    const battle = game.warRound.battles.find((b) => b.attackerId === userId);
+    if (!battle) {
+      return {
+        success: false,
+        message: 'Nu este rândul tău acum! Poți regenera un turn doar pe tura ta.',
+      };
+    }
+    if (
+      battle.targetTerritoryId !== null ||
+      battle.warActionType !== undefined ||
+      battle.status !== 'selecting_target'
+    ) {
+      return {
+        success: false,
+        message: 'Ai ales deja acțiunea pentru această tură!',
+      };
+    }
+
+    const player = game.players.find((p) => p.id === userId);
+    if (!player || player.isEliminated) {
+      return { success: false, message: 'Jucătorul nu este activ în această partidă.' };
+    }
+
+    if (!canPlayerRegenerateTower(userId, game.territories)) {
+      return {
+        success: false,
+        message: 'Cetatea ta are deja toate cele 3 turnuri intacte (sau nu mai deții baza)!',
+      };
+    }
+
+    const baseTerritory = Object.values(game.territories).find(
+      (t) => t.ownerId === userId && t.isBase
+    );
+    if (!baseTerritory) {
+      return { success: false, message: 'Nu mai deții o cetate de bază.' };
+    }
+
+    this.clearSelectionTimer(roomId);
+    this.clearPlayerBotTimer(roomId, userId);
+
+    battle.warActionType = 'regenerate_tower';
+    battle.targetTerritoryId = baseTerritory.id;
+    battle.defenderId = '';
+    battle.status = 'choice_question';
+    game.pendingTerritoryId = baseTerritory.id;
+    game.warRound.defenderIds = [];
+    game.warRound.byePlayerIds = game.players
+      .filter((p) => !p.isEliminated && p.id !== userId)
+      .map((p) => p.id);
+
+    const q = this.getRandomQuestion(game, 'choice');
+    if (!q) {
+      this.finishForQuestionExhaustion(game, 'choice');
+      return { success: false, message: 'Nu mai sunt întrebări disponibile.' };
+    }
+
+    game.warRound.status = 'choice_question';
+    game.gameLog.push({
+      id: this.makeLogId(),
+      text: `🏰 ${player.username} încearcă să regenereze un turn în Cetatea ${baseTerritory.name} (${baseTerritory.castleTowers ?? 2}/3 turnuri)! Trebuie să răspundă corect la întrebare (15s).`,
+      timestamp: Date.now(),
+      type: 'battle',
+    });
+
+    this.startQuestion(game, q, {
+      targetTerritoryId: baseTerritory.id,
+      attackerId: userId,
+      phaseContext: 'war',
+      warActionType: 'regenerate_tower',
+      isTiebreak: false,
+      participantIds: [userId],
+      warRoundId: game.warRound.roundId,
+    });
+
+    return {
+      success: true,
+      message: `Întrebare pentru regenerarea unui turn în Cetatea ${baseTerritory.name}!`,
+    };
+  }
+
   /**
    * Called when an active player selects a territory on the map.
    */
@@ -983,6 +1154,9 @@ export class GameManager {
   ): { success: boolean; message: string; territoryId?: string; pointsAwarded?: number } {
     const game = this.games.get(roomId);
     if (!game) return { success: false, message: 'Jocul nu a fost găsit.' };
+    if (this.isSpectator(roomId, userId)) {
+      return { success: false, message: 'Spectatorii nu pot selecta teritorii.' };
+    }
     if (game.currentQuestion)
       return { success: false, message: 'Așteaptă rezolvarea întrebării curente.' };
 
@@ -1004,10 +1178,10 @@ export class GameManager {
           message: 'Nu este rândul tău să ataci acum! Urmărește atacul jucătorului activ.',
         };
       }
-      if (battle.targetTerritoryId !== null) {
+      if (battle.targetTerritoryId !== null || battle.warActionType !== undefined) {
         return {
           success: false,
-          message: 'Ținta de atac a fost deja aleasă pentru acest duel!',
+          message: 'Ținta sau acțiunea a fost deja aleasă pentru această tură!',
         };
       }
 
@@ -1035,6 +1209,7 @@ export class GameManager {
         return { success: false, message: 'Apărătorul teritoriului vizat nu mai este activ.' };
       }
 
+      battle.warActionType = 'attack';
       battle.defenderId = defenderPlayer.id;
       battle.targetTerritoryId = territoryId;
       battle.status = 'ready';
@@ -1324,11 +1499,12 @@ export class GameManager {
       return;
     }
 
-    // Filter remaining queue in current round to players who still have legal adjacent enemy targets
+    // Filter remaining queue in current round to players who still have legal adjacent enemy targets or can regenerate a tower
     const remainingQueue = (game.warTurnQueue || []).filter(
       (pid) =>
         activePlayers.some((p) => p.id === pid) &&
-        getLegalWarTargetsForAttacker(pid, game.territories).length > 0
+        (getLegalWarTargetsForAttacker(pid, game.territories).length > 0 ||
+          canPlayerRegenerateTower(pid, game.territories))
     );
     game.warTurnQueue = remainingQueue;
 
@@ -1376,7 +1552,8 @@ export class GameManager {
       game.warTurnQueue = game.warTurnQueue.filter(
         (pid) =>
           activeIds.includes(pid) &&
-          getLegalWarTargetsForAttacker(pid, game.territories).length > 0
+          (getLegalWarTargetsForAttacker(pid, game.territories).length > 0 ||
+            canPlayerRegenerateTower(pid, game.territories))
       );
     }
 
@@ -1623,6 +1800,8 @@ export class GameManager {
           if (targetTerritory.castleTowers > 0) {
             attacker.attackBonusPoints = (attacker.attackBonusPoints || 0) + SCORING.WAR_DUEL;
             attacker.score += SCORING.WAR_DUEL;
+            battle.siegeStreak = (battle.siegeStreak || 0) + 1;
+            const remainingTowers = targetTerritory.castleTowers;
             const summary: WarBattleResultSummary = {
               battleId: battle.battleId,
               attackerId: attacker.id,
@@ -1635,15 +1814,18 @@ export class GameManager {
               territoryName: targetTerritory.name,
               isBaseTarget: true,
               outcome: 'attacker_won',
-              headline: 'Atac reușit',
-              details: `${attacker.username} a distrus un turn din Cetatea ${targetTerritory.name} apărată de ${defender.username} (+${SCORING.WAR_DUEL} pct, ${targetTerritory.castleTowers}/3 turnuri rămase)!`,
-              effectBadge: `🏰 -1 TURN CETATE (+${SCORING.WAR_DUEL} PCT)`,
+              headline: `Turn distrus — ${remainingTowers}/3 rămase`,
+              details: `${attacker.username} a distrus un turn din Cetatea ${targetTerritory.name} apărată de ${defender.username} (+${SCORING.WAR_DUEL} pct)! Turn distrus — ${remainingTowers}/3 rămase. Asediul continuă imediat cu următoarea întrebare!`,
+              effectBadge: `💥 TURN DISTRUS — ${remainingTowers}/3 RĂMASE`,
+              remainingTowers,
+              maxTowers: 3,
+              siegeContinues: true,
               expiresAt: Date.now() + 3400,
             };
             game.warRound.lastBattleResult = summary;
             game.gameLog.push({
               id: this.makeLogId(),
-              text: `🏰 Atac reușit! ${summary.details}`,
+              text: `💥 Turn distrus — ${remainingTowers}/3 rămase! ${summary.details}`,
               timestamp: Date.now(),
               type: 'battle',
             });
@@ -1678,9 +1860,12 @@ export class GameManager {
               territoryName: targetTerritory.name,
               isBaseTarget: true,
               outcome: 'attacker_won',
-              headline: 'Atac reușit',
-              details: `${attacker.username} a cucerit definitiv Cetatea ${targetTerritory.name} a lui ${defender.username} și a preluat toate teritoriile sale!`,
-              effectBadge: '👑 CETATE CUCERITĂ DEFINITIV',
+              headline: 'Atac reușit — Cetate cucerită!',
+              details: `${attacker.username} a distrus ultimul turn (0/3 rămase), a cucerit definitiv Cetatea ${targetTerritory.name} a lui ${defender.username} și a preluat toate teritoriile sale!`,
+              effectBadge: '👑 CETATE CUCERITĂ DEFINITIV (0/3 TURNURI)',
+              remainingTowers: 0,
+              maxTowers: 3,
+              siegeContinues: false,
               expiresAt: Date.now() + 3400,
             };
             game.warRound.lastBattleResult = summary;
@@ -1795,6 +1980,7 @@ export class GameManager {
       attackerId: string;
       defenderId?: string;
       phaseContext: 'conquest' | 'allocation' | 'war';
+      warActionType?: 'attack' | 'regenerate_tower';
       isTiebreak?: boolean;
       participantIds?: string[];
       warRoundId?: string;
@@ -1820,6 +2006,7 @@ export class GameManager {
       attackerId: context.attackerId,
       defenderId: context.defenderId,
       phaseContext: context.phaseContext,
+      warActionType: context.warActionType,
       isTiebreak: context.isTiebreak,
       participantIds: defaultParticipants,
       warRoundId: context.warRoundId,
@@ -2333,6 +2520,109 @@ export class GameManager {
         }
       }
 
+      // Tower regeneration single-player question resolution
+      if (cq.warActionType === 'regenerate_tower') {
+        const attacker = game.players.find((p) => p.id === cq.attackerId);
+        const battle = game.warRound.battles.find((b) => b.attackerId === cq.attackerId);
+        const baseTerritory =
+          (cq.targetTerritoryId ? game.territories[cq.targetTerritoryId] : undefined) ||
+          Object.values(game.territories).find((t) => t.ownerId === cq.attackerId && t.isBase);
+        const sub = cq.playerAnswers[cq.attackerId];
+        const isSuccess = Boolean(sub && sub.isCorrect);
+
+        if (isSuccess && baseTerritory && baseTerritory.ownerId === cq.attackerId && baseTerritory.isBase) {
+          const prevTowers = baseTerritory.castleTowers ?? 2;
+          baseTerritory.castleTowers = Math.min(3, prevTowers + 1);
+          if (attacker) {
+            attacker.castleTowers = baseTerritory.castleTowers;
+          }
+          cq.winnerIds = [cq.attackerId];
+          if (battle) {
+            battle.status = 'resolved';
+            battle.outcome = 'attacker_won';
+            battle.winnerId = cq.attackerId;
+            battle.attackerChoiceCorrect = true;
+          }
+          this.recalculatePlayerScores(game);
+          const remainingTowers = baseTerritory.castleTowers;
+          const summary: WarBattleResultSummary = {
+            battleId: battle?.battleId || `regen_${Date.now()}`,
+            attackerId: cq.attackerId,
+            attackerName: attacker?.username || 'Jucător',
+            attackerColor: attacker?.color || '#f59e0b',
+            defenderId: cq.attackerId,
+            defenderName: attacker?.username || 'Jucător',
+            defenderColor: attacker?.color || '#f59e0b',
+            targetTerritoryId: baseTerritory.id,
+            territoryName: baseTerritory.name,
+            isBaseTarget: true,
+            outcome: 'attacker_won',
+            headline: `Turn regenerat — ${remainingTowers}/3 turnuri`,
+            details: `${attacker?.username || 'Jucătorul'} a răspuns corect și a regenerat 1 turn în Cetatea ${baseTerritory.name} (${remainingTowers}/3 turnuri active)!`,
+            effectBadge: `🏰 +1 TURN REGENERAT (${remainingTowers}/3)`,
+            remainingTowers,
+            maxTowers: 3,
+            isTowerRegenerated: true,
+            siegeContinues: false,
+            expiresAt: Date.now() + 3200,
+          };
+          game.warRound.lastBattleResult = summary;
+          game.warRound.status = 'completed';
+          game.gameLog.push({
+            id: this.makeLogId(),
+            text: `🏰 Turn regenerat! ${summary.details}`,
+            timestamp: Date.now(),
+            type: 'conquest',
+          });
+        } else {
+          cq.winnerIds = [];
+          if (battle) {
+            battle.status = 'resolved';
+            battle.outcome = 'draw_no_bonus';
+            battle.winnerId = null;
+            battle.attackerChoiceCorrect = false;
+          }
+          this.recalculatePlayerScores(game);
+          const currentTowers = baseTerritory?.castleTowers ?? attacker?.castleTowers ?? 2;
+          const summary: WarBattleResultSummary = {
+            battleId: battle?.battleId || `regen_${Date.now()}`,
+            attackerId: cq.attackerId,
+            attackerName: attacker?.username || 'Jucător',
+            attackerColor: attacker?.color || '#f59e0b',
+            defenderId: cq.attackerId,
+            defenderName: attacker?.username || 'Jucător',
+            defenderColor: attacker?.color || '#f59e0b',
+            targetTerritoryId: baseTerritory?.id || '',
+            territoryName: baseTerritory?.name || 'Cetate',
+            isBaseTarget: true,
+            outcome: 'draw_no_bonus',
+            headline: `Regenerare eșuată — ${currentTowers}/3 turnuri`,
+            details: `${attacker?.username || 'Jucătorul'} nu a răspuns corect. Cetatea ${baseTerritory?.name || ''} rămâne cu ${currentTowers}/3 turnuri.`,
+            effectBadge: `🏰 ${currentTowers}/3 TURNURI (NESCHIMBAT)`,
+            remainingTowers: currentTowers,
+            maxTowers: 3,
+            isTowerRegenerated: false,
+            siegeContinues: false,
+            expiresAt: Date.now() + 3200,
+          };
+          game.warRound.lastBattleResult = summary;
+          game.warRound.status = 'completed';
+          game.gameLog.push({
+            id: this.makeLogId(),
+            text: `❌ Regenerare eșuată! ${summary.details}`,
+            timestamp: Date.now(),
+            type: 'info',
+          });
+        }
+
+        this.notifyUpdate(roomId);
+        const advTimer = setTimeout(() => {
+          this.advanceToNextWarTurnOrRound(game);
+        }, 3000);
+        this.setTurnAdvanceTimer(roomId, advTimer);
+        return;
+      }
+
       if (!cq.isTiebreak && q.type === 'choice') {
         const tiedBattles: WarBattleAssignment[] = [];
         const winnersSoFar: string[] = [];
@@ -2376,14 +2666,15 @@ export class GameManager {
 
           game.gameLog.push({
             id: this.makeLogId(),
-            text: `⚔️ Egalitate în duelul (${tiedNames})! Se declanșează Întrebarea de Departajare (15s)!`,
+            text: `⚔️ Ambii jucători au răspuns corect în duelul (${tiedNames})! Se declanșează Întrebarea Numerică de Departajare (15s)!`,
             timestamp: Date.now(),
             type: 'battle',
           });
 
           this.notifyUpdate(roomId);
 
-          const tiebreakQ = this.getRandomQuestion(game, 'choice');
+          const tiebreakQ =
+            this.getRandomQuestion(game, 'estimation') || this.getRandomQuestion(game, 'choice');
           if (!tiebreakQ) {
             for (const b of tiedBattles) {
               b.outcome = 'draw_no_bonus';
@@ -2392,42 +2683,21 @@ export class GameManager {
             }
             this.applySimultaneousWarRoundOutcomes(game);
             this.notifyUpdate(roomId);
-            const advTimer = setTimeout(() => {
-              this.advanceToNextWarTurnOrRound(game);
-            }, 3000);
-            this.turnAdvanceTimers.set(roomId, advTimer);
+            this.schedulePostWarBattleStep(game);
             return;
           }
 
-          const tiebreakParticipants = Array.from(
-            new Set(tiedBattles.flatMap((b) => [b.attackerId, b.defenderId]).filter(Boolean))
-          );
-
           const tieTimer = setTimeout(() => {
-            if (!game.warRound) return;
-            game.warRound.status = 'numeric_tiebreak';
-            this.startQuestion(game, tiebreakQ, {
-              targetTerritoryId: tiedBattles[0].targetTerritoryId || undefined,
-              attackerId: tiedBattles[0].attackerId,
-              defenderId: tiedBattles[0].defenderId,
-              phaseContext: 'war',
-              isTiebreak: true,
-              participantIds: tiebreakParticipants,
-              warRoundId: game.warRound.roundId,
-            });
+            this.launchWarTiebreakQuestion(game, tiedBattles, tiebreakQ);
           }, 2800);
 
-          this.turnAdvanceTimers.set(roomId, tieTimer);
+          this.setTurnAdvanceTimer(roomId, tieTimer);
           return;
         }
 
         this.applySimultaneousWarRoundOutcomes(game);
         this.notifyUpdate(roomId);
-
-        const advTimer = setTimeout(() => {
-          this.advanceToNextWarTurnOrRound(game);
-        }, 3200);
-        this.turnAdvanceTimers.set(roomId, advTimer);
+        this.schedulePostWarBattleStep(game);
         return;
       } else {
         const winners: string[] = [];
@@ -2513,14 +2783,113 @@ export class GameManager {
         cq.winnerIds = winners;
         this.applySimultaneousWarRoundOutcomes(game);
         this.notifyUpdate(roomId);
-
-        const advTimer = setTimeout(() => {
-          this.advanceToNextWarTurnOrRound(game);
-        }, 3200);
-        this.turnAdvanceTimers.set(roomId, advTimer);
+        this.schedulePostWarBattleStep(game);
         return;
       }
     }
+  }
+
+  private launchWarTiebreakQuestion(
+    game: GameState,
+    tiedBattles: WarBattleAssignment[],
+    tiebreakQ?: Question | null
+  ): void {
+    if (!game.warRound || tiedBattles.length === 0) return;
+    const qToUse =
+      tiebreakQ ||
+      this.getRandomQuestion(game, 'estimation') ||
+      this.getRandomQuestion(game, 'choice');
+    if (!qToUse) return;
+    const tiebreakParticipants = Array.from(
+      new Set(tiedBattles.flatMap((b) => [b.attackerId, b.defenderId]).filter(Boolean))
+    );
+    game.warRound.status = 'numeric_tiebreak';
+    this.startQuestion(game, qToUse, {
+      targetTerritoryId: tiedBattles[0].targetTerritoryId || undefined,
+      attackerId: tiedBattles[0].attackerId,
+      defenderId: tiedBattles[0].defenderId,
+      phaseContext: 'war',
+      warActionType: 'attack',
+      isTiebreak: true,
+      participantIds: tiebreakParticipants,
+      warRoundId: game.warRound.roundId,
+    });
+  }
+
+  /**
+   * Dacă atacatorul tocmai a distrus un turn al unei baze care mai are turnuri (`siegeContinues === true`),
+   * continuă imediat asediul împotriva aceleiași baze cu următoarea întrebare.
+   * Altfel, avansează la următorul jucător / rundă de război.
+   */
+  private schedulePostWarBattleStep(game: GameState): void {
+    const roomId = game.roomId;
+    const lastResult = game.warRound?.lastBattleResult;
+    const battle = game.warRound?.battles[0];
+    const targetTerritory =
+      battle?.targetTerritoryId ? game.territories[battle.targetTerritoryId] : undefined;
+
+    if (
+      lastResult?.siegeContinues &&
+      battle &&
+      targetTerritory &&
+      targetTerritory.isBase &&
+      (targetTerritory.castleTowers ?? 0) > 0 &&
+      targetTerritory.ownerId === battle.defenderId
+    ) {
+      const siegeTimer = setTimeout(() => {
+        this.turnAdvanceTimers.delete(roomId);
+        const currentGame = this.games.get(roomId);
+        if (!currentGame || currentGame.phase !== 'war' || !currentGame.warRound) return;
+        const currentBattle = currentGame.warRound.battles[0];
+        const currentTarget =
+          currentBattle?.targetTerritoryId
+            ? currentGame.territories[currentBattle.targetTerritoryId]
+            : undefined;
+        if (
+          !currentBattle ||
+          !currentTarget ||
+          !currentTarget.isBase ||
+          (currentTarget.castleTowers ?? 0) <= 0 ||
+          currentTarget.ownerId !== currentBattle.defenderId
+        ) {
+          this.advanceToNextWarTurnOrRound(currentGame);
+          return;
+        }
+
+        currentBattle.status = 'choice_question';
+        currentBattle.outcome = undefined;
+        currentBattle.winnerId = null;
+        delete currentBattle.attackerChoiceCorrect;
+        delete currentBattle.defenderChoiceCorrect;
+        delete currentBattle.attackerChoiceAnswer;
+        delete currentBattle.defenderChoiceAnswer;
+        delete currentBattle.attackerNumericAnswer;
+        delete currentBattle.defenderNumericAnswer;
+        delete currentBattle.attackerNumericDiff;
+        delete currentBattle.defenderNumericDiff;
+        delete currentBattle.attackerSubmitTime;
+        delete currentBattle.defenderSubmitTime;
+
+        currentGame.currentQuestion = null;
+        currentGame.gameLog.push({
+          id: this.makeLogId(),
+          text: `🔥 Asediul continuă împotriva Cetății ${currentTarget.name} (${currentTarget.castleTowers}/3 turnuri rămase)! Următoarea întrebare de asediu începe acum!`,
+          timestamp: Date.now(),
+          type: 'battle',
+        });
+
+        this.launchSimultaneousWarChoiceQuestion(currentGame);
+      }, 3000);
+
+      this.setTurnAdvanceTimer(roomId, siegeTimer);
+      return;
+    }
+
+    const advTimer = setTimeout(() => {
+      this.turnAdvanceTimers.delete(roomId);
+      this.advanceToNextWarTurnOrRound(game);
+    }, 3200);
+    this.setTurnAdvanceTimer(roomId, advTimer);
   }
 
   private advanceTurn(roomId: string): void {
@@ -2660,14 +3029,14 @@ export class GameManager {
       return;
     }
 
-    // Strict conquest adjacency check: does picker have at least 1 adjacent neutral territory?
-    const adjacentNeutrals = Object.values(game.territories).filter(
+    // Check if picker has any legal neutral targets (adjacent first, or any remaining neutral if boxed in)
+    const validTargets = Object.values(game.territories).filter(
       (t) => canTargetTerritory(t.id, picker, game.territories, 'conquest').allowed
     );
-    if (adjacentNeutrals.length === 0) {
+    if (validTargets.length === 0) {
       game.gameLog.push({
         id: this.makeLogId(),
-        text: `⚠️ ${picker.username} a răspuns corect, dar nu mai are teritorii libere învecinate disponibile!`,
+        text: `⚠️ ${picker.username} a răspuns corect, dar nu mai există teritorii libere pe hartă!`,
         timestamp: Date.now(),
         type: 'info',
       });
@@ -2676,6 +3045,8 @@ export class GameManager {
       return;
     }
 
+    const hasAdjacentNeutral =
+      getLegalNeutralTargetsForPlayer(picker.id, game.territories).length > 0;
     game.activePlayerIndex = game.players.findIndex((p) => p.id === picker.id);
     game.conquestPickerId = picker.id;
     game.currentQuestion = null;
@@ -2683,7 +3054,9 @@ export class GameManager {
 
     game.gameLog.push({
       id: this.makeLogId(),
-      text: `🎯 ${picker.username} a răspuns corect! Are 15s să aleagă o zonă liberă învecinată (+${SCORING.CONQUEST} pct).`,
+      text: hasAdjacentNeutral
+        ? `🎯 ${picker.username} a răspuns corect! Are 15s să aleagă o zonă liberă învecinată (+${SCORING.CONQUEST} pct).`
+        : `🎯 ${picker.username} a răspuns corect! Nu mai are vecini liberi, deci poate alege orice teritoriu liber rămas pe hartă (+${SCORING.CONQUEST} pct)!`,
       timestamp: Date.now(),
       type: 'info',
     });

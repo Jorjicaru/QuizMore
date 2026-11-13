@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, Player } from '../types/game';
-import { buildRoundDisplayItems } from '../game/rules';
+import { buildRoundDisplayItems, canPlayerRegenerateTower } from '../game/rules';
 import { sound } from '../services/audio';
 import { socketService } from '../services/socket';
 import {
@@ -16,12 +16,18 @@ import {
   Skull,
   Shield,
   Users,
+  Eye,
+  MessageSquare,
+  Sparkles,
 } from 'lucide-react';
 
 interface GameHUDProps {
   game: GameState;
   currentUserId: string;
   onLeaveGame: () => void;
+  onRegenerateTower?: () => void;
+  onToggleChat?: () => void;
+  chatCount?: number;
 }
 
 export const getAvatarSymbol = (avatar?: string): string => {
@@ -53,6 +59,36 @@ export const getAvatarSymbol = (avatar?: string): string => {
   }
 };
 
+const renderTowerPips = (towers: number) => {
+  const safeTowers = Math.max(0, Math.min(3, towers ?? 3));
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md border border-amber-500/35 bg-stone-950/90 px-1.5 py-0.5 text-[10px] font-black text-amber-300 tabular-nums shadow-sm"
+      title={`Turnuri de cetate intacte: ${safeTowers}/3`}
+    >
+      <Castle className="h-3 w-3 text-amber-400 shrink-0" />
+      <span className="inline-flex items-end gap-0.5">
+        {[0, 1, 2].map((idx) => {
+          const alive = idx < safeTowers;
+          return (
+            <span
+              key={idx}
+              className={`inline-block w-1.5 rounded-t-[2px] transition-all ${
+                idx === 1 ? 'h-3' : 'h-2.5'
+              } ${
+                alive
+                  ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.7)]'
+                  : 'bg-red-950/90 border border-red-500/40 opacity-55'
+              }`}
+            />
+          );
+        })}
+      </span>
+      <span>{safeTowers}/3</span>
+    </span>
+  );
+};
+
 export const renderPlayerCardItem = (
   player: Player,
   game: GameState,
@@ -79,7 +115,7 @@ export const renderPlayerCardItem = (
       data-testid={`player-card-${player.id}`}
       className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
         variant === 'mobile'
-          ? 'shrink-0 w-[148px] sm:w-[164px] snap-start p-1.5'
+          ? 'shrink-0 w-[156px] sm:w-[172px] snap-start p-1.5'
           : 'px-2.5 py-1.5'
       } ${
         isElim
@@ -97,8 +133,8 @@ export const renderPlayerCardItem = (
         style={{ backgroundColor: player.color }}
       />
 
-      <div className="flex items-center justify-between gap-1.5 pt-0.5">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center justify-between gap-1 pt-0.5">
+        <div className="flex items-center gap-1 min-w-0">
           <div className="relative shrink-0">
             <span
               className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-md text-[10px] shadow-sm ring-1 ring-white/25"
@@ -138,16 +174,14 @@ export const renderPlayerCardItem = (
 
         {/* Role / Castle Towers Badge */}
         <div className="flex items-center gap-1 shrink-0">
-          {game.phase === 'war' && !isElim && (
+          {game.phase === 'war' && !isElim && (isWarAttacker || isWarDefender || isWarBye) && (
             <span
               className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-black uppercase ${
                 isWarAttacker
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                   : isWarDefender
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                  : isWarBye
-                  ? 'bg-stone-800 text-stone-400'
-                  : ''
+                  : 'bg-stone-800 text-stone-400'
               }`}
             >
               {isWarAttacker ? (
@@ -158,9 +192,9 @@ export const renderPlayerCardItem = (
                 <>
                   <Shield className="h-2 w-2" /> APĂRĂ
                 </>
-              ) : isWarBye ? (
+              ) : (
                 'BYE'
-              ) : null}
+              )}
             </span>
           )}
 
@@ -169,13 +203,7 @@ export const renderPlayerCardItem = (
               <Skull className="h-2.5 w-2.5" /> ELIMINAT
             </span>
           ) : (
-            <span
-              className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-400/90 tabular-nums"
-              title="Turnuri de cetate intacte"
-            >
-              <Castle className="h-2.5 w-2.5 text-rose-400" />
-              {player.castleTowers}/3
-            </span>
+            renderTowerPips(player.castleTowers)
           )}
         </div>
       </div>
@@ -200,7 +228,6 @@ export const PlayerSidebar: React.FC<{
   game: GameState;
   currentUserId: string;
 }> = ({ game, currentUserId }) => {
-  // Stable sort descending by score with tie-breaker by original entry order
   const rankedPlayers = [...game.players]
     .map((p, originalIdx) => ({ player: p, originalIdx }))
     .sort((a, b) => b.player.score - a.player.score || a.originalIdx - b.originalIdx);
@@ -212,7 +239,7 @@ export const PlayerSidebar: React.FC<{
   return (
     <aside
       data-testid="desktop-player-sidebar"
-      className="hidden xl:flex xl:flex-col w-[256px] xl:w-[276px] shrink-0 h-full min-h-0 rounded-2xl border border-stone-800/90 bg-stone-950/95 p-2 shadow-2xl backdrop-blur-xl"
+      className="hidden xl:flex xl:flex-col w-[264px] xl:w-[284px] shrink-0 h-full min-h-0 rounded-2xl border border-stone-800/90 bg-stone-950/95 p-2 shadow-2xl backdrop-blur-xl"
     >
       {/* Compact Scoreboard Header */}
       <div className="flex items-center justify-between border-b border-stone-800/80 px-1 pb-1.5 mb-1.5 shrink-0">
@@ -227,7 +254,7 @@ export const PlayerSidebar: React.FC<{
         </span>
       </div>
 
-      {/* Scoreboard Rows: Ultra-compact, readable, all computed strictly by player.id */}
+      {/* Scoreboard Rows */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 flex flex-col gap-1 no-scrollbar">
         {rankedPlayers.map(({ player }, rankIdx) => {
           const rank = rankIdx + 1;
@@ -348,8 +375,7 @@ export const PlayerSidebar: React.FC<{
               </div>
 
               {/* Right: Territories, Towers, Score */}
-              <div className="flex items-center gap-2 shrink-0 text-right">
-                {/* Territories */}
+              <div className="flex items-center gap-1.5 shrink-0 text-right">
                 <div
                   className="flex items-center gap-0.5 text-[10px] text-stone-300 font-mono tabular-nums"
                   title={`${player.territoriesCount} teritorii`}
@@ -358,7 +384,6 @@ export const PlayerSidebar: React.FC<{
                   <span>{player.territoriesCount}</span>
                 </div>
 
-                {/* Castle Towers */}
                 {isElim ? (
                   <span
                     className="text-[9px] font-bold text-red-400 flex items-center gap-0.5"
@@ -367,16 +392,9 @@ export const PlayerSidebar: React.FC<{
                     <Skull className="h-2.5 w-2.5" />
                   </span>
                 ) : (
-                  <div
-                    className="flex items-center gap-0.5 text-[10px] text-amber-400/90 font-mono tabular-nums"
-                    title={`${player.castleTowers}/3 turnuri cetate`}
-                  >
-                    <Castle className="h-2.5 w-2.5 text-rose-400 shrink-0" />
-                    <span>{player.castleTowers}</span>
-                  </div>
+                  renderTowerPips(player.castleTowers)
                 )}
 
-                {/* Score */}
                 <div className="font-mono font-black text-amber-400 tabular-nums text-xs min-w-[36px] text-right">
                   {player.score} <span className="text-[8px] font-normal text-stone-400">pct</span>
                 </div>
@@ -389,8 +407,17 @@ export const PlayerSidebar: React.FC<{
   );
 };
 
-export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGame }) => {
+export const GameHUD: React.FC<GameHUDProps> = ({
+  game,
+  currentUserId,
+  onLeaveGame,
+  onRegenerateTower,
+  onToggleChat,
+  chatCount = 0,
+}) => {
   const activePlayer = game.players[game.activePlayerIndex];
+  const mePlayer = game.players.find((p) => p.id === currentUserId);
+  const isSpectator = !mePlayer;
 
   const myWarBattle =
     game.phase === 'war' && game.warRound
@@ -398,6 +425,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       : undefined;
 
   const isMyTurn =
+    !isSpectator &&
     game.phase !== 'finished' &&
     !game.currentQuestion &&
     (game.phase === 'war' && game.warRound
@@ -408,6 +436,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
             myWarBattle.status !== 'skipped'
         )
       : activePlayer?.id === currentUserId);
+
+  const canRegenerateTowerNow =
+    isMyTurn &&
+    game.phase === 'war' &&
+    canPlayerRegenerateTower(currentUserId, game.territories);
 
   const [muted, setMuted] = useState(sound.getIsMuted());
   const [timeLeft, setTimeLeft] = useState<number>(15);
@@ -496,10 +529,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
     !game.currentQuestion &&
     game.turnTimerExpiresAt > 0;
 
-
   const trackerModel = buildRoundDisplayItems(game);
 
   const renderTurnStatusPill = () => {
+    if (isSpectator) {
+      return (
+        <div
+          data-testid="spectator-mode-badge"
+          className="flex items-center gap-1.5 rounded-lg border border-sky-400/70 bg-sky-500/20 px-2 sm:px-2.5 py-1 shadow-sm"
+        >
+          <Eye className="h-3.5 w-3.5 text-sky-300 shrink-0" />
+          <span className="font-serif text-[10px] sm:text-xs font-black tracking-wide text-sky-200 whitespace-nowrap">
+            MOD SPECTATOR
+          </span>
+        </div>
+      );
+    }
     if (game.phase === 'finished') {
       return <span className="text-xs font-bold text-emerald-400">🏆 MECI ÎNCHEIAT</span>;
     }
@@ -523,11 +568,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       return (
         <div className="flex items-center gap-1.5 rounded-lg border border-stone-700/80 bg-stone-900/90 px-2 sm:px-2.5 py-1 min-w-0">
           <Swords className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[155px] sm:max-w-[260px]">
+          <span className="text-[11px] sm:text-xs font-bold text-stone-200 truncate max-w-[140px] sm:max-w-[240px]">
             {game.warRound.status === 'selecting_targets'
               ? `${atk?.username || 'Atacatorul'} alege ținta...`
-              : game.warRound.status === 'attack_preview' && atk && def
-              ? `⚔️ ${atk.username} atacă ${def.username}`
               : atk && def
               ? `⚔️ ${atk.username} vs ${def.username}`
               : 'Atac în desfășurare'}
@@ -550,10 +593,37 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
 
   const renderUtilityButtons = () => (
     <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+      {game.spectators && game.spectators.length > 0 && (
+        <span
+          data-testid="spectator-count-badge"
+          className="inline-flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-950/60 px-2 py-1 text-[10px] font-bold text-sky-300"
+          title={`Spectatori în cameră: ${game.spectators.map((s) => s.username).join(', ')}`}
+        >
+          <Eye className="h-3 w-3 text-sky-400" />
+          <span>{game.spectators.length}</span>
+        </span>
+      )}
+
+      {onToggleChat && (
+        <button
+          type="button"
+          data-testid="game-chat-btn"
+          onClick={onToggleChat}
+          className="flex min-h-[34px] items-center gap-1 rounded-lg border border-stone-700/80 bg-stone-900/90 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-stone-200 hover:bg-stone-800 transition cursor-pointer"
+          title="Deschide Chat-ul Camerei"
+        >
+          <MessageSquare className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span className="hidden sm:inline">Chat</span>
+          {chatCount > 0 && (
+            <span className="font-mono text-[10px] text-amber-300">({chatCount})</span>
+          )}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={() => setShowLogDrawer(true)}
-        className="flex min-h-[36px] items-center gap-1 rounded-lg border border-amber-500/30 bg-stone-900/90 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-stone-800 transition"
+        className="flex min-h-[34px] items-center gap-1 rounded-lg border border-amber-500/30 bg-stone-900/90 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-stone-800 transition cursor-pointer"
         title="Deschide Jurnalul de Război"
       >
         <ScrollText className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -566,7 +636,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       <button
         type="button"
         onClick={toggleMute}
-        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-stone-700/80 bg-stone-900/90 p-1.5 text-stone-300 hover:bg-stone-800 hover:text-white transition"
+        className="flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg border border-stone-700/80 bg-stone-900/90 p-1.5 text-stone-300 hover:bg-stone-800 hover:text-white transition cursor-pointer"
         title={muted ? 'Activează sunetul' : 'Oprește sunetul'}
         aria-label={muted ? 'Activează sunetul' : 'Oprește sunetul'}
       >
@@ -580,7 +650,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       <button
         type="button"
         onClick={onLeaveGame}
-        className="flex min-h-[36px] items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 transition"
+        className="flex min-h-[34px] items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 transition cursor-pointer"
         title="Părăsește Meciul"
         aria-label="Părăsește Meciul"
       >
@@ -595,8 +665,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
       {/* COMPACT TOP COMMAND BAR (Desktop & Mobile) */}
       <div className="rounded-xl border border-stone-800/90 bg-stone-950/95 px-2 sm:px-2.5 py-1.5 shadow-xl backdrop-blur-xl flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-          {/* Left: Turn Status Pill */}
-          <div className="flex items-center gap-1.5 min-w-0">{renderTurnStatusPill()}</div>
+          {/* Left: Turn Status Pill + Regenerate Tower CTA when eligible */}
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {renderTurnStatusPill()}
+
+            {canRegenerateTowerNow && onRegenerateTower && (
+              <button
+                type="button"
+                data-testid="regenerate-tower-btn"
+                onClick={() => {
+                  sound.playClick();
+                  onRegenerateTower();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/80 bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1 text-[11px] sm:text-xs font-black text-white shadow-[0_0_14px_rgba(16,185,129,0.45)] hover:from-emerald-500 hover:to-teal-500 active:scale-95 transition cursor-pointer"
+                title="Răspunde corect la o întrebare pentru a reface +1 turn la cetatea ta (consumă tura de atac)"
+              >
+                <Castle className="h-3.5 w-3.5 text-amber-200 shrink-0" />
+                <span>Regenerează un turn ({mePlayer?.castleTowers ?? 2}/3)</span>
+                <Sparkles className="h-3 w-3 text-amber-200 shrink-0" />
+              </button>
+            )}
+          </div>
 
           {/* Center: Clean Phase & Round Title */}
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -612,18 +701,20 @@ export const GameHUD: React.FC<GameHUDProps> = ({ game, currentUserId, onLeaveGa
           {renderUtilityButtons()}
         </div>
 
-        {/* Sleek Integrated Selection Timer Bar (Smooth RAF Animation) */}
+        {/* Sleek Integrated Selection Timer Bar */}
         {showSelectionTimer && (
           <div className="flex items-center gap-2 pt-0.5 min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 truncate">
               {game.phase === 'base_selection'
                 ? 'Alege Baza (1000 pct)'
                 : game.phase === 'conquest'
-                ? 'Cucerește teritoriu vecin (200 pct)'
+                ? 'Cucerește teritoriu liber (200 pct)'
                 : game.phase === 'allocation'
                 ? 'Revendică teritoriu liber (300 pct)'
                 : game.warRound?.status === 'attack_preview'
-                ? 'Prezentare atac înainte de întrebare'
+                ? 'Prezentare atac'
+                : canRegenerateTowerNow
+                ? 'Alege ținta de atac (400 pct) sau regenerează un turn'
                 : 'Alege ținta de atac (400 pct)'}
             </span>
             <div className="h-1.5 flex-1 min-w-[48px] overflow-hidden rounded-full bg-stone-900 border border-stone-800/80">

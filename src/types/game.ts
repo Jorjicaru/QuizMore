@@ -105,6 +105,7 @@ export interface ActiveQuestionState {
   attackerId: string;
   defenderId?: string;
   phaseContext: 'conquest' | 'allocation' | 'war';
+  warActionType?: 'attack' | 'regenerate_tower';
   isTiebreak?: boolean;
   participantIds?: string[];
   warRoundId?: string;
@@ -118,6 +119,8 @@ export interface WarBattleAssignment {
   attackerId: string;
   defenderId: string;
   targetTerritoryId: string | null;
+  warActionType?: 'attack' | 'regenerate_tower';
+  siegeStreak?: number;
   status: 'selecting_target' | 'ready' | 'choice_question' | 'numeric_tiebreak' | 'resolved' | 'auto_selected' | 'skipped';
   attackerChoiceCorrect?: boolean;
   defenderChoiceCorrect?: boolean;
@@ -148,6 +151,10 @@ export interface WarBattleResultSummary {
   headline: string;
   details: string;
   effectBadge: string;
+  remainingTowers?: number;
+  maxTowers?: number;
+  siegeContinues?: boolean;
+  isTowerRegenerated?: boolean;
   expiresAt: number;
 }
 
@@ -231,6 +238,13 @@ export interface GameLogEntry {
   type: 'info' | 'conquest' | 'battle' | 'elimination';
 }
 
+export interface SpectatorProfile {
+  id: string;
+  username: string;
+  avatar: string;
+  isConnected?: boolean;
+}
+
 export interface GameState {
   roomId: string;
   roomName: string;
@@ -245,6 +259,7 @@ export interface GameState {
   maxRounds: number;
   phase: GamePhase;
   players: Player[];
+  spectators?: SpectatorProfile[];
   activePlayerIndex: number;
   territories: Record<string, Territory>;
   turnTimeLimit: number;

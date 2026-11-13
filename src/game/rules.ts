@@ -316,19 +316,15 @@ export function canTargetTerritory(
     return { allowed: true };
   }
 
-  if (phase === 'conquest') {
+  if (phase === 'conquest' || phase === 'allocation') {
     if (target.ownerId !== null) {
-      return { allowed: false, reason: 'Poți cuceri doar teritorii neutre (libere).' };
-    }
-    if (!isAdjacentToPlayer(territoryId, player.id, territories)) {
-      return { allowed: false, reason: 'Trebuie să alegi un teritoriu liber învecinat cu teritoriile tale!' };
-    }
-    return { allowed: true };
-  }
-
-  if (phase === 'allocation') {
-    if (target.ownerId !== null) {
-      return { allowed: false, reason: 'Poți alege doar un teritoriu neutru (liber).' };
+      return {
+        allowed: false,
+        reason:
+          phase === 'conquest'
+            ? 'Poți cuceri doar teritorii neutre (libere).'
+            : 'Poți alege doar un teritoriu neutru (liber).',
+      };
     }
     const adjacentNeutrals = getLegalNeutralTargetsForPlayer(player.id, territories);
     if (adjacentNeutrals.length > 0 && !isAdjacentToPlayer(territoryId, player.id, territories)) {
@@ -566,21 +562,41 @@ export function getLegalWarTargetsForAttacker(
 }
 
 /**
+ * Verifică dacă un jucător își poate regenera un turn al bazei proprii în faza Război:
+ * - Jucătorul trebuie să dețină propria bază (`isBase && ownerId === playerId`)
+ * - Baza trebuie să aibă cel puțin 1 turn și mai puțin de 3 turnuri (`0 < castleTowers < 3`)
+ */
+export function canPlayerRegenerateTower(
+  playerId: string,
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'isBase' | 'castleTowers'>>
+): boolean {
+  if (!playerId) return false;
+  const base = Object.values(territories).find((t) => t.isBase && t.ownerId === playerId);
+  if (!base) return false;
+  const towers = base.castleTowers ?? 3;
+  return towers > 0 && towers < 3;
+}
+
+/**
  * Construiește ordinea secvențială de atacuri individuale pentru o rundă de Război:
  * - Fiecare jucător activ care deține teritorii și are cel puțin un teritoriu inamic adiacent
- *   primește rândul să inițieze un atac individual (un atacator, un apărător, o țintă).
+ *   (sau își poate regenera un turn la bază) primește rândul în runda de război.
  * - Ordinea de start se rotește echitabil în funcție de `roundNumber`.
  */
 export function buildIndividualWarTurnOrder(
   activePlayerIds: string[],
-  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors'>>,
+  territories: Record<string, Pick<Territory, 'id' | 'ownerId' | 'neighbors' | 'isBase' | 'castleTowers'>>,
   roundNumber: number
 ): string[] {
   const n = activePlayerIds.length;
   if (n < 2) return [];
   const shift = Math.max(0, (roundNumber - 1) % n);
   const rotated = [...activePlayerIds.slice(shift), ...activePlayerIds.slice(0, shift)];
-  return rotated.filter((pid) => getLegalWarTargetsForAttacker(pid, territories).length > 0);
+  return rotated.filter(
+    (pid) =>
+      getLegalWarTargetsForAttacker(pid, territories).length > 0 ||
+      canPlayerRegenerateTower(pid, territories)
+  );
 }
 
 export interface WarAttackAnnouncement {
@@ -677,6 +693,42 @@ export function isShortReadableChoiceQuestion(q: Question | null | undefined): b
     if (!optText || optText.length > 36 || optWords > 5) {
       return false;
     }
+  }
+  return true;
+}
+
+/**
+ * Verifică dacă o întrebare numerică (estimation) este validă pentru departajare (tiebreak):
+ * - tip 'estimation', aprobată și activă
+ * - targetNumber numeric finit, unitate nevidă
+ * - fără scurgeri de metadate/numere în paranteză sau scurgerea răspunsului în enunț
+ */
+export function isValidNumericTiebreakQuestion(q: Question | null | undefined): boolean {
+  if (!q) return false;
+  if (q.isDisabled || q.reviewStatus !== 'approved') return false;
+  if (q.type !== 'estimation') return false;
+  if (typeof q.targetNumber !== 'number' || !Number.isFinite(q.targetNumber)) return false;
+  if (!q.unit || typeof q.unit !== 'string' || q.unit.trim().length === 0) return false;
+  const text = String(q.question || '').trim();
+  if (text.length < 10 || text.length > 95 || !text.endsWith('?')) return false;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 4 || wordCount > 14) return false;
+  if (
+    /\(\d+(?:\.\d+)?\)/.test(text) ||
+    /\(#\d+\)/.test(text) ||
+    /\(set\s+/i.test(text) ||
+    /\(seria\s+/i.test(text)
+  ) {
+    return false;
+  }
+  const targetStr = String(q.targetNumber);
+  const normText = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ');
+  if (` ${normText} `.includes(` ${targetStr} `)) {
+    return false;
   }
   return true;
 }

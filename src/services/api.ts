@@ -149,15 +149,50 @@ export const api = {
 
   // Social
   async getFriends() {
-    return this.request<{ friends: Array<{ friend: UserProfile; status: 'pending' | 'accepted'; isRequester: boolean; id: string }> }>('/api/social/friends');
+    return this.request<{
+      friends: Array<{
+        friend: UserProfile;
+        status: 'pending' | 'accepted';
+        isRequester: boolean;
+        id: string;
+        presenceStatus?: 'online' | 'in_room' | 'offline';
+        currentRoomId?: string | null;
+        currentRoomName?: string | null;
+        currentRoomPhase?: string | null;
+      }>;
+      suggestedPlayers?: Array<
+        UserProfile & {
+          presenceStatus?: 'online' | 'in_room' | 'offline';
+          currentRoomId?: string | null;
+          currentRoomName?: string | null;
+          currentRoomPhase?: string | null;
+        }
+      >;
+    }>('/api/social/friends');
   },
 
   async searchUsers(query: string) {
-    return this.request<{ users: UserProfile[] }>(`/api/social/users/search?q=${encodeURIComponent(query)}`);
+    return this.request<{
+      users: Array<
+        UserProfile & {
+          presenceStatus?: 'online' | 'in_room' | 'offline';
+          currentRoomId?: string | null;
+          currentRoomName?: string | null;
+          currentRoomPhase?: string | null;
+        }
+      >;
+    }>(`/api/social/users/search?q=${encodeURIComponent(query)}`);
   },
 
   async sendFriendRequest(recipientId: string) {
     return this.request<{ success: boolean; message: string }>('/api/social/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ recipientId }),
+    });
+  },
+
+  async quickBefriend(recipientId?: string) {
+    return this.request<{ success: boolean; message: string }>('/api/social/friends/quick-befriend', {
       method: 'POST',
       body: JSON.stringify({ recipientId }),
     });
@@ -168,6 +203,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ requestId, accept }),
     });
+  },
+
+  async inviteFriendToRoom(
+    recipientId: string,
+    roomId: string,
+    mode: 'invite' | 'challenge' = 'invite'
+  ) {
+    return this.request<{ success: boolean; roomId: string; message: string }>(
+      '/api/social/friends/invite',
+      {
+        method: 'POST',
+        body: JSON.stringify({ recipientId, roomId, mode }),
+      }
+    );
   },
 
   async getNotifications() {

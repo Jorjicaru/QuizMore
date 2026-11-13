@@ -48,10 +48,28 @@ router.get('/my-history', authenticate, (req: AuthRequest, res: Response): void 
   res.json({ history });
 });
 
-// Active or recently finished room for the authenticated user (for reconnect / return)
+// Active room for the authenticated user (for reconnect / return)
 router.get('/my-active-room', authenticate, (req: AuthRequest, res: Response): void => {
   const room = gameManager.getRoomForUser(req.userId!);
-  res.json({ room: room || null });
+  if (!room || room.phase === 'finished') {
+    res.json({ activeRoom: null, room: null });
+    return;
+  }
+  const player = room.players.find((p) => p.id === req.userId);
+  if (!player) {
+    res.json({ activeRoom: null, room: null });
+    return;
+  }
+  res.json({
+    activeRoom: {
+      roomId: room.roomId,
+      roomName: room.roomName,
+      phase: room.phase,
+      isConnected: player.isConnected !== false,
+      botControlled: Boolean(player.botControlled),
+    },
+    room,
+  });
 });
 
 export default router;

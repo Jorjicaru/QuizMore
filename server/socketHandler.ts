@@ -4,6 +4,16 @@ import { verifyAuthToken } from './auth';
 import { isMaintenanceModeEnabled, getMaintenanceMessage } from './maintenance';
 
 const connectedSocketsByUser = new Map<string, Set<string>>();
+let activeIoInstance: SocketIOServer | null = null;
+
+export function emitToUser(userId: string, event: string, payload: any): void {
+  if (!activeIoInstance) return;
+  const sockets = connectedSocketsByUser.get(userId);
+  if (!sockets) return;
+  for (const socketId of sockets) {
+    activeIoInstance.to(socketId).emit(event, payload);
+  }
+}
 
 export function getConnectedUsersStats(): {
   onlineUsersCount: number;
@@ -26,6 +36,12 @@ export function getConnectedUsersStats(): {
 }
 
 export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager): void {
+  activeIoInstance = io;
+
+  const broadcastPublicRooms = () => {
+    io.emit('public_rooms_updated', { rooms: gameManager.getPublicRooms() });
+  };
+
   io.use((socket, next) => {
     if (isMaintenanceModeEnabled()) {
       return next(new Error(getMaintenanceMessage()));
@@ -61,8 +77,11 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
 
     socket.on('create_room', (data = {}, callback) => {
       try {
-        if (currentRoomId)
-          return callback?.({ success: false, message: 'Ești deja într-o cameră.' });
+        if (currentRoomId) {
+          socket.leave(`room_${currentRoomId}`);
+          gameManager.leaveRoom(currentRoomId, currentUserId);
+          currentRoomId = null;
+        }
         const game = gameManager.createRoom({
           hostUser: user,
           roomName: data.roomName,
@@ -76,7 +95,12 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
         });
         currentRoomId = game.roomId;
         socket.join(`room_${game.roomId}`);
-        callback?.({ success: true, game: gameManager.getClientState(game.roomId) });
+        broadcastPublicRooms();
+        callback?.({
+          success: true,
+          isSpectator: false,
+          game: gameManager.getClientState(game.roomId),
+        });
       } catch (err: any) {
         callback?.({ success: false, message: err?.message || 'Nu s-a putut crea camera.' });
       }
@@ -90,14 +114,22 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
         return callback?.({ success: false, message: 'Codul camerei lipsește.' });
       }
       if (currentRoomId && currentRoomId !== roomId) {
-        return callback?.({ success: false, message: 'Ești deja într-o altă cameră.' });
+        socket.leave(`room_${currentRoomId}`);
+        gameManager.leaveRoom(currentRoomId, currentUserId);
+        currentRoomId = null;
       }
       const result = gameManager.joinRoom(roomId, user);
       if (result.success && result.game) {
         currentRoomId = roomId;
         socket.join(`room_${roomId}`);
         io.to(`room_${roomId}`).emit('game_state_update', gameManager.getClientState(roomId));
-        callback?.({ success: true, game: gameManager.getClientState(roomId) });
+        broadcastPublicRooms();
+        callback?.({
+          success: true,
+          isSpectator: Boolean(result.isSpectator),
+          message: result.message,
+          game: gameManager.getClientState(roomId),
+        });
       } else {
         callback?.({ success: false, message: result.message });
       }
@@ -112,6 +144,7 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
         socket.leave(`room_${roomId}`);
         gameManager.leaveRoom(roomId, currentUserId);
         currentRoomId = null;
+        broadcastPublicRooms();
       }
     });
 
@@ -119,12 +152,16 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       if (currentRoomId) gameManager.setReady(currentRoomId, currentUserId, !!data.isReady);
     });
     socket.on('add_bot', (data = {}) => {
-      if (currentRoomId)
+      if (currentRoomId) {
         gameManager.addBot(currentRoomId, currentUserId, data.difficulty || 'intermediar');
+        broadcastPublicRooms();
+      }
     });
     socket.on('remove_bot', (data = {}) => {
-      if (currentRoomId && data.botId)
+      if (currentRoomId && data.botId) {
         gameManager.removeBot(currentRoomId, currentUserId, data.botId);
+        broadcastPublicRooms();
+      }
     });
     socket.on('time_sync_request', (data = {}, callback) => {
       const payload = {
@@ -137,11 +174,22 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
     });
 
     socket.on('start_game', (_data, callback) => {
-      if (currentRoomId) callback?.(gameManager.startGame(currentRoomId, currentUserId));
+      if (currentRoomId) {
+        const res = gameManager.startGame(currentRoomId, currentUserId);
+        broadcastPublicRooms();
+        callback?.(res);
+      }
     });
     socket.on('select_territory', (data = {}, callback) => {
       if (currentRoomId && data.territoryId)
         callback?.(gameManager.selectTerritory(currentRoomId, currentUserId, data.territoryId));
+    });
+    socket.on('regenerate_tower', (_data = {}, callback) => {
+      if (currentRoomId) {
+        callback?.(gameManager.regenerateTower(currentRoomId, currentUserId));
+      } else {
+        callback?.({ success: false, message: 'Nu ești într-o cameră activă.' });
+      }
     });
     socket.on('submit_answer', (data = {}, callback) => {
       if (currentRoomId && data.answer !== undefined) {
@@ -185,6 +233,7 @@ export function setupSocketHandlers(io: SocketIOServer, gameManager: GameManager
       }
       if (currentRoomId) {
         gameManager.handleSocketDisconnect(currentRoomId, currentUserId);
+        broadcastPublicRooms();
       }
     });
   });

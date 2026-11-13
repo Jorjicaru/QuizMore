@@ -33,6 +33,12 @@ export default function App() {
     phase: string;
     botControlled: boolean;
   } | null>(null);
+  const [incomingInvite, setIncomingInvite] = useState<{
+    fromUsername: string;
+    roomId: string;
+    roomName: string;
+    mode: string;
+  } | null>(null);
   const [appNotice, setAppNotice] = useState<string | null>(null);
 
   const checkMaintenanceStatus = useCallback(async () => {
@@ -49,7 +55,7 @@ export default function App() {
     }
   }, []);
 
-  const checkActiveRoomForUser = useCallback(async (user: UserProfile) => {
+  const checkActiveRoomForUser = useCallback(async (_user: UserProfile) => {
     try {
       const res = await api.getMyActiveRoom();
       if (res.activeRoom) {
@@ -67,7 +73,6 @@ export default function App() {
     }
   }, []);
 
-  // Initialize Auth & Socket listeners. Never sign a visitor into a hard-coded demo account.
   useEffect(() => {
     checkMaintenanceStatus();
 
@@ -106,6 +111,17 @@ export default function App() {
       else setActiveTab('game');
     });
     socket.on('chat_message', (msg: any) => setChatMessages((prev) => [...prev, msg]));
+    socket.on('game_invite_received', (payload: any) => {
+      if (payload?.roomId) {
+        setIncomingInvite({
+          fromUsername: payload.fromUsername || 'Un prieten',
+          roomId: payload.roomId,
+          roomName: payload.roomName || `Camera #${payload.roomId}`,
+          mode: payload.mode || '1v1',
+        });
+        setUnreadNotifs((prev) => prev + 1);
+      }
+    });
     socket.on('maintenance_mode', (payload: { message?: string }) => {
       setMaintenanceMode(true);
       setMaintenanceMessage(payload?.message || 'CONQUIZ este momentan în mentenanță tehnică.');
@@ -121,6 +137,7 @@ export default function App() {
       window.removeEventListener('conquiz:maintenance', onMaintenanceEvent);
       socket.off('game_state_update');
       socket.off('chat_message');
+      socket.off('game_invite_received');
       socket.off('maintenance_mode');
       socket.off('room_closed_by_admin');
     };
@@ -186,7 +203,12 @@ export default function App() {
     );
   };
 
-  const handleCreatePrivateRoom = (maxPlayers: number, selectedCategories?: string[]) => {
+  const handleCreateRoom = (
+    maxPlayers: number,
+    selectedCategories?: string[],
+    isPrivate: boolean = false,
+    customRoomName?: string
+  ) => {
     if (!currentUser) {
       setActiveTab('auth');
       return;
@@ -196,8 +218,8 @@ export default function App() {
       'create_room',
       {
         user: currentUser,
-        roomName: `Cetatea lui ${currentUser.username}`,
-        isPrivate: true,
+        roomName: customRoomName || `Cetatea lui ${currentUser.username}`,
+        isPrivate,
         maxPlayers,
         selectedCategories,
       },
@@ -206,6 +228,44 @@ export default function App() {
           setActiveGame(res.game);
           setChatMessages([]);
           setActiveTab('lobby');
+        }
+      }
+    );
+  };
+
+  const handleChallengeFriend = async (friend: UserProfile) => {
+    if (!currentUser) return;
+    if (activeGame && activeGame.phase === 'waiting') {
+      try {
+        const res = await api.inviteFriendToRoom(friend.id, activeGame.roomId, 'invite');
+        setAppNotice(res.message);
+        setActiveTab('lobby');
+      } catch (err: any) {
+        setAppNotice(err.message || 'Nu s-a putut trimite invitația.');
+      }
+      return;
+    }
+
+    const socket = socketService.getSocket();
+    socket.emit(
+      'create_room',
+      {
+        user: currentUser,
+        roomName: `Duel 1v1: ${currentUser.username} vs ${friend.username}`,
+        isPrivate: true,
+        maxPlayers: 2,
+      },
+      async (res: any) => {
+        if (res?.success && res.game) {
+          setActiveGame(res.game);
+          setChatMessages([]);
+          setActiveTab('lobby');
+          try {
+            const inv = await api.inviteFriendToRoom(friend.id, res.game.roomId, 'challenge');
+            setAppNotice(inv.message);
+          } catch {
+            setAppNotice(`Camera #${res.game.roomId} a fost creată pentru duelul cu ${friend.username}!`);
+          }
         }
       }
     );
@@ -221,7 +281,11 @@ export default function App() {
       if (res.success && res.game) {
         setActiveGame(res.game);
         setRejoinableRoom(null);
+        setIncomingInvite(null);
         setChatMessages([]);
+        if (res.isSpectator || res.spectator) {
+          setAppNotice(`Ai intrat ca Spectator în camera #${res.game.roomId}.`);
+        }
         if (res.game.phase === 'waiting') {
           setActiveTab('lobby');
         } else {
@@ -270,6 +334,12 @@ export default function App() {
     cb?: (res: { success: boolean; message?: string; territoryId?: string; pointsAwarded?: number }) => void
   ) => {
     socketService.getSocket().emit('select_territory', { territoryId }, (res: any) => {
+      if (cb) cb(res);
+    });
+  };
+
+  const handleRegenerateTower = (cb?: (res: { success: boolean; message?: string }) => void) => {
+    socketService.getSocket().emit('regenerate_tower', {}, (res: any) => {
       if (cb) cb(res);
     });
   };
@@ -332,6 +402,9 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={(tab) => {
           setActiveTab(tab);
+          if (tab === 'dashboard' && currentUser) {
+            checkActiveRoomForUser(currentUser);
+          }
         }}
         onLogout={handleLogout}
         unreadNotificationsCount={unreadNotifs}
@@ -350,13 +423,46 @@ export default function App() {
         {appNotice && !isGameActive && (
           <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs font-semibold text-amber-200">
             <span>{appNotice}</span>
-            <button onClick={() => setAppNotice(null)} className="text-amber-300 hover:text-white">
+            <button onClick={() => setAppNotice(null)} className="text-amber-300 hover:text-white cursor-pointer">
               ✕
             </button>
           </div>
         )}
 
-        {currentUser && rejoinableRoom && activeTab === 'dashboard' && (
+        {incomingInvite && !isGameActive && (
+          <div
+            data-testid="incoming-game-invite-banner"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/60 bg-amber-950/60 px-4 py-3 text-xs shadow-lg"
+          >
+            <div>
+              <span className="font-bold text-amber-300 uppercase tracking-wider block">
+                ⚔️ Invitație la Joc Primită!
+              </span>
+              <span className="text-slate-200">
+                <strong>{incomingInvite.fromUsername}</strong> te-a invitat în camera{' '}
+                <strong className="font-mono text-amber-300">#{incomingInvite.roomId}</strong> ({incomingInvite.roomName})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleJoinRoomByCode(incomingInvite.roomId)}
+                className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-slate-950 hover:bg-amber-400 transition cursor-pointer"
+              >
+                Acceptă & Intră
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncomingInvite(null)}
+                className="rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer"
+              >
+                Închide
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentUser && rejoinableRoom && activeTab !== 'game' && activeTab !== 'lobby' && (
           <div
             data-testid="reconnect-room-banner"
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-xs shadow-lg"
@@ -373,10 +479,12 @@ export default function App() {
               </span>
             </div>
             <button
+              type="button"
+              data-testid="reconnect-room-btn"
               onClick={() => handleReconnectToRoom(rejoinableRoom.roomId)}
-              className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-slate-950 hover:bg-emerald-400 transition"
+              className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-slate-950 hover:bg-emerald-400 transition cursor-pointer"
             >
-              {rejoinableRoom.phase === 'finished' ? 'Vezi Rezultatul Final' : 'Reintră în Meci'}
+              {rejoinableRoom.phase === 'finished' ? 'Vezi Rezultatul Final' : 'Reconectează-te la meci'}
             </button>
           </div>
         )}
@@ -405,7 +513,7 @@ export default function App() {
               <DashboardView
                 user={currentUser}
                 onPlayVsAi={handlePlayVsAi}
-                onCreatePrivateRoom={handleCreatePrivateRoom}
+                onCreatePrivateRoom={handleCreateRoom}
                 onJoinRoomByCode={handleJoinRoomByCode}
                 onOpenLeaderboard={() => setActiveTab('leaderboard')}
               />
@@ -431,6 +539,9 @@ export default function App() {
                 currentUser={currentUser}
                 onSelectTerritory={handleSelectTerritory}
                 onSubmitAnswer={handleSubmitAnswer}
+                onRegenerateTower={handleRegenerateTower}
+                onSendChat={handleSendChat}
+                chatMessages={chatMessages}
                 onLeaveGame={handleLeaveGame}
                 onRematch={handleRematch}
               />
@@ -441,11 +552,8 @@ export default function App() {
             {activeTab === 'friends' && (
               <FriendsView
                 currentUser={currentUser}
-                onChallengeFriend={() =>
-                  setAppNotice(
-                    'Invitația directă va fi disponibilă într-o versiune viitoare. Creează o cameră privată și trimite codul prietenului.'
-                  )
-                }
+                onChallengeFriend={handleChallengeFriend}
+                onJoinRoomByCode={handleJoinRoomByCode}
               />
             )}
 
@@ -463,7 +571,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer - hidden during active game to ensure map fits viewport without scrolling */}
+      {/* Footer - hidden during active game */}
       {activeTab !== 'game' && (
         <footer className="border-t border-slate-900 bg-slate-950/80 py-3 text-center text-xs text-slate-500">
           <p>CONQUIZ &copy; 2026 &bull; Joc de cultură generală și strategie pe Harta României &bull; Până la 10 Jucători</p>
