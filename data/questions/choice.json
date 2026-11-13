@@ -568,7 +568,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_bn",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -620,7 +620,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Botoșani?",
+    "question": "Care este reședința județeană a Botoșaniului?",
     "options": [
       "Miercurea Ciuc",
       "Sibiu",
@@ -633,9 +633,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Botoșani (BT)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_bt",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_bt",
@@ -656,7 +656,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_bt",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -708,7 +708,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Brașov?",
+    "question": "Care este reședința județeană a Brașovului?",
     "options": [
       "Iași",
       "Vaslui",
@@ -721,9 +721,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Brașov (BV)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_bv",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_bv",
@@ -744,7 +744,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_bv",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -774,7 +774,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Brăila?",
+    "question": "Care este reședința județeană a Brăilei?",
     "options": [
       "Brăila",
       "Drobeta-Turnu Severin",
@@ -787,9 +787,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Brăila (BR)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_br",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_br",
@@ -810,7 +810,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_br",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -862,7 +862,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Buzău?",
+    "question": "Care este reședința județeană a Buzăului?",
     "options": [
       "Slatina",
       "Buzău",
@@ -875,9 +875,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Buzău (BZ)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_bz",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_bz",
@@ -898,7 +898,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_bz",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1008,7 +1008,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_cs",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1060,7 +1060,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Călărași?",
+    "question": "Care este reședința județeană a Călărașiului?",
     "options": [
       "Alexandria",
       "Giurgiu",
@@ -1073,9 +1073,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Călărași (CL)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_cl",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_cl",
@@ -1096,7 +1096,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_cl",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1206,7 +1206,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_cj",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1258,7 +1258,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este municipiul reședință al județului Constanța?",
+    "question": "Care este reședința județeană a Constanței?",
     "options": [
       "Alba Iulia",
       "Constanța",
@@ -1271,9 +1271,9 @@
     "sourceTitle": "Enciclopedia Geografică și Administrativă a României – Județul Constanța (CT)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_seat_ct",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_ro_code_ct",
@@ -1294,7 +1294,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_ct",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1404,7 +1404,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_cv",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1514,7 +1514,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_db",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1624,7 +1624,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_dj",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1712,7 +1712,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_gl",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1800,7 +1800,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_gr",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -1910,7 +1910,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_gj",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2020,7 +2020,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_hr",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2130,7 +2130,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_hd",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2240,7 +2240,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_il",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2328,7 +2328,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_is",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2438,7 +2438,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_if",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2548,7 +2548,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_mm",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2658,7 +2658,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_mh",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2768,7 +2768,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_ms",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2878,7 +2878,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_nt",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -2988,7 +2988,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_ot",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3098,7 +3098,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_ph",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3186,7 +3186,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_sm",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3296,7 +3296,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_sj",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3362,7 +3362,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_sb",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3450,7 +3450,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_sv",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3560,7 +3560,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_tr",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3670,7 +3670,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_tm",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3758,7 +3758,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_tl",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3846,7 +3846,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_vs",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -3956,7 +3956,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_vl",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -4066,7 +4066,7 @@
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_ro_code_vn",
     "reviewStatus": "approved",
-    "isDisabled": false,
+    "isDisabled": true,
     "verified": true
   },
   {
@@ -7682,7 +7682,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este capitala statului Mexic?",
+    "question": "Ce oraș este capitala Mexicului?",
     "options": [
       "Praga",
       "Abuja",
@@ -7695,9 +7695,9 @@
     "sourceTitle": "Fișă Enciclopedică de Stat Suveran – Mexic (America de Nord)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_world_cap_mexic",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_world_state_mexic",
@@ -8936,7 +8936,7 @@
     "category": "geografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Care este capitala statului Luxemburg?",
+    "question": "Care oraș este capitala statului luxemburghez?",
     "options": [
       "Vilnius",
       "Riga",
@@ -8949,9 +8949,9 @@
     "sourceTitle": "Fișă Enciclopedică de Stat Suveran – Luxemburg (Europa)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_world_cap_luxemburg",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "geo_world_state_luxemburg",
@@ -15404,7 +15404,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a izbucnit marea răscoală din Transilvania condusă de Horea, Cloșca și Crișan?",
+    "question": "În ce an a început răscoala lui Horea și Cloșca?",
     "options": [
       "1476",
       "1869",
@@ -15417,9 +15417,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Răscoala din Transilvania condusă de Horea, Cloșca și Crișan (1784)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_19",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_leader_choice_19",
@@ -15514,7 +15514,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a avut loc Adunarea Națională de pe Câmpia Libertății de la Blaj?",
+    "question": "În ce an a avut loc Adunarea de la Blaj?",
     "options": [
       "1462",
       "1848",
@@ -15527,9 +15527,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Adunarea Națională de la Blaj pe Câmpia Libertății în timpul Revoluției pașoptiste (1848)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_21",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_leader_choice_21",
@@ -15624,7 +15624,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce oraș a avut loc votul decisiv de la 24 ianuarie 1859 pentru Unire?",
+    "question": "Unde a fost votată Unirea Principatelor în 1859?",
     "options": [
       "București",
       "Versailles",
@@ -15637,9 +15637,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Mica Unire a Principatelor Române prin dubla alegere a lui Alexandru Ioan Cuza (1859)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_22",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_yr_choice_23",
@@ -15835,9 +15835,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Sosirea în România și proclamarea principelui Carol de Hohenzollern-Sigmaringen ca domnitor (Carol I) (1866)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_25",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "hist_yr_choice_26",
@@ -15866,7 +15866,7 @@
     "category": "istorie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Ce ministru de externe a rostit în Parlament declarația de independență la 9 mai 1877?",
+    "question": "Cine a rostit în Parlament declarația de independență din 1877?",
     "options": [
       "Ștefan cel Mare",
       "Mircea cel Bătrân",
@@ -15879,9 +15879,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Proclamarea Independenței de Stat a României în Parlament de către Mihail Kogălniceanu (1877)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_leader_26",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_place_choice_26",
@@ -15901,9 +15901,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Proclamarea Independenței de Stat a României în Parlament de către Mihail Kogălniceanu (1877)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_26",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "hist_yr_choice_27",
@@ -15967,9 +15967,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Proclamarea României ca Regat și încoronarea lui Carol I ca prim rege al României (1881)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_27",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "hist_yr_choice_28",
@@ -16020,7 +16020,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "La ce oraș de pe Dunăre a fost inaugurat în 1895 podul lui Anghel Saligny?",
+    "question": "Unde se află podul lui Anghel Saligny, inaugurat în 1895?",
     "options": [
       "Rovine",
       "Waterloo",
@@ -16033,9 +16033,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Inaugurarea Podului Regele Carol I de la Cernavodă, proiectat de inginerul Anghel Saligny (1895)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_28",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_yr_choice_29",
@@ -16152,7 +16152,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce localitate din Vrancea s-a dat în vara anului 1917 cea mai mare bătălie?",
+    "question": "Ce localitate din Vrancea este cunoscută pentru luptele din 1917?",
     "options": [
       "Mărășești",
       "Constantinopol",
@@ -16165,9 +16165,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Marile bătălii de apărare de la Mărăști, Mărășești și Oituz (1917)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_30",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_yr_choice_31",
@@ -16240,7 +16240,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an au fost încoronați Regele Ferdinand I și Regina Maria la Alba Iulia?",
+    "question": "În ce an au fost încoronați Ferdinand I și Regina Maria?",
     "options": [
       "1922",
       "1869",
@@ -16253,9 +16253,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Încoronarea Regelui Ferdinand I și a Reginei Maria la Alba Iulia ca suverani ai României Mari (1922)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_32",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_leader_choice_32",
@@ -16363,9 +16363,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Adoptarea Constituției României interbelice sub domnia Regelui Ferdinand I (1923)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_33",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "hist_yr_choice_34",
@@ -17384,7 +17384,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce regiune de coastă a Franței a avut loc debarcarea aliată din iunie 1944?",
+    "question": "În ce regiune franceză au debarcat aliații în 1944?",
     "options": [
       "Suez",
       "București",
@@ -17397,9 +17397,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Debarcarea aliaților în Normandia (Ziua Z / Operation Overlord) (1944)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_49",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_yr_choice_50",
@@ -17560,7 +17560,7 @@
     "category": "istorie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "Cine a fost primul om din istorie care a zburat în spațiul cosmic în 1961?",
+    "question": "Cine a fost primul om care a ajuns în spațiu?",
     "options": [
       "Neil Armstrong",
       "Iuri Gagarin",
@@ -17573,9 +17573,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Primul zbor al omului în spațiul cosmic realizat de cosmonautul Iuri Gagarin (1961)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_leader_52",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "hist_place_choice_52",
@@ -17824,7 +17824,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce oraș olandez a fost semnat în 1992 tratatul care a creat Uniunea Europeană?",
+    "question": "În ce oraș neerlandez s-a semnat tratatul UE din 1992?",
     "options": [
       "București",
       "Putna",
@@ -17837,9 +17837,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Semnarea Tratatului de la Maastricht privind constituirea Uniunii Europene (1992)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_place_56",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_1",
@@ -18418,7 +18418,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Baltagul” de Mihail Sadoveanu?",
+    "question": "În ce an a fost publicat romanul Baltagul?",
     "options": [
       "1725",
       "1980",
@@ -18431,9 +18431,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Baltagul” de Mihail Sadoveanu (1930)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_9",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_10",
@@ -18484,7 +18484,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Hanu Ancuței” de Mihail Sadoveanu?",
+    "question": "În ce an a fost publicat volumul Hanu Ancuței?",
     "options": [
       "1928",
       "1972",
@@ -18497,9 +18497,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Hanu Ancuței” de Mihail Sadoveanu (1928)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_10",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_title_11",
@@ -18726,7 +18726,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Enigma Otiliei” de George Călinescu?",
+    "question": "În ce an a fost publicat romanul Enigma Otiliei?",
     "options": [
       "1938",
       "1894",
@@ -18739,9 +18739,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Enigma Otiliei” de George Călinescu (1938)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_14",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_15",
@@ -18792,7 +18792,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Moromeții” de Marin Preda?",
+    "question": "În ce an a apărut primul volum din Moromeții?",
     "options": [
       "1932",
       "1955",
@@ -18805,9 +18805,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Moromeții (Volumul I)” de Marin Preda (1955)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_15",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_16",
@@ -18924,7 +18924,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Plumb” de George Bacovia?",
+    "question": "În ce an a apărut volumul de poezii Plumb?",
     "options": [
       "1980",
       "1932",
@@ -18937,9 +18937,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Plumb” de George Bacovia (1916)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_17",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_18",
@@ -19056,7 +19056,7 @@
     "category": "literatura",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "În ce an a apărut opera „Poemele luminii” de Lucian Blaga?",
+    "question": "În ce an a apărut volumul Poemele luminii?",
     "options": [
       "1880",
       "1919",
@@ -19069,9 +19069,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Poemele luminii” de Lucian Blaga (1919)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_19",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "cult_author_20",
@@ -47150,7 +47150,7 @@
     "category": "arta",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a fost inaugurată Piramida de sticlă din curtea Muzeului Luvru din Paris?",
+    "question": "În ce an a fost inaugurată piramida de sticlă a Luvrului?",
     "options": [
       "1995",
       "2001",
@@ -47163,9 +47163,9 @@
     "sourceTitle": "Repertoriul Capodoperelor de Pictură, Sculptură și Arhitectură – Piramida de sticlă și metal din curtea Muzeului Luvru din Paris (arhitect I. M. Pei) (Arhitectură modernă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_arta_17",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_arta_ch_subj_17",
@@ -53662,7 +53662,7 @@
     "category": "cinematografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a avut premiera filmul istoric „Independența României”, primul lungmetraj artistic românesc?",
+    "question": "În ce an a avut premiera filmul Independența României?",
     "options": [
       "1922",
       "1932",
@@ -53675,9 +53675,9 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul istoric românesc „Independența României” regizat de Aristide Demetriade (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_4",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cinematografie_ch_subj_4",
@@ -53992,7 +53992,7 @@
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "Ce cineast român a câștigat Palme d’Or la Cannes în 1957 pentru animația „Scurtă istorie”?",
+    "question": "Ce cineast român a câștigat Palme d’Or la Cannes în 1957?",
     "options": [
       "Victor Iliu",
       "Elisabeta Bostan",
@@ -54005,9 +54005,9 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Scurtmetrajul de animație „Scurtă istorie” realizat de Ion Popescu-Gopo (Palme d'Or la Cannes) (Animație românească)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_6",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cinematografie_ch_comp_6_s2",
@@ -55114,7 +55114,7 @@
     "category": "cinematografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a avut premiera filmul clasic „Casablanca”, cu Humphrey Bogart și Ingrid Bergman?",
+    "question": "În ce an a apărut filmul Casablanca?",
     "options": [
       "1950",
       "1942",
@@ -55127,9 +55127,9 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Filmul „Casablanca” regizat de Michael Curtiz cu Humphrey Bogart și Ingrid Bergman (Cinema clasic mondial)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_13",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cinematografie_ch_subj_13",
@@ -56808,7 +56808,7 @@
     "category": "cinematografie",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a fost lansat primul film din seria de comedie „Brigada Diverse” (B.D.)?",
+    "question": "În ce an a apărut primul film Brigada Diverse?",
     "options": [
       "1978",
       "1964",
@@ -56821,9 +56821,9 @@
     "sourceTitle": "Centrul Național al Cinematografiei (CNC) & Istoria Filmului Mondial – Seria de filme de comedie „Brigada Diverse” (B.D. intră în acțiune) regizată de Mircea Drăgan (Cinema românesc)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cinematografie_23",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cinematografie_ch_subj_23",
@@ -61582,7 +61582,7 @@
     "category": "tehnologie",
     "difficulty": "mediu",
     "type": "choice",
-    "question": "Ce inginer și savant român a întemeiat o nouă știință tehnică numită teoria sonicității?",
+    "question": "Ce savant român a întemeiat teoria sonicității?",
     "options": [
       "Henri Coandă",
       "Petrache Poenaru",
@@ -61595,9 +61595,9 @@
     "sourceTitle": "Enciclopedia Invențiilor Tehnice, Aviației și Marilor Lucrări Inginerești – Teoria sonicității formulată de inginerul și savantul român Gogu Constantinescu (Inginerie mecanică)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_tehnologie_25",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_tehnologie_ch_comp_25_s1",
@@ -70888,7 +70888,7 @@
     "category": "cultura_generala",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a fost inclus centrul istoric al Cetății Sighișoara în Patrimoniul Mondial UNESCO?",
+    "question": "În ce an a intrat cetatea Sighișoara în patrimoniul UNESCO?",
     "options": [
       "1995",
       "2007",
@@ -70901,9 +70901,9 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Includerea Cetății Medievale a Sighișoarei în Patrimoniul Mondial UNESCO (Patrimoniu UNESCO)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_6",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cultura_generala_ch_subj_6",
@@ -71174,7 +71174,7 @@
     "category": "cultura_generala",
     "difficulty": "usor",
     "type": "choice",
-    "question": "În ce an a fost înscris Peisajul Cultural Minier Roșia Montană în Patrimoniul Mondial UNESCO?",
+    "question": "În ce an a intrat Roșia Montană în patrimoniul UNESCO?",
     "options": [
       "2016",
       "2023",
@@ -71187,9 +71187,9 @@
     "sourceTitle": "Patrimoniul Mondial UNESCO, Academia Română și Instituții Naționale – Includerea Peisajului Cultural Minier Roșia Montană în Patrimoniul Mondial UNESCO (Patrimoniu UNESCO)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_extra_cultura_generala_8",
-    "reviewStatus": "disabled",
-    "isDisabled": true,
-    "verified": false
+    "reviewStatus": "approved",
+    "isDisabled": false,
+    "verified": true
   },
   {
     "id": "extra_cultura_generala_ch_subj_8",
