@@ -618,7 +618,7 @@ test('Test 7: fluxul complet de Război Individual (1 contra 1 pe rând) pentru 
   assert.equal(activeCq.resolved, true);
   assert.equal(battle1.outcome, 'attacker_won');
   assert.ok(game.warRound.lastBattleResult);
-  assert.equal(game.warRound.lastBattleResult?.headline, 'Atac reușit');
+  assert.equal(game.warRound.lastBattleResult?.headline, 'Turn distrus — 2/3 rămase');
 
   // Advance to the next player's attack turn in the same round
   (gm as any).advanceToNextWarTurnOrRound(game);
