@@ -2673,11 +2673,22 @@ test('V9.3 Test 34: Toate întrebările choice aprobate sunt scurte (<= 14 cuvin
   )!;
   gm.selectTerritory(room.roomId, 'u_timer15_p2', base2.id);
 
-  // Wait for the real 1500ms post-base-selection timeout to trigger triggerNextConquestQuestion(game)
-  await new Promise((r) => setTimeout(r, 1600));
+  // The current flow asks the player to pick a legal neutral territory first;
+  // selecting it starts the 15-second question immediately.
+  const conquestGame = gm.getRoom(room.roomId)!;
+  assert.equal(conquestGame.phase, 'conquest', 'După alegerea bazelor începe faza de cucerire');
+  const picker = conquestGame.players.find((p) => p.id === conquestGame.conquestPickerId);
+  assert.ok(picker, 'Este desemnat jucătorul care alege primul teritoriu');
+  const target = Object.values(conquestGame.territories).find(
+    (t) => canTargetTerritory(t.id, picker, conquestGame.territories, 'conquest').allowed
+  );
+  assert.ok(target, 'Jucătorul poate alege un teritoriu neutru legal');
+  const selection = gm.selectTerritory(room.roomId, picker.id, target.id);
+  assert.equal(selection.success, true, 'Alegerea țintei pornește întrebarea de cucerire');
 
-  assert.ok(game.currentQuestion, 'Întrebarea de cucerire a pornit după timeout-ul de tranziție');
-  assert.equal(game.currentQuestion.durationSeconds, 15, 'Timerul întrebărilor trivia este de exact 15 secunde');
+  const activeQuestion = gm.getRoom(room.roomId)?.currentQuestion;
+  assert.ok(activeQuestion, 'Întrebarea pornește după selectarea teritoriului');
+  assert.equal(activeQuestion.durationSeconds, 15, 'Timerul întrebărilor trivia este de exact 15 secunde');
   (gm as any).clearRoomTimers(room.roomId);
 });
 
