@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS questions (
   difficulty VARCHAR(32) NOT NULL DEFAULT 'mediu',
   type VARCHAR(32) NOT NULL CHECK (type IN ('choice', 'estimation')),
   question TEXT NOT NULL,
-  normalized_fingerprint TEXT NOT NULL UNIQUE,
+  normalized_fingerprint TEXT NOT NULL,
   fact_key VARCHAR(160) NOT NULL,
   options_json JSONB,
   correct_answer_index SMALLINT,
@@ -57,6 +57,12 @@ CREATE TABLE IF NOT EXISTS questions (
 
 CREATE INDEX IF NOT EXISTS idx_questions_selection ON questions (review_status, is_disabled, type, category);
 CREATE INDEX IF NOT EXISTS idx_questions_fact_key ON questions (fact_key);
+
+-- Active prompts must be unique; the archived bank intentionally retains inactive legacy duplicates.
+ALTER TABLE questions DROP CONSTRAINT IF EXISTS questions_normalized_fingerprint_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_questions_active_normalized_fingerprint
+  ON questions (normalized_fingerprint)
+  WHERE review_status = 'approved' AND is_disabled = FALSE;
 
 CREATE TABLE IF NOT EXISTS games (
   id VARCHAR(128) PRIMARY KEY,
