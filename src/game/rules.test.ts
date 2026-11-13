@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,6 +54,20 @@ import {
   validatePresetNeighborGraph,
 } from '../../server/romaniaMapData';
 import { GameManager } from '../../server/gameEngine';
+
+const testGameManagers = new Set<GameManager>();
+const createTestGameManager = () => {
+  const manager = new GameManager();
+  testGameManagers.add(manager);
+  return manager;
+};
+
+afterEach(() => {
+  for (const manager of testGameManagers) {
+    manager.shutdownAllRooms();
+  }
+  testGameManagers.clear();
+});
 import { INITIAL_QUESTIONS, normalizeQuestionText } from '../../server/questionsData';
 import { db, Database } from '../../server/db';
 import { generateToken } from '../../server/auth';
@@ -290,7 +304,7 @@ test('H3 & H4: poligoanele teritoriilor sunt dizolvate (fără sub-path-uri mult
 });
 
 test('H5 & H6: selecția și înghețarea hărții în funcție de numărul real de jucători la startGame (nu maxPlayers)', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   // Create a room with maxPlayers = 10, but only 1 human + 1 bot = 2 actual players
   const room = gm.createRoom({
     hostUser: { id: 'u1', username: 'Host', avatar: 'av_vlad' },
@@ -330,7 +344,7 @@ test('H5 & H6: selecția și înghețarea hărții în funcție de numărul real
 // ============================================================================
 
 test('Test 1 & 2: submitAnswer acceptă primul răspuns (inclusiv opțiunea 0) și respinge orice răspuns duplicat de la același jucător', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u1', username: 'Host', avatar: 'av_vlad' },
     maxPlayers: 3,
@@ -378,7 +392,7 @@ test('Test 1 & 2: submitAnswer acceptă primul răspuns (inclusiv opțiunea 0) �
 });
 
 test('Test 3: NO_RESPONSE la expirarea timpului NU incrementează wrongAnswers pentru jucătorii care nu au răspuns', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u1', username: 'Host', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -540,7 +554,7 @@ test('Test 6: evaluateWarBattleChoiceOutcome și evaluateWarBattleTiebreakOutcom
 });
 
 test('Test 7: fluxul complet de Război Individual (1 contra 1 pe rând) pentru 4 jucători (atacatorul activ alege ținta -> prezentare atac -> întrebare duel -> rezultat Atac reușit / Apărare reușită)', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'p1', username: 'P1', avatar: 'av_vlad' },
     maxPlayers: 4,
@@ -756,7 +770,7 @@ test('Test F & G (V4.0/V5.0): buildSimultaneousWarPairings formează DOAR duelur
 });
 
 test('Teste V5.0 RoundTracker (buildRoundDisplayItems): fără multiplicare N x N (4p -> 4 markeri, 10p -> 10 markeri) și ordine autoritativă din server', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
 
   const room4 = gm.createRoom({
     hostUser: { id: 'p1', username: 'P1', avatar: 'av_1' },
@@ -951,7 +965,7 @@ test('V8 Test 17: Banca canonică păstrează toate cele 6.241 înregistrări (1
 });
 
 test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția strictă în aceeași partidă și nu resetează niciodată usedQuestionIds la epuizare', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_nonrep', username: 'NonRepHost', avatar: 'av_vlad' },
     maxPlayers: 4,
@@ -985,7 +999,7 @@ test('V8 Test 18: GameManager.getRandomQuestion garantează non-repetiția stric
 });
 
 test('V8 Test 19: Preflight Question Budget în startGame blochează pornirea meciului dacă toate întrebările disponibile sunt dezactivate și permite pornirea cu banca canonică', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_budget', username: 'BudgetHost', avatar: 'av_vlad' },
     maxPlayers: 10,
@@ -1048,7 +1062,7 @@ test('V8 Test 20: Sincronizarea ceasului cu serverul (computeClockOffsetSample, 
 });
 
 test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, create/join room, base_selection, submit_answer cu questionInstanceId, blocare duplicat și opțiunea 0)', async () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const httpServer = http.createServer();
   const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
   setupSocketHandlers(io, gm);
@@ -1252,7 +1266,7 @@ test('V8 Test 21: Integrare multiplayer reală Socket.IO (time_sync_request, cre
 // ============================================================================
 
 test('V9 Test 22: Lovirea unui turn de cetate (castleTowers > 1) acordă +400 puncte în attackBonusPoints și le păstrează după recalculatePlayerScores', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'p_atk', username: 'AtacatorCetate', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -1356,7 +1370,7 @@ test('V9 Test 23: Audit editorial V9 (întrebări active reviewStatus === approv
   }
 
   // Verify factKey non-repetition across 160 draws in the same match
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_fk', username: 'FactKeyHost', avatar: 'av_vlad' },
     maxPlayers: 4,
@@ -1411,7 +1425,7 @@ test('V9 Test 24: Database.normalizeUsersMap convertește users: [] în {} și d
 });
 
 test('V9 Test 25: Politica anti-blocaj la alocarea teritoriilor neutre (maxim 2 reîncercări la NO_RESPONSE, apoi alocare deterministă)', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_alloc1', username: 'Alloc1', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -1459,7 +1473,7 @@ test('V9 Test 25: Politica anti-blocaj la alocarea teritoriilor neutre (maxim 2 
 
 test('V9 Test 26: Simulare deterministă a fluxului complet pentru 2, 3, 4, 6, 8 și 10 jucători (fără duplicate de question.id sau factKey)', () => {
   for (const playerCount of [2, 3, 4, 6, 8, 10]) {
-    const gm = new GameManager();
+    const gm = createTestGameManager();
     const room = gm.createRoom({
       hostUser: { id: 'host_sim', username: 'SimHost', avatar: 'av_vlad' },
       maxPlayers: playerCount,
@@ -2181,8 +2195,8 @@ test('V9.1 Test 29 [SIMULAT - Dublură în Memorie]: Scriptul de migrare execute
 test('V9.1 Test 30 [SIMULAT - Dublură în Memorie]: Serializare/restaurare simulată și recuperarea camerelor active (restoreGamesFromSnapshots) la restart', async () => {
   const pgPrimary = createInMemoryPostgresTestDouble();
   const pgRestoreTarget = createInMemoryPostgresTestDouble();
-  const gmBeforeRestart = new GameManager();
-  const gmAfterRestart = new GameManager();
+  const gmBeforeRestart = createTestGameManager();
+  const gmAfterRestart = createTestGameManager();
 
   setPostgresPoolForTesting(pgPrimary.pool);
   try {
@@ -2322,7 +2336,7 @@ test('V9.1 Test 31: Guvernanța băncii de întrebări – statut implicit draft
     );
     assert.equal(draftQ.verified, false, 'Întrebarea în draft trebuie să aibă verified = false');
 
-    const gm = new GameManager();
+    const gm = createTestGameManager();
     const room = gm.createRoom({
       hostUser: { id: 'u_gov', username: 'GovHost', avatar: 'av_vlad' },
       maxPlayers: 2,
@@ -2384,7 +2398,7 @@ test('V9.3 Test 32: Alegerea teritoriilor impune vecinătatea strictă în conqu
   assert.equal(adjAllocation.allowed, true, 'Țintă neutră adiacentă acceptată în allocation');
 
   // 3. Server-side enforcement & dynamic neighbor expansion after claiming a territory
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'p_adj1', username: 'Jucator1', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -2478,7 +2492,7 @@ test('V9.3 Test 32: Alegerea teritoriilor impune vecinătatea strictă în conqu
 });
 
 test('V9.3 Test 33: Preluarea jocului de către bot la deconectare și revenirea atomică a jucătorului autentificat (toate cele 8 scenarii)', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
 
   // Scenariul 7: Deconectare și revenire în lobby (waiting) - locul este păstrat cu isConnected=false pentru reconectare
   const lobbyRoom = gm.createRoom({
@@ -2638,7 +2652,7 @@ test('V9.3 Test 34: Toate întrebările choice aprobate sunt scurte (<= 14 cuvin
   );
 
   // Verify startQuestion uses 15 seconds timer after completing base selection and waiting for the 1.5s transition timer
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_timer15', username: 'Timer15Host', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -2682,7 +2696,7 @@ test('V9.3 Test 35: Jurnalul de audit admin, închiderea forțată a unei camere
   assert.ok(logs.some((l) => l.id === auditEntry.id && l.action === 'USER_ADJUST_STATS'));
 
   // 2. Test forceCloseRoom in GameManager
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'u_fc', username: 'ForceCloseHost', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -2797,7 +2811,7 @@ test('V9.4 Test 36: Regresie întrebări CONQUIZ — fără paranteze/metadate (
   assert.equal(SCORING.ALLOCATION, 300);
   assert.equal(SCORING.WAR_DUEL, 400);
 
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   const room = gm.createRoom({
     hostUser: { id: 'p_flow1', username: 'Flow1', avatar: 'av_vlad' },
     maxPlayers: 2,
@@ -3325,7 +3339,7 @@ test('V9.6 Test 38: Flux de atac individual (ATAC: [Atacator] atacă [Teritoriu]
 });
 
 test('V10 Test 39: Asediu continuu al bazei (3 -> 2 -> 1 -> 0 turnuri), regenerarea unui turn (+1 turn pe tura proprie), departajare numerică în duel, fallback neadiacent în conquest + allocation, camere publice/private și mod Spectator', () => {
-  const gm = new GameManager();
+  const gm = createTestGameManager();
 
   // 1. Camere publice vs camere private și mod Spectator
   const pubRoom = gm.createRoom({
@@ -3629,7 +3643,7 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
   // =========================================================================
   // 2. INSTRUCȚIUNEA DE CUCERIRE APARE NUMAI CÂND E MOMENTUL (canPlayerSelectTerritoryNow)
   // =========================================================================
-  const gm = new GameManager();
+  const gm = createTestGameManager();
   try {
     const cRoom = gm.createRoom({
       hostUser: { id: 'u_turn_1', username: 'Jucator1', avatar: 'av_vlad' },
