@@ -15,23 +15,22 @@
   "duplicateIds": 0,
   "duplicateActiveTexts": 0,
   "activeCategoryBreakdown": {
-    "arta": 45,
-    "biologie": 58,
+    "geografie": 410,
+    "cultura_generala": 119,
     "chimie": 33,
-    "cinematografie": 73,
-    "cultura_generala": 117,
     "fizica": 26,
-    "geografie": 444,
-    "informatica": 31,
-    "istorie": 149,
-    "literatura": 80,
-    "muzica": 63,
     "sport": 126,
-    "tehnologie": 49
+    "cinematografie": 85,
+    "muzica": 63,
+    "literatura": 86,
+    "arta": 50,
+    "istorie": 164,
+    "biologie": 58,
+    "tehnologie": 49,
+    "informatica": 25
   },
   "activeDifficultyBreakdown": {
-    "greu": 6,
-    "mediu": 471,
-    "usor": 817
+    "usor": 790,
+    "mediu": 504
   }
 }
