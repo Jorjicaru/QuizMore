@@ -766,17 +766,17 @@
   },
   {
     "id": "est_geo_area_db",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "La câți metri de poartă se află punctul de penalty în fotbal?",
-    "targetNumber": 11,
-    "unit": "metri",
-    "explanation": "Punctul de pedeapsă în fotbal se află la 11 metri de linia porții.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Lovitur%C4%83_de_la_11_metri",
-    "sourceTitle": "Lovitură de la 11 metri — Wikipedia",
+    "question": "Câți membri avea formația Beatles în componența clasică?",
+    "targetNumber": 4,
+    "unit": "",
+    "explanation": "Componența clasică avea patru membri.",
+    "sourceUrl": "https://academic.oup.com/reference/62400/reference-article-abstract/555408789",
+    "sourceTitle": "The Beatles — Oxford Reference",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_penalty_spot_11",
+    "factKey": "fact_est_v92_beatles_four",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
@@ -851,34 +851,34 @@
   },
   {
     "id": "est_geo_zip_dj",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "literatura",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți kilometri măsoară rotunjit proba olimpică de maraton?",
-    "targetNumber": 42,
-    "unit": "kilometri",
-    "explanation": "Distanța oficială a maratonului este de 42,195 km (rotunjit 42 km).",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Maraton",
-    "sourceTitle": "Maraton — Wikipedia",
+    "question": "Câte cărți cuprinde seria principală Harry Potter?",
+    "targetNumber": 7,
+    "unit": "",
+    "explanation": "Seria principală este alcătuită din șapte cărți.",
+    "sourceUrl": "https://www.bloomsbury.com/uk/discover/harry-potter/resources/series-overview/",
+    "sourceTitle": "Harry Potter series overview — Bloomsbury",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_marathon_km_42",
+    "factKey": "fact_est_v92_potter_seven",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_area_gl",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri lungime are un bazin olimpic de înot?",
-    "targetNumber": 50,
-    "unit": "metri",
-    "explanation": "Un bazin olimpic standard are lungimea de 50 de metri.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Bazin_olimpic",
-    "sourceTitle": "Bazin olimpic — Wikipedia",
+    "question": "Câte inele sunt în simbolul olimpic?",
+    "targetNumber": 5,
+    "unit": "",
+    "explanation": "Simbolul olimpic este format din cinci inele întrețesute.",
+    "sourceUrl": "https://www.olympics.com/ioc/olympic-rings",
+    "sourceTitle": "Olympic Rings — IOC",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_olympic_pool_50",
+    "factKey": "fact_est_v92_olympic_rings_five",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
@@ -1141,101 +1141,101 @@
   {
     "id": "est_geo_pop_il",
     "category": "geografie",
-    "difficulty": "mediu",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "La câte grade Celsius fierbe apa la presiune atmosferică normală?",
-    "targetNumber": 100,
-    "unit": "grade",
-    "explanation": "Apa pură fierbe la 100 °C la presiunea atmosferică standard.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Punct_de_fierbere",
-    "sourceTitle": "Punct de fierbere — Wikipedia",
+    "question": "Câte planete are Sistemul Solar?",
+    "targetNumber": 8,
+    "unit": "",
+    "explanation": "NASA enumeră opt planete în Sistemul Solar.",
+    "sourceUrl": "https://science.nasa.gov/solar-system/planets/",
+    "sourceTitle": "About the Planets — NASA",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_water_boiling_100",
+    "factKey": "fact_est_v92_planets_eight",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_zip_il",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri altitudine are Vârful Moldoveanu din Munții Făgăraș?",
-    "targetNumber": 2544,
-    "unit": "metri",
-    "explanation": "Vârful Moldoveanu este cel mai înalt din România, având 2.544 m.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/V%C3%A2rful_Moldoveanu",
-    "sourceTitle": "Vârful Moldoveanu — Wikipedia",
+    "question": "Câte piese are fiecare jucător la începutul unei partide de șah?",
+    "targetNumber": 16,
+    "unit": "",
+    "explanation": "La început, fiecare jucător are șaisprezece piese.",
+    "sourceUrl": "https://handbook.fide.com/chapter/e012023",
+    "sourceTitle": "Laws of Chess — FIDE",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_moldoveanu_2544",
+    "factKey": "fact_est_v92_chess_sixteen",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_area_is",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "sport",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri altitudine are Vârful Omu din Munții Bucegi?",
-    "targetNumber": 2505,
-    "unit": "metri",
-    "explanation": "Vârful Omu din Masivul Bucegi are altitudinea de 2.505 m.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/V%C3%A2rful_Omu,_Mun%C8%9Bii_Bucegi",
-    "sourceTitle": "Vârful Omu (Munții Bucegi) — Wikipedia",
+    "question": "Câți jucători are o echipă de fotbal pe teren?",
+    "targetNumber": 11,
+    "unit": "",
+    "explanation": "O echipă poate avea cel mult unsprezece jucători pe teren.",
+    "sourceUrl": "https://theifab.com/laws/latest/the-players/",
+    "sourceTitle": "Law 3: The Players — IFAB",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_varful_omu_2505",
+    "factKey": "fact_est_v92_football_eleven",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_pop_is",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri altitudine are Vârful Everest din Himalaya?",
-    "targetNumber": 8848,
-    "unit": "metri",
-    "explanation": "Everestul este cel mai înalt vârf de pe Pământ, cu 8.848 m.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Everest",
-    "sourceTitle": "Vârful Everest — Wikipedia",
+    "question": "Câte cărți are un pachet standard de joc?",
+    "targetNumber": 52,
+    "unit": "",
+    "explanation": "Pachetul standard are cincizeci și două de cărți.",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Standard_52-card_deck",
+    "sourceTitle": "Standard 52-card deck — Wikipedia",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_everest_8848",
+    "factKey": "fact_est_v92_deck_fifty_two",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_zip_is",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri altitudine are vârful Mont Blanc din Munții Alpi?",
-    "targetNumber": 4808,
-    "unit": "metri",
-    "explanation": "Mont Blanc este cel mai înalt vârf din Alpi, având aproximativ 4.808 m.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Mont_Blanc",
-    "sourceTitle": "Mont Blanc — Wikipedia",
+    "question": "Câte suite are un pachet standard de cărți?",
+    "targetNumber": 4,
+    "unit": "",
+    "explanation": "Pachetul standard are patru suite.",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Standard_52-card_deck",
+    "sourceTitle": "Standard 52-card deck — Wikipedia",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_mont_blanc_4808",
+    "factKey": "fact_est_v92_card_suits_four",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_area_if",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți kilometri măsoară sectorul românesc al fluviului Dunărea?",
-    "targetNumber": 1075,
-    "unit": "kilometri",
-    "explanation": "Pe teritoriul României, între Baziaș și Sulina, Dunărea măsoară 1.075 km.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Dun%C4%83rea",
-    "sourceTitle": "Fluviul Dunărea — Wikipedia",
+    "question": "Câte muze sunt în mitologia greacă tradițională?",
+    "targetNumber": 9,
+    "unit": "",
+    "explanation": "Tradiția greacă a consacrat numărul de nouă muze.",
+    "sourceUrl": "https://www.theoi.com/Ouranios/Mousai.html",
+    "sourceTitle": "Muses — Theoi Project",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_danube_ro_1075",
+    "factKey": "fact_est_v92_muses_nine",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
@@ -1243,33 +1243,33 @@
   {
     "id": "est_geo_pop_if",
     "category": "geografie",
-    "difficulty": "mediu",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți kilometri are în total fluviul Dunărea de la izvor la vărsare?",
-    "targetNumber": 2860,
-    "unit": "kilometri",
-    "explanation": "Lungimea totală a fluviului Dunărea este de aproximativ 2.860 km.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Dun%C4%83rea",
-    "sourceTitle": "Fluviul Dunărea — Wikipedia",
+    "question": "Câte planete pitice recunoaște oficial NASA în Sistemul Solar?",
+    "targetNumber": 5,
+    "unit": "",
+    "explanation": "NASA enumeră cinci planete pitice recunoscute oficial.",
+    "sourceUrl": "https://science.nasa.gov/solar-system/planets/",
+    "sourceTitle": "About the Planets — NASA",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_danube_total_2860",
+    "factKey": "fact_est_v92_dwarf_planets_five",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
   },
   {
     "id": "est_geo_zip_if",
-    "category": "geografie",
-    "difficulty": "mediu",
+    "category": "cultura_generala",
+    "difficulty": "usor",
     "type": "estimation",
-    "question": "Câți metri înălțime are Barajul Vidraru de pe râul Argeș?",
-    "targetNumber": 166,
-    "unit": "metri",
-    "explanation": "Barajul în arc de la Vidraru are o înălțime de 166 de metri.",
-    "sourceUrl": "https://ro.wikipedia.org/wiki/Barajul_Vidraru",
-    "sourceTitle": "Barajul Vidraru — Wikipedia",
+    "question": "Câte luni are anul calendaristic obișnuit?",
+    "targetNumber": 12,
+    "unit": "",
+    "explanation": "Calendarul gregorian are douăsprezece luni.",
+    "sourceUrl": "https://www.britannica.com/science/Gregorian-calendar",
+    "sourceTitle": "Gregorian calendar — Encyclopaedia Britannica",
     "sourceCheckedAt": "2026-11-13",
-    "factKey": "fact_est_vidraru_height_166",
+    "factKey": "fact_est_v92_calendar_twelve",
     "reviewStatus": "approved",
     "verified": true,
     "isDisabled": false
@@ -11011,9 +11011,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Viștea Mare (Munții Făgăraș)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_3",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_4",
@@ -11062,9 +11062,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Păpușa (Munții Retezat)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_6",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_7",
@@ -11113,9 +11113,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Gugu (Munții Godeanu)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_9",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_10",
@@ -11130,9 +11130,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Cindrel (Munții Cindrel)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_10",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_11",
@@ -11147,9 +11147,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Șureanu (Munții Șureanu)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_11",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_12",
@@ -11164,9 +11164,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Ciucaș (Munții Ciucaș)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_12",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_13",
@@ -11181,9 +11181,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Toaca (Masivul Ceahlău)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_13",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_14",
@@ -11198,9 +11198,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Ocolașul Mare (Masivul Ceahlău)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_14",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_15",
@@ -11215,9 +11215,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Rarău (Munții Rarău)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_15",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_16",
@@ -11249,9 +11249,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Vlădeasa (Munții Apuseni)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_17",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_18",
@@ -11266,9 +11266,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Muntele Mare (Munții Apuseni)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_18",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_19",
@@ -11283,9 +11283,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Harghita-Mădăraș (Munții Harghita)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_19",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_20",
@@ -11300,9 +11300,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Goru (Munții Vrancei)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_20",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_21",
@@ -11317,9 +11317,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Vârful Penteleu (Munții Buzăului)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_21",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_22",
@@ -11470,9 +11470,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Sectorul românesc al fluviului Dunărea (Baziaș - Sulina)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_30",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_31",
@@ -11487,9 +11487,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Mureș (pe teritoriul României) (Izvorul Mureșului - Nădlac)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_31",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_32",
@@ -11504,9 +11504,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Prut (pe granița României) (Orotsk - Giurgiulești)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_32",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_33",
@@ -11538,9 +11538,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Siret (pe teritoriul României) (Siret - Galați)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_34",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_35",
@@ -11555,9 +11555,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Ialomița (Munții Bucegi - Dunăre)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_35",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_36",
@@ -11572,9 +11572,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Someș (Dej - Ungaria)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_36",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_37",
@@ -11589,9 +11589,9 @@
     "sourceTitle": "Atlasul Geografic fizic – Râul Argeș (Munții Făgăraș - Oltenița)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_feat_val_37",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_38",
@@ -11623,9 +11623,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Nadia Comăneci (Montreal, 1976)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_1",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_2",
@@ -11640,9 +11640,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Steaua București (Sevilla, 1986)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_2",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_3",
@@ -11657,9 +11657,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Gheorghe Hagi (Monte Carlo, 1987)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_3",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_4",
@@ -11674,9 +11674,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – România (Pasadena, 1994)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_4",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_4",
@@ -11691,9 +11691,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – România (Pasadena, 1994)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_4",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_5",
@@ -11708,9 +11708,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Simona Halep (Paris, 2018)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_5",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_5",
@@ -11725,9 +11725,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Simona Halep (Paris, 2018)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_5",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_6",
@@ -11742,9 +11742,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Simona Halep (Londra, 2019)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_6",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_6",
@@ -11759,9 +11759,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Simona Halep (Londra, 2019)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_6",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_7",
@@ -11776,9 +11776,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Ilie Năstase (Paris, 1973)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_7",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_7",
@@ -11793,9 +11793,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Ilie Năstase (Paris, 1973)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_7",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_8",
@@ -11810,9 +11810,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Virginia Ruzici (Paris, 1978)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_8",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_8",
@@ -11827,9 +11827,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Virginia Ruzici (Paris, 1978)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_8",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_9",
@@ -11844,9 +11844,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – David Popovici (Paris, 2024)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_9",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_9",
@@ -11861,9 +11861,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – David Popovici (Paris, 2024)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_9",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_10",
@@ -11878,9 +11878,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Ivan Patzaichin (Los Angeles, 1984)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_10",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_11",
@@ -11895,9 +11895,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Constantina Diță (Beijing, 2008)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_11",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_11",
@@ -11912,9 +11912,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Constantina Diță (Beijing, 2008)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_11",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_12",
@@ -11929,9 +11929,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Gabriela Szabo (Sydney, 2000)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_12",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_13",
@@ -11946,9 +11946,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Spyridon Louis (Atena, 1896)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_13",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_14",
@@ -11963,9 +11963,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Uruguay (Montevideo, 1930)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_14",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_15",
@@ -11980,9 +11980,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Usain Bolt (Berlin, 2009)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_15",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_15",
@@ -11997,9 +11997,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Usain Bolt (Berlin, 2009)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_15",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_16",
@@ -12014,9 +12014,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Argentina (Lusail, 2022)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_16",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_metric_16",
@@ -12031,9 +12031,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Argentina (Lusail, 2022)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_metric_16",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_17",
@@ -12048,9 +12048,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Elisabeta Lipă (Atena, 2004)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_17",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_18",
@@ -12065,9 +12065,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Cătălina Ponor (Atena, 2004)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_18",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_19",
@@ -12082,9 +12082,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – Sandra Izbașa (Londra, 2012)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_19",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_sport_yr_20",
@@ -12099,9 +12099,9 @@
     "sourceTitle": "Istoria Sportului și Olimpismului – România (Handbal) (Berlin, 1974)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_sport_yr_20",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_1",
@@ -12116,9 +12116,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare C (creat de Dennis Ritchie la Bell Labs) (Dennis Ritchie)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_1",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_1",
@@ -12133,9 +12133,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare C (creat de Dennis Ritchie la Bell Labs) (Dennis Ritchie)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_1",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_2",
@@ -12150,9 +12150,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – World Wide Web (WWW), propus și dezvoltat la CERN (Tim Berners-Lee)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_2",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_2",
@@ -12167,9 +12167,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – World Wide Web (WWW), propus și dezvoltat la CERN (Tim Berners-Lee)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_2",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_3",
@@ -12184,9 +12184,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Nucleul sistemului de operare Linux (versiunea 0.01) (Linus Torvalds)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_3",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_3",
@@ -12201,9 +12201,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Nucleul sistemului de operare Linux (versiunea 0.01) (Linus Torvalds)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_3",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_4",
@@ -12218,9 +12218,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare Python (lansat public la CWI) (Guido van Rossum)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_4",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_4",
@@ -12235,9 +12235,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare Python (lansat public la CWI) (Guido van Rossum)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_4",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_5",
@@ -12252,9 +12252,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul de programare Java (lansat de Sun Microsystems) (James Gosling)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_5",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_5",
@@ -12286,9 +12286,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul JavaScript (creat inițial în 10 zile la Netscape) (Brendan Eich)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_6",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_6",
@@ -12303,9 +12303,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul JavaScript (creat inițial în 10 zile la Netscape) (Brendan Eich)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_6",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_7",
@@ -12320,9 +12320,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul C++ (C cu clase, creat la Bell Labs) (Bjarne Stroustrup)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_7",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_8",
@@ -12337,9 +12337,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Sistemul de control al versiunilor Git (Linus Torvalds)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_8",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_8",
@@ -12354,9 +12354,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Sistemul de control al versiunilor Git (Linus Torvalds)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_8",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_9",
@@ -12371,9 +12371,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Primul smartphone iPhone prezentat de Apple la Macworld (Steve Jobs)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_9",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_9",
@@ -12388,9 +12388,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Primul smartphone iPhone prezentat de Apple la Macworld (Steve Jobs)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_9",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_10",
@@ -12405,9 +12405,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Compania Microsoft fondată în Albuquerque (Bill Gates și Paul Allen)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_10",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_10",
@@ -12422,9 +12422,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Compania Microsoft fondată în Albuquerque (Bill Gates și Paul Allen)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_10",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_11",
@@ -12439,9 +12439,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Motorul de căutare Google fondat în California (Larry Page și Sergey Brin)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_11",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_11",
@@ -12456,9 +12456,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Motorul de căutare Google fondat în California (Larry Page și Sergey Brin)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_11",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_12",
@@ -12473,9 +12473,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul TypeScript lansat de Microsoft pentru aplicații scalabile (Anders Hejlsberg)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_12",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_12",
@@ -12490,9 +12490,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Limbajul TypeScript lansat de Microsoft pentru aplicații scalabile (Anders Hejlsberg)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_12",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_13",
@@ -12507,9 +12507,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Descoperirea penicilinei, primul antibiotic modern (Alexander Fleming)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_13",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_14",
@@ -12524,9 +12524,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Descoperirea efectului antidiabetic al extractului pancreatic (pancreina) (Nicolae Paulescu)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_14",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_15",
@@ -12541,9 +12541,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Determinarea structurii dublu-elicoidale a moleculei de ADN (James Watson și Francis Crick)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_15",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_16",
@@ -12558,9 +12558,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea Teoriei Restrânse a Relativității (E = mc²) (Albert Einstein)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_16",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_16",
@@ -12575,9 +12575,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea Teoriei Restrânse a Relativității (E = mc²) (Albert Einstein)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_16",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_17",
@@ -12592,9 +12592,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea lucrării Principia Mathematica și legea atracției universale (Isaac Newton)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_17",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_17",
@@ -12609,9 +12609,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Publicarea lucrării Principia Mathematica și legea atracției universale (Isaac Newton)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_metric_17",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_18",
@@ -12626,9 +12626,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Elaborarea Tabelului Periodic al Elementelor Chimice (Dmitri Mendeleev)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_18",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_yr_19",
@@ -12643,9 +12643,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Construirea aparatului experimental cu motor cu reacție Coandă-1910 (Henri Coandă)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_19",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_tech_metric_19",
@@ -12677,9 +12677,9 @@
     "sourceTitle": "Istoria Științei și Tehnologiei – Inventarea stiloului cu rezervor (condeiul portăreț fără sfârșit) (Petrache Poenaru)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_tech_yr_20",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_ar",
@@ -12694,9 +12694,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Arad",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_ar",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_bt",
@@ -12711,9 +12711,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Botoșani",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_bt",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_cl",
@@ -12728,9 +12728,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Călărași",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_cl",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_dj",
@@ -12745,9 +12745,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Dolj",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_dj",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_hd",
@@ -12762,9 +12762,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Hunedoara",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_hd",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_mh",
@@ -12779,9 +12779,9 @@
     "sourceTitle": "Anuarul Statistic al României – Comparație teritorială Alba și Mehedinți",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_geo_sum_area_ab_mh",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_ro_sum_area_ab_sm",
