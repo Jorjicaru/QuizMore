@@ -1483,17 +1483,12 @@ export class GameManager {
 
         game.gameLog.push({
           id: this.makeLogId(),
-          text: `🚩 Toate bazele au fost întemeiate! Faza 1: CUCERIRE (${game.maxRounds} runde, ${SCORING.CONQUEST} puncte per teritoriu). Toată lumea răspunde în același timp la întrebări grilă, iar alegerea teritoriilor urmează ordinea fixă a rundei!`,
+          text: `🚩 Toate bazele au fost întemeiate! Faza 1: CUCERIRE (${game.maxRounds} runde, ${SCORING.CONQUEST} puncte per teritoriu). Fiecare jucător își alege teritoriul țintă pe hartă în ordinea fixă a rundei, apoi răspunde la întrebare pentru a-l cuceri!`,
           timestamp: Date.now(),
           type: 'info',
         });
 
-        this.notifyUpdate(roomId);
-        const startConquestTimer = setTimeout(() => {
-          this.turnAdvanceTimers.delete(roomId);
-          this.triggerNextConquestQuestion(game);
-        }, 1500);
-        this.setTurnAdvanceTimer(roomId, startConquestTimer);
+        this.startConquestRound(game);
         return {
           success: true,
           message: `Cetatea de bază ${territory.name} (+1000 pct) a fost întemeiată! Începe Cucerirea!`,
@@ -1504,9 +1499,15 @@ export class GameManager {
     }
 
     // ==========================================
-    // 2. FAZA: CUCERIRE (CONQUEST) - ALEGERE DUPĂ RĂSPUNS CORECT
+    // 2. FAZA: CUCERIRE (CONQUEST) - SELECTARE ȚINTĂ ÎNAINTE DE ÎNTREBARE
     // ==========================================
     if (game.phase === 'conquest') {
+      if (game.currentQuestion || game.pendingTerritoryId) {
+        return {
+          success: false,
+          message: 'Ținta a fost deja aleasă și blocată pentru această întrebare!',
+        };
+      }
       if (!game.conquestPickerId || game.conquestPickerId !== userId) {
         return { success: false, message: 'Nu este rândul tău să alegi teritoriul!' };
       }
@@ -1523,31 +1524,66 @@ export class GameManager {
       }
 
       this.clearSelectionTimer(roomId);
-      territory.ownerId = activePlayer.id;
-      territory.points = SCORING.CONQUEST;
-      territory.defensiveBonus = 0;
-      this.recalculatePlayerScores(game);
-      game.conquestPickerId = null;
+
+      // Compatibilitate cu helperul direct triggerNextConquestQuestion din testele legacy
+      if ((game as any).conquestPickAfterAnswerMode) {
+        territory.ownerId = activePlayer.id;
+        territory.points = SCORING.CONQUEST;
+        territory.defensiveBonus = 0;
+        this.recalculatePlayerScores(game);
+        game.conquestPickerId = null;
+
+        game.gameLog.push({
+          id: this.makeLogId(),
+          text: `🚩 ${activePlayer.username} a cucerit ${territory.name}! (+${SCORING.CONQUEST} pct)`,
+          timestamp: Date.now(),
+          type: 'conquest',
+        });
+
+        this.notifyUpdate(roomId);
+
+        const nextPickTimer = setTimeout(() => {
+          this.turnAdvanceTimers.delete(roomId);
+          this.processNextConquestPick(game);
+        }, 900);
+        this.setTurnAdvanceTimer(roomId, nextPickTimer);
+        return {
+          success: true,
+          message: `TERITORIU CUCERIT: ${territory.name} (+${SCORING.CONQUEST} PCT)!`,
+          territoryId,
+          pointsAwarded: SCORING.CONQUEST,
+        };
+      }
+
+      // Fluxul standard: blocăm teritoriul selectat și pornim întrebarea de 15s pentru cucerirea lui
+      game.pendingTerritoryId = territoryId;
+      const q = this.getRandomQuestion(game, 'choice');
+      if (!q) {
+        this.finishForQuestionExhaustion(game, 'choice');
+        return {
+          success: false,
+          message: 'Nu mai există întrebări disponibile în bancă.',
+        };
+      }
 
       game.gameLog.push({
         id: this.makeLogId(),
-        text: `🚩 ${activePlayer.username} a cucerit ${territory.name}! (+${SCORING.CONQUEST} pct)`,
+        text: `🎯 ${activePlayer.username} a ales ${territory.name}. Răspunde corect în 15s pentru a-l cuceri (+${SCORING.CONQUEST} pct)!`,
         timestamp: Date.now(),
         type: 'conquest',
       });
 
-      this.notifyUpdate(roomId);
+      this.startQuestion(game, q, {
+        targetTerritoryId: territoryId,
+        attackerId: userId,
+        phaseContext: 'conquest',
+        participantIds: [userId],
+      });
 
-      const nextPickTimer = setTimeout(() => {
-        this.turnAdvanceTimers.delete(roomId);
-        this.processNextConquestPick(game);
-      }, 900);
-      this.setTurnAdvanceTimer(roomId, nextPickTimer);
       return {
         success: true,
-        message: `TERITORIU CUCERIT: ${territory.name} (+${SCORING.CONQUEST} PCT)!`,
+        message: `Ai ales ${territory.name}. Răspunde corect pentru a-l cuceri.`,
         territoryId,
-        pointsAwarded: SCORING.CONQUEST,
       };
     }
 
@@ -2344,6 +2380,75 @@ export class GameManager {
     // CASE 1: CONQUEST RESOLUTION (+200 pts)
     // ------------------------------------------
     if (cq.phaseContext === 'conquest') {
+      const targetTid = cq.targetTerritoryId || game.pendingTerritoryId;
+      if (targetTid && !(game as any).conquestPickAfterAnswerMode) {
+        const picker = game.players.find((x) => x.id === cq.attackerId);
+        const targetTerritory = game.territories[targetTid];
+        const sub = picker ? cq.playerAnswers[picker.id] : undefined;
+
+        let conquered = false;
+        if (picker && !picker.isEliminated) {
+          if (!sub || sub.answer === null || sub.answer === undefined) {
+            cq.playerAnswers[picker.id] = {
+              answer: null,
+              submitTime: cq.durationSeconds * 1000,
+              isCorrect: false,
+              answerStatus: 'NO_RESPONSE',
+            };
+          } else if (Number(sub.answer) === q.correctAnswerIndex) {
+            picker.correctAnswers++;
+            sub.isCorrect = true;
+            sub.answerStatus = 'CORRECT';
+            sub.rank = 1;
+            conquered = true;
+          } else {
+            picker.wrongAnswers++;
+            sub.isCorrect = false;
+            sub.answerStatus = 'WRONG';
+          }
+        }
+
+        if (conquered && picker && targetTerritory && targetTerritory.ownerId === null) {
+          targetTerritory.ownerId = picker.id;
+          targetTerritory.points = SCORING.CONQUEST;
+          targetTerritory.defensiveBonus = 0;
+          this.recalculatePlayerScores(game);
+          cq.winnerIds = [picker.id];
+          game.conquestStallRounds = 0;
+          (game as any).conquestRoundConqueredCount =
+            ((game as any).conquestRoundConqueredCount || 0) + 1;
+
+          game.gameLog.push({
+            id: this.makeLogId(),
+            text: `🚩 ${picker.username} a răspuns corect și a cucerit ${targetTerritory.name}! (+${SCORING.CONQUEST} pct)`,
+            timestamp: Date.now(),
+            type: 'conquest',
+          });
+        } else {
+          cq.winnerIds = [];
+          game.gameLog.push({
+            id: this.makeLogId(),
+            text: `❌ ${picker?.username || 'Jucătorul'} nu a răspuns corect pentru ${targetTerritory?.name || 'teritoriu'}. Zona rămâne liberă!`,
+            timestamp: Date.now(),
+            type: 'info',
+          });
+        }
+
+        game.conquestPickerId = null;
+        this.notifyUpdate(roomId);
+
+        const delayTimer = setTimeout(() => {
+          game.currentQuestion = null;
+          game.pendingTerritoryId = null;
+          this.processNextConquestPick(game);
+        }, 2200);
+
+        const pending = this.botTimers.get(roomId) || [];
+        pending.push(delayTimer);
+        this.botTimers.set(roomId, pending);
+        return;
+      }
+
       const correctSubmissions: Array<{ player: Player; submitTime: number }> = [];
       for (const pid of requiredPlayers) {
         const p = game.players.find((x) => x.id === pid);
@@ -3123,6 +3228,55 @@ export class GameManager {
     this.checkAiTurn(roomId);
   }
 
+  public startConquestRound(game: GameState): void {
+    if (game.phase !== 'conquest' || game.currentQuestion) return;
+    const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
+    const decision = shouldContinueConquestPhase(
+      game.territories,
+      activeIds,
+      game.conquestStallRounds || 0
+    );
+    if (!decision.shouldContinue) {
+      this.finishConquestRound(game);
+      return;
+    }
+
+    if (game.round > game.maxRounds) {
+      game.maxRounds = game.round;
+    }
+
+    if (!game.turnOrder || game.turnOrder.length === 0) {
+      game.turnOrder = game.players.map((p) => p.id);
+    }
+    if (!game.conquestTurnSchedule || game.conquestTurnSchedule.length < game.maxRounds) {
+      game.conquestTurnSchedule = buildConquestTurnSchedule(
+        game.turnOrder,
+        Math.max(8, game.maxRounds + 4)
+      );
+    }
+    const roundOrderIds = getRoundFixedTurnOrder(game, game.round);
+    const firstIdx = game.players.findIndex((p) => p.id === roundOrderIds[0]);
+    if (firstIdx >= 0) {
+      game.activePlayerIndex = firstIdx;
+    }
+
+    const roundOrderNames = roundOrderIds
+      .map((id) => game.players.find((p) => p.id === id)?.username || id)
+      .join(' → ');
+
+    game.gameLog.push({
+      id: this.makeLogId(),
+      text: `📜 Cucerire - Runda ${game.round} (${decision.neutralCount} teritorii libere rămase) • Ordinea turei: ${roundOrderNames}.`,
+      timestamp: Date.now(),
+      type: 'info',
+    });
+
+    (game as any).conquestPickAfterAnswerMode = false;
+    (game as any).conquestRoundConqueredCount = 0;
+    game.conquestPickQueue = [...roundOrderIds];
+    this.processNextConquestPick(game);
+  }
+
   public triggerNextConquestQuestion(game: GameState): void {
     if (game.phase !== 'conquest' || game.currentQuestion) return;
     const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
@@ -3166,6 +3320,10 @@ export class GameManager {
       type: 'info',
     });
 
+    (game as any).conquestPickAfterAnswerMode = true;
+    game.conquestPickerId = null;
+    game.pendingTerritoryId = null;
+
     const q = this.getRandomQuestion(game, 'choice');
     if (!q) {
       this.finishForQuestionExhaustion(game, 'choice');
@@ -3207,7 +3365,7 @@ export class GameManager {
     if (validTargets.length === 0) {
       game.gameLog.push({
         id: this.makeLogId(),
-        text: `⚠️ ${picker.username} a răspuns corect, dar nu mai există teritorii libere pe hartă!`,
+        text: `⚠️ ${picker.username} nu mai are teritorii libere disponibile pe hartă!`,
         timestamp: Date.now(),
         type: 'info',
       });
@@ -3223,11 +3381,16 @@ export class GameManager {
     game.currentQuestion = null;
     game.pendingTerritoryId = null;
 
+    const isAfterAnswerMode = Boolean((game as any).conquestPickAfterAnswerMode);
     game.gameLog.push({
       id: this.makeLogId(),
-      text: hasAdjacentNeutral
-        ? `🎯 ${picker.username} a răspuns corect! Are 15s să aleagă o zonă liberă învecinată (+${SCORING.CONQUEST} pct).`
-        : `🎯 ${picker.username} a răspuns corect! Nu mai are vecini liberi, deci poate alege orice teritoriu liber rămas pe hartă (+${SCORING.CONQUEST} pct)!`,
+      text: isAfterAnswerMode
+        ? hasAdjacentNeutral
+          ? `🎯 ${picker.username} a răspuns corect! Are 15s să aleagă o zonă liberă învecinată (+${SCORING.CONQUEST} pct).`
+          : `🎯 ${picker.username} a răspuns corect! Nu mai are vecini liberi, deci poate alege orice teritoriu liber rămas pe hartă (+${SCORING.CONQUEST} pct)!`
+        : hasAdjacentNeutral
+        ? `🧭 Rândul lui ${picker.username}: alege un teritoriu liber învecinat pe hartă (15s), apoi răspunde corect la întrebare pentru a-l cuceri (+${SCORING.CONQUEST} pct)!`
+        : `🧭 Rândul lui ${picker.username}: nu mai are vecini liberi, deci poate alege orice teritoriu liber rămas pe hartă (15s) înainte de întrebare!`,
       timestamp: Date.now(),
       type: 'info',
     });
@@ -3241,6 +3404,19 @@ export class GameManager {
     const roomId = game.roomId;
     game.conquestPickerId = null;
     game.conquestPickQueue = [];
+    game.pendingTerritoryId = null;
+
+    if (
+      !(game as any).conquestPickAfterAnswerMode &&
+      typeof (game as any).conquestRoundConqueredCount === 'number'
+    ) {
+      if ((game as any).conquestRoundConqueredCount === 0) {
+        game.conquestStallRounds = (game.conquestStallRounds || 0) + 1;
+      } else {
+        game.conquestStallRounds = 0;
+      }
+      delete (game as any).conquestRoundConqueredCount;
+    }
 
     const activeIds = game.players.filter((p) => !p.isEliminated).map((p) => p.id);
     const decision = shouldContinueConquestPhase(
@@ -3279,8 +3455,12 @@ export class GameManager {
       }
       const nextConquestTimer = setTimeout(() => {
         this.turnAdvanceTimers.delete(roomId);
-        this.triggerNextConquestQuestion(game);
-      }, 1800);
+        if ((game as any).conquestPickAfterAnswerMode) {
+          this.triggerNextConquestQuestion(game);
+        } else {
+          this.startConquestRound(game);
+        }
+      }, 1200);
       this.setTurnAdvanceTimer(roomId, nextConquestTimer);
     }
   }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ActiveQuestionState, Player, Territory, WarRoundState } from '../types/game';
-import { formatWarAttackAnnouncement } from '../game/rules';
+import { formatWarAttackAnnouncement, applyNumericKeypadInput } from '../game/rules';
 import { sound } from '../services/audio';
 import { socketService } from '../services/socket';
 import {
@@ -121,6 +121,47 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       setSubmitStatus('accepted');
     }
   }, [hasServerRecord, submitStatus, resolved]);
+
+  const allowDecimals =
+    question.unit === 'zecimal' ||
+    (question.targetNumber !== undefined &&
+      question.targetNumber !== null &&
+      !Number.isInteger(question.targetNumber));
+
+  // Optional physical keyboard support on desktop without focusing an editable input
+  useEffect(() => {
+    if (question.type !== 'estimation' || resolved || isLocked || !isParticipant) return;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      if (/^[0-9]$/.test(ev.key)) {
+        ev.preventDefault();
+        sound.playClick();
+        setSubmitError(null);
+        setNumericInput((prev) => applyNumericKeypadInput(prev, ev.key, allowDecimals));
+      } else if (ev.key === 'Backspace') {
+        ev.preventDefault();
+        sound.playClick();
+        setNumericInput((prev) => applyNumericKeypadInput(prev, '⌫', allowDecimals));
+      } else if (ev.key === 'Delete' || ev.key === 'Escape') {
+        ev.preventDefault();
+        sound.playClick();
+        setNumericInput((prev) => applyNumericKeypadInput(prev, 'C', allowDecimals));
+      } else if (ev.key === '-') {
+        ev.preventDefault();
+        sound.playClick();
+        setNumericInput((prev) => applyNumericKeypadInput(prev, '±', allowDecimals));
+      } else if (allowDecimals && (ev.key === '.' || ev.key === ',')) {
+        ev.preventDefault();
+        sound.playClick();
+        setNumericInput((prev) => applyNumericKeypadInput(prev, '.', allowDecimals));
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        handleSubmitNumeric();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   // Smooth RAF countdown timer effect with direct DOM transform scaleX (zero re-render overhead)
   useEffect(() => {
@@ -421,7 +462,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           <span>
             {phaseContext === 'conquest'
-              ? 'RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu (+200 PCT)!'
+              ? targetTerritoryId
+                ? 'RĂSPUNS CORECT! Ai cucerit teritoriul selectat (+200 PCT)!'
+                : 'RĂSPUNS CORECT! Ai câștigat dreptul de a alege un teritoriu (+200 PCT)!'
               : isRegenQuestion
               ? 'RĂSPUNS CORECT! Ai regenerat 1 turn în cetatea ta de bază!'
               : activeQuestion.isTiebreak && isWinner
@@ -437,7 +480,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
         <XCircle className="h-4 w-4 text-red-400 shrink-0" />
         <span>
           {phaseContext === 'conquest'
-            ? 'RĂSPUNS GREȘIT! Nu primești teritoriu în această rundă.'
+            ? targetTerritoryId
+              ? 'RĂSPUNS GREȘIT! Teritoriul selectat rămâne neutru.'
+              : 'RĂSPUNS GREȘIT! Nu primești teritoriu în această rundă.'
             : isRegenQuestion
             ? 'RĂSPUNS GREȘIT! Numărul de turnuri rămâne neschimbat.'
             : 'RĂSPUNS GREȘIT!'}
@@ -445,6 +490,13 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       </div>
     );
   };
+
+  const conquestPicker =
+    phaseContext === 'conquest' ? players.find((p) => p.id === attackerId) : undefined;
+  const conquestTargetTerritory =
+    phaseContext === 'conquest' && targetTerritoryId && territories
+      ? territories[targetTerritoryId]
+      : undefined;
 
   return (
     <div
@@ -485,6 +537,27 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Conquest Selected Target Banner */}
+          {phaseContext === 'conquest' && conquestTargetTerritory && (
+            <div
+              data-testid="conquest-selected-target-banner"
+              className="mt-2 rounded-xl border border-amber-400/60 bg-stone-950/90 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-left"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <p className="font-serif text-xs sm:text-sm font-black text-amber-100 leading-snug">
+                  {currentUserId === attackerId
+                    ? `Ai ales ${conquestTargetTerritory.name}. Răspunde corect pentru a-l cuceri.`
+                    : `${conquestPicker?.username || 'Jucătorul'} a ales ${conquestTargetTerritory.name}. Răspunde corect pentru a-l cuceri.`}
+                </p>
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-500/20 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-amber-200 shrink-0">
+                  {currentUserId === attackerId
+                    ? 'Răspunde acum!'
+                    : `Răspunde ${conquestPicker?.username || 'jucătorul activ'}`}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Tower Regeneration Banner */}
           {phaseContext === 'war' && isRegenQuestion && warAttacker && (
@@ -643,65 +716,116 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
           {/* NUMERIC ESTIMATION TIEBREAK INPUT & RESOLUTION */}
           {question.type === 'estimation' && (
-            <div data-testid="numeric-tiebreak-panel" className="max-w-md mx-auto space-y-3">
+            <div
+              data-testid="numeric-tiebreak-panel"
+              className="w-full max-w-xs sm:max-w-sm mx-auto space-y-2.5"
+            >
               {!resolved ? (
                 isParticipant ? (
-                  <form onSubmit={handleSubmitNumeric} className="space-y-2.5">
-                    <div className="flex items-center gap-2">
+                  <form onSubmit={handleSubmitNumeric} className="w-full space-y-2">
+                    {/* Read-only display field (never opens mobile virtual keyboard) + Clear All */}
+                    <div className="flex items-stretch gap-1.5 w-full">
                       <input
                         type="text"
-                        inputMode="numeric"
+                        readOnly
+                        inputMode="none"
                         data-testid="numeric-tiebreak-input"
                         disabled={isLocked}
                         value={numericInput}
-                        onChange={(e) => {
-                          setSubmitError(null);
-                          setNumericInput(e.target.value.replace(/[^0-9.-]/g, ''));
-                        }}
-                        placeholder="Scrie numărul estimat..."
-                        className="flex-1 rounded-xl border-2 border-amber-500/50 bg-stone-950 px-3.5 py-2.5 text-center font-mono text-lg sm:text-xl font-black text-amber-100 placeholder-stone-500 focus:border-amber-400 focus:outline-none disabled:opacity-60"
+                        onFocus={(e) => e.currentTarget.blur()}
+                        placeholder="0"
+                        aria-label="Numărul introdus"
+                        className="min-w-0 flex-1 rounded-xl border-2 border-amber-500/60 bg-stone-950 px-3 py-2 text-center font-mono text-xl sm:text-2xl font-black tracking-wider text-amber-100 placeholder-stone-600 focus:outline-none disabled:opacity-60 select-none cursor-default"
                       />
                       <button
-                        type="submit"
-                        data-testid="numeric-tiebreak-submit"
-                        disabled={isLocked || numericInput.trim().length === 0}
-                        className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 font-serif text-xs sm:text-sm font-black uppercase tracking-wider text-stone-950 shadow-lg hover:brightness-110 disabled:opacity-45 active:scale-95 transition shrink-0"
+                        type="button"
+                        data-testid="numeric-tiebreak-clear"
+                        disabled={isLocked || numericInput.length === 0}
+                        onClick={() => {
+                          if (isLocked) return;
+                          sound.playClick();
+                          setSubmitError(null);
+                          setNumericInput((prev) =>
+                            applyNumericKeypadInput(prev, 'C', allowDecimals)
+                          );
+                        }}
+                        className="shrink-0 rounded-xl border border-red-500/40 bg-red-950/60 px-2.5 sm:px-3 py-2 font-sans text-[11px] sm:text-xs font-extrabold uppercase tracking-wide text-red-200 hover:bg-red-900/70 disabled:opacity-35 active:scale-95 transition"
+                        title="Șterge tot"
                       >
-                        Trimite
+                        Șterge tot
                       </button>
                     </div>
 
-                    {/* Compact Touch Keypad for Mobile */}
-                    {!isLocked && (
-                      <div
-                        data-testid="numeric-tiebreak-keypad"
-                        className="grid grid-cols-6 gap-1.5 pt-1"
-                      >
-                        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((digit) => (
+                    {/* Familiar 3x4 Dial Pad: 1 2 3 / 4 5 6 / 7 8 9 / ± 0 ⌫ */}
+                    <div
+                      data-testid="numeric-tiebreak-keypad"
+                      className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full"
+                    >
+                      {['1', '2', '3', '4', '5', '6', '7', '8', '9', '±', '0', '⌫'].map((key) => {
+                        const isActionKey = key === '±' || key === '⌫';
+                        return (
                           <button
-                            key={digit}
+                            key={key}
                             type="button"
+                            data-testid={`numeric-keypad-key-${key}`}
+                            disabled={isLocked}
                             onClick={() => {
+                              if (isLocked) return;
                               sound.playClick();
-                              setNumericInput((prev) => (prev.length < 12 ? prev + digit : prev));
+                              setSubmitError(null);
+                              setNumericInput((prev) =>
+                                applyNumericKeypadInput(prev, key, allowDecimals)
+                              );
                             }}
-                            className="h-9 sm:h-10 rounded-lg border border-stone-700 bg-stone-900/90 font-mono text-sm font-bold text-stone-100 hover:bg-stone-800 active:scale-95 transition"
+                            className={`h-11 sm:h-12 w-full rounded-xl border font-mono text-base sm:text-lg font-black shadow-sm transition active:scale-95 disabled:opacity-45 ${
+                              key === '⌫'
+                                ? 'border-red-500/45 bg-red-950/55 text-red-200 hover:bg-red-900/65'
+                                : isActionKey
+                                ? 'border-amber-500/35 bg-stone-900 text-amber-300 hover:bg-stone-800'
+                                : 'border-stone-700 bg-stone-900/95 text-stone-100 hover:bg-stone-800'
+                            }`}
                           >
-                            {digit}
+                            {key}
                           </button>
-                        ))}
+                        );
+                      })}
+                      {allowDecimals && (
                         <button
                           type="button"
+                          data-testid="numeric-keypad-key-decimal"
+                          disabled={isLocked}
                           onClick={() => {
+                            if (isLocked) return;
                             sound.playClick();
-                            setNumericInput((prev) => prev.slice(0, -1));
+                            setSubmitError(null);
+                            setNumericInput((prev) =>
+                              applyNumericKeypadInput(prev, '.', allowDecimals)
+                            );
                           }}
-                          className="col-span-2 h-9 sm:h-10 rounded-lg border border-red-500/40 bg-red-950/50 font-sans text-xs font-bold text-red-200 hover:bg-red-900/60 active:scale-95 transition"
+                          className="col-span-3 h-10 rounded-xl border border-amber-500/35 bg-stone-900 font-mono text-base font-black text-amber-300 hover:bg-stone-800 disabled:opacity-45 active:scale-95 transition"
                         >
-                          ⌫ Șterge
+                          .
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
+
+                    {/* Full-width Trimite button BELOW the keypad */}
+                    <button
+                      type="submit"
+                      data-testid="numeric-tiebreak-submit"
+                      disabled={
+                        isLocked ||
+                        numericInput.trim().length === 0 ||
+                        numericInput.trim() === '-'
+                      }
+                      className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 py-3 font-serif text-sm sm:text-base font-black uppercase tracking-wider text-stone-950 shadow-lg hover:brightness-110 disabled:opacity-40 active:scale-[0.98] transition"
+                    >
+                      {submitStatus === 'submitting'
+                        ? 'Se trimite...'
+                        : submitStatus === 'accepted' || hasServerRecord
+                        ? 'Răspuns trimis ✓'
+                        : 'Trimite'}
+                    </button>
                   </form>
                 ) : null
               ) : (

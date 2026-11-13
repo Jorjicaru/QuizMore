@@ -161,6 +161,28 @@ export class Database {
     if (pgData.questions.length === 0 && INITIAL_QUESTIONS.length > 0) {
       await seedQuestionsBatchToPostgres(INITIAL_QUESTIONS);
       pgData = (await loadAllFromPostgres()) || pgData;
+    } else if (pgData.questions.length > 0 && INITIAL_QUESTIONS.length > 0) {
+      const existingById = new Map(pgData.questions.map((q) => [q.id, q]));
+      const outOfSyncCanonical: Question[] = [];
+      for (const canonical of INITIAL_QUESTIONS) {
+        const current = existingById.get(canonical.id);
+        if (
+          !current ||
+          current.isDisabled !== canonical.isDisabled ||
+          current.reviewStatus !== canonical.reviewStatus ||
+          current.question !== canonical.question ||
+          current.factKey !== canonical.factKey ||
+          current.targetNumber !== canonical.targetNumber ||
+          current.correctAnswerIndex !== canonical.correctAnswerIndex ||
+          JSON.stringify(current.options ?? null) !== JSON.stringify(canonical.options ?? null)
+        ) {
+          outOfSyncCanonical.push(canonical);
+        }
+      }
+      if (outOfSyncCanonical.length > 0) {
+        await seedQuestionsBatchToPostgres(outOfSyncCanonical);
+        pgData = (await loadAllFromPostgres()) || pgData;
+      }
     }
 
     const adminResult = this.addConfiguredAdmin(pgData);

@@ -65,6 +65,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
 
   const prevTerritoriesRef = useRef<Record<string, Territory> | null>(null);
   const prevWarRoundRef = useRef<WarRoundState | null | undefined>(null);
+  const seenTransitionKeysRef = useRef<Set<string>>(new Set());
 
   // Zoom & Pan state (Initial state is Fit to Screen: zoom = 1, pan = 0,0)
   const [zoom, setZoom] = useState<number>(1);
@@ -106,7 +107,7 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
     const prevW = prevWarRoundRef.current;
 
     if (prevT) {
-      const detected = detectTerritoryMapTransitions({
+      const rawDetected = detectTerritoryMapTransitions({
         prevTerritories: prevT,
         nextTerritories: territories,
         prevWarRound: prevW,
@@ -114,6 +115,13 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         players,
         nowMs: Date.now(),
         prefersReducedMotion,
+      });
+
+      const detected = rawDetected.filter((tr) => {
+        const key = tr.dedupKey || tr.id;
+        if (seenTransitionKeysRef.current.has(key)) return false;
+        seenTransitionKeysRef.current.add(key);
+        return true;
       });
 
       if (detected.length > 0) {
@@ -126,8 +134,8 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
         });
 
         const cleanupDelay = Math.max(
-          650,
-          ...detected.map((d) => (d.durationMs > 0 ? d.durationMs + 120 : 650))
+          750,
+          ...detected.map((d) => (d.durationMs > 0 ? d.durationMs + 220 : 750))
         );
         const timer = window.setTimeout(() => {
           setActiveTransitions((current) => {
@@ -1209,50 +1217,56 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                         fill="#0c0a09"
                         fillOpacity="0.92"
                         stroke={isTowerHit ? '#fb7185' : '#f59e0b'}
-                        strokeWidth="1.1"
+                        strokeWidth={isTowerHit ? '1.8' : '1.1'}
                       />
                       {[0, 1, 2].map((idx) => {
                         const intact = idx < intactCount;
+                        const isFallingTower = Boolean(isTowerHit && idx === intactCount);
                         const posX = (idx - 1) * 12;
                         return (
                           <g
                             key={idx}
                             data-testid={`castle-tower-${t.id}-${idx}`}
                             data-intact={intact ? 'true' : 'false'}
+                            data-falling={isFallingTower ? 'true' : 'false'}
                             transform={`translate(${posX}, 0)`}
                           >
-                            <rect
-                              x="-4.2"
-                              y="-4.5"
-                              width="8.4"
-                              height="9"
-                              rx="1.4"
-                              fill={intact ? '#f59e0b' : '#27272a'}
-                              stroke={intact ? '#fef08a' : '#71717a'}
-                              strokeWidth="1"
-                            />
-                            {/* Battlements (creneluri) */}
-                            <rect
-                              x="-4.2"
-                              y="-6.8"
-                              width="2.4"
-                              height="2.4"
-                              fill={intact ? '#fef08a' : '#52525b'}
-                            />
-                            <rect
-                              x="-1"
-                              y="-6.8"
-                              width="2"
-                              height="2.4"
-                              fill={intact ? '#fef08a' : '#52525b'}
-                            />
-                            <rect
-                              x="1.8"
-                              y="-6.8"
-                              width="2.4"
-                              height="2.4"
-                              fill={intact ? '#fef08a' : '#52525b'}
-                            />
+                            <g className={isFallingTower ? 'animate-tower-fall' : undefined}>
+                              <rect
+                                x="-4.2"
+                                y="-4.5"
+                                width="8.4"
+                                height="9"
+                                rx="1.4"
+                                fill={intact ? '#f59e0b' : isFallingTower ? '#ef4444' : '#27272a'}
+                                stroke={
+                                  intact ? '#fef08a' : isFallingTower ? '#fecdd3' : '#71717a'
+                                }
+                                strokeWidth="1"
+                              />
+                              {/* Battlements (creneluri) */}
+                              <rect
+                                x="-4.2"
+                                y="-6.8"
+                                width="2.4"
+                                height="2.4"
+                                fill={intact ? '#fef08a' : isFallingTower ? '#fca5a5' : '#52525b'}
+                              />
+                              <rect
+                                x="-1"
+                                y="-6.8"
+                                width="2"
+                                height="2.4"
+                                fill={intact ? '#fef08a' : isFallingTower ? '#fca5a5' : '#52525b'}
+                              />
+                              <rect
+                                x="1.8"
+                                y="-6.8"
+                                width="2.4"
+                                height="2.4"
+                                fill={intact ? '#fef08a' : isFallingTower ? '#fca5a5' : '#52525b'}
+                              />
+                            </g>
                             {!intact && (
                               <g stroke="#fb7185" strokeWidth="1.3" strokeLinecap="round">
                                 <line x1="-2.5" y1="-2.5" x2="2.5" y2="2.5" />
@@ -1263,6 +1277,38 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                         );
                       })}
                     </g>
+
+                    {/* Prominent Tower Destruction Callout on Map */}
+                    {isTowerHit && (
+                      <g
+                        transform="translate(0, -28)"
+                        data-testid={`castle-tower-hit-badge-${t.id}`}
+                      >
+                        <rect
+                          x="-68"
+                          y="-11"
+                          width="136"
+                          height="19"
+                          rx="6"
+                          fill="#881337"
+                          fillOpacity="0.96"
+                          stroke="#fda4af"
+                          strokeWidth="1.5"
+                          filter="drop-shadow(0 3px 6px rgba(0,0,0,0.9))"
+                        />
+                        <text
+                          x="0"
+                          y="2"
+                          textAnchor="middle"
+                          fontSize="9.5"
+                          fontWeight="900"
+                          fill="#fff1f2"
+                          fontFamily="sans-serif"
+                        >
+                          {`💥 Turn distrus — ${intactCount}/3 rămase`}
+                        </text>
+                      </g>
+                    )}
 
                     {/* Base Score 1000 only */}
                     <g transform={`translate(0, ${22 + 15 * towerScale})`}>
@@ -1433,11 +1479,17 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
               const warEntry = warTargetedByTerritoryId.get(t.id);
               const isTargeted = targetedId === t.id || Boolean(warEntry);
               if (!isTargeted) return null;
-              const arrowFill = warEntry?.attacker?.color || '#0284c7';
+              const activeSelectorColor =
+                warEntry?.attacker?.color ||
+                players.find(
+                  (p) => p.id === (game?.currentQuestion?.attackerId || activePlayerId)
+                )?.color ||
+                '#0284c7';
 
               return (
                 <g
                   key={`arrow_${t.id}`}
+                  data-testid={`selected-target-arrow-${t.id}`}
                   transform={`translate(${t.labelX}, ${t.labelY - 32})`}
                   className="animate-bounce motion-reduce:animate-none"
                   filter="url(#arrow-glow)"
@@ -1447,14 +1499,14 @@ export const RomaniaMap: React.FC<RomaniaMapProps> = ({
                     y="-36"
                     width="12"
                     height="22"
-                    fill={arrowFill}
+                    fill={activeSelectorColor}
                     stroke="#fef08a"
                     strokeWidth="1.5"
                     rx="2"
                   />
                   <polygon
                     points="0,0 -16,-16 -6,-16 -6,-36 6,-36 6,-16 16,-16"
-                    fill={arrowFill}
+                    fill={activeSelectorColor}
                     stroke="#fef08a"
                     strokeWidth="2"
                     strokeLinejoin="round"

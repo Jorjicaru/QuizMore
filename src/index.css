@@ -50,6 +50,27 @@
     animation: castleTowerShake 650ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 2;
   }
 
+  @keyframes castleTowerFall {
+    0% {
+      transform: translateY(0) rotate(0deg) scale(1);
+      opacity: 1;
+    }
+    35% {
+      transform: translateY(-3px) rotate(-14deg) scale(1.12);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(10px) rotate(28deg) scale(0.55);
+      opacity: 0.25;
+    }
+  }
+
+  .animate-tower-fall {
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    animation: castleTowerFall 950ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
   /* Territory hover & touch selection smooth transition */
   .territory-interactive {
     transition:
@@ -221,6 +242,8 @@
     .territory-elevated {
       transform: none !important;
     }
+    .animate-castle-shake,
+    .animate-tower-fall,
     .animate-conquest-spread,
     .animate-conquest-pulse,
     .animate-conquest-ring,

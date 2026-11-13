@@ -1917,6 +1917,7 @@ export type TerritoryMapTransitionType =
 
 export interface TerritoryMapTransition {
   id: string;
+  dedupKey: string;
   type: TerritoryMapTransitionType;
   territoryId: string;
   territoryName: string;
@@ -1932,6 +1933,9 @@ export interface TerritoryMapTransition {
   startedAt: number;
   durationMs: number;
   badgeTextRo: string;
+  previousTowers?: number;
+  remainingTowers?: number;
+  isBaseConquest?: boolean;
 }
 
 /**
@@ -1966,6 +1970,7 @@ export function detectTerritoryMapTransitions(params: {
   const playersById = new Map<string, Player>(players.map((p) => [p.id, p]));
   const transitions: TerritoryMapTransition[] = [];
   const handledTerritoryIds = new Set<string>();
+  const battleIdKey = nextWarRound?.lastBattleResult?.battleId || nextWarRound?.roundId || '';
 
   for (const nextT of Object.values(nextTerritories)) {
     const prevT = prevTerritories[nextT.id];
@@ -1981,6 +1986,7 @@ export function detectTerritoryMapTransitions(params: {
       );
       transitions.push({
         id: `tr_neutral_${nextT.id}_${nowMs}`,
+        dedupKey: `neutral_${nextT.id}_to_${nextT.ownerId}`,
         type: 'neutral_conquest',
         territoryId: nextT.id,
         territoryName: nextT.name,
@@ -2001,7 +2007,7 @@ export function detectTerritoryMapTransitions(params: {
       continue;
     }
 
-    // 2. Enemy territory conquered in war -> fill territory in winner's color
+    // 2. Enemy territory conquered in war -> fill territory in winner's color (including last base tower 1->0)
     if (
       prevT.ownerId !== null &&
       nextT.ownerId !== null &&
@@ -2014,8 +2020,10 @@ export function detectTerritoryMapTransitions(params: {
         nextT.id,
         prevTerritories
       );
+      const wasBaseConquered = Boolean(prevT.isBase);
       transitions.push({
         id: `tr_war_conq_${nextT.id}_${nowMs}`,
+        dedupKey: `war_conq_${nextT.id}_${prevT.ownerId}_to_${nextT.ownerId}_${battleIdKey}`,
         type: 'war_conquest',
         territoryId: nextT.id,
         territoryName: nextT.name,
@@ -2030,21 +2038,29 @@ export function detectTerritoryMapTransitions(params: {
         targetY: nextT.labelY,
         startedAt: nowMs,
         durationMs: config.conquestSpreadMs + config.conquestPulseMs,
-        badgeTextRo: `⚔️ Cucerit de ${winner?.username || 'Atacator'}!`,
+        badgeTextRo: wasBaseConquered
+          ? '👑 Atac reușit — Cetate cucerită!'
+          : `⚔️ Cucerit de ${winner?.username || 'Atacator'}!`,
+        previousTowers: wasBaseConquered ? (prevT.castleTowers ?? 1) : undefined,
+        remainingTowers: wasBaseConquered ? 0 : undefined,
+        isBaseConquest: wasBaseConquered,
       });
       handledTerritoryIds.add(nextT.id);
       continue;
     }
 
-    // 3. Base tower hit without changing owner
+    // 3. Base tower hit without changing owner (3->2 or 2->1)
     if (
       prevT.ownerId !== null &&
       nextT.ownerId === prevT.ownerId &&
       (prevT.castleTowers ?? 0) > (nextT.castleTowers ?? 0)
     ) {
       const defender = playersById.get(nextT.ownerId);
+      const prevTowers = prevT.castleTowers ?? 3;
+      const remTowers = nextT.castleTowers ?? 0;
       transitions.push({
         id: `tr_tower_${nextT.id}_${nowMs}`,
+        dedupKey: `tower_hit_${nextT.id}_${prevTowers}_to_${remTowers}_${battleIdKey}`,
         type: 'tower_hit',
         territoryId: nextT.id,
         territoryName: nextT.name,
@@ -2059,7 +2075,9 @@ export function detectTerritoryMapTransitions(params: {
         targetY: nextT.labelY,
         startedAt: nowMs,
         durationMs: config.defenseShieldMs,
-        badgeTextRo: '💥 Turn de cetate distrus!',
+        badgeTextRo: `Turn distrus — ${remTowers}/3 rămase`,
+        previousTowers: prevTowers,
+        remainingTowers: remTowers,
       });
       handledTerritoryIds.add(nextT.id);
       continue;
@@ -2074,6 +2092,7 @@ export function detectTerritoryMapTransitions(params: {
       const defender = playersById.get(nextT.ownerId);
       transitions.push({
         id: `tr_def_${nextT.id}_${nowMs}`,
+        dedupKey: `war_def_${nextT.id}_${nextT.defensiveBonus ?? 0}_${battleIdKey}`,
         type: 'war_defense',
         territoryId: nextT.id,
         territoryName: nextT.name,
@@ -2117,6 +2136,7 @@ export function detectTerritoryMapTransitions(params: {
           const defender = playersById.get(nextB.defenderId);
           transitions.push({
             id: `tr_def_battle_${targetT.id}_${nowMs}`,
+            dedupKey: `war_def_battle_${targetT.id}_${nextB.battleId}`,
             type: 'war_defense',
             territoryId: targetT.id,
             territoryName: targetT.name,
@@ -2244,6 +2264,7 @@ export function canPlayerSelectTerritoryNow(
     GameState,
     | 'phase'
     | 'currentQuestion'
+    | 'pendingTerritoryId'
     | 'players'
     | 'activePlayerIndex'
     | 'conquestPickerId'
@@ -2261,6 +2282,7 @@ export function canPlayerSelectTerritoryNow(
   }
 
   if (game.phase === 'conquest') {
+    if (game.pendingTerritoryId) return false;
     return Boolean(game.conquestPickerId && game.conquestPickerId === userId);
   }
 
@@ -2279,6 +2301,55 @@ export function canPlayerSelectTerritoryNow(
   }
 
   return false;
+}
+
+/**
+ * Aplică o apăsare de tastă de pe dial pad-ul numeric compact fără tastatură virtuală:
+ * - cifre '0'..'9' (până la max 9 cifre)
+ * - '±' / 'SIGN': comută semnul +/-
+ * - '⌫' / 'BACKSPACE': șterge ultima cifră
+ * - 'C' / 'CLEAR': șterge tot
+ * - '.' / ',': permis doar când `allowDecimals === true`
+ */
+export function applyNumericKeypadInput(
+  currentValue: string,
+  key: string,
+  allowDecimals: boolean = false
+): string {
+  const cur = String(currentValue || '');
+  const normalizedKey = String(key || '').trim().toUpperCase();
+
+  if (normalizedKey === 'C' || normalizedKey === 'CLEAR') {
+    return '';
+  }
+
+  if (normalizedKey === '⌫' || normalizedKey === 'BACKSPACE') {
+    const next = cur.slice(0, -1);
+    return next === '-' ? '' : next;
+  }
+
+  if (normalizedKey === '±' || normalizedKey === 'SIGN' || normalizedKey === '-') {
+    if (!cur) return '-';
+    if (cur === '-') return '';
+    return cur.startsWith('-') ? cur.slice(1) : `-${cur}`;
+  }
+
+  if (normalizedKey === '.' || normalizedKey === ',') {
+    if (!allowDecimals) return cur;
+    if (cur.includes('.')) return cur;
+    if (cur === '' || cur === '-') return `${cur}0.`;
+    return `${cur}.`;
+  }
+
+  if (/^[0-9]$/.test(normalizedKey)) {
+    const digitCount = cur.replace(/[^0-9]/g, '').length;
+    if (digitCount >= 9) return cur;
+    if (cur === '0') return normalizedKey;
+    if (cur === '-0') return `-${normalizedKey}`;
+    return `${cur}${normalizedKey}`;
+  }
+
+  return cur;
 }
 
 /**

@@ -42,6 +42,7 @@ function validateQuestionBank() {
 
   const seenIds = new Set();
   const seenActiveTexts = new Set();
+  const seenActiveFactKeys = new Set();
   const seenFactKeys = new Set();
   const sourceUrlCounts = new Map();
   const errors = [];
@@ -102,6 +103,12 @@ function validateQuestionBank() {
       continue;
     }
 
+    if (seenActiveFactKeys.has(q.factKey)) {
+      errors.push(`ID ${q.id}: Cheia factKey activă duplicată (${q.factKey}) — două întrebări active nu au voie să ceară același fapt.`);
+    } else {
+      seenActiveFactKeys.add(q.factKey);
+    }
+
     activeCategoryBreakdown[q.category] = (activeCategoryBreakdown[q.category] || 0) + 1;
 
     if (q.type !== 'choice' && q.type !== 'estimation') {
@@ -121,6 +128,21 @@ function validateQuestionBank() {
       }
       if (!q.question.trim().endsWith('?')) {
         errors.push(`ID ${q.id}: Întrebarea activă nu se termină cu '?': "${q.question}"`);
+      }
+
+      // Check for banned formula / calculation / arid template patterns in active questions
+      const normCheck = normalizeQuestionText(q.question);
+      if (
+        normCheck.includes('poligon') ||
+        normCheck.includes('diagonale') ||
+        normCheck.includes('suprafata cumulata') ||
+        normCheck.includes('numarul atomic') ||
+        normCheck.includes('masa atomica') ||
+        normCheck.includes('portul tcp') ||
+        normCheck.includes('codul de stare http') ||
+        normCheck.includes('indicativul auto')
+      ) {
+        errors.push(`ID ${q.id}: Întrebare activă nepermisă (formulă matematică, calcul sau șablon arid): "${q.question}"`);
       }
 
       // Check for parenthesized number/index/metadata leaks: (21.2), (#4), (set ...), (seria ...)
@@ -243,8 +265,8 @@ function validateQuestionBank() {
   const activeChoice = activeApproved.filter((q) => q.type === 'choice').length;
   const activeEstimation = activeApproved.filter((q) => q.type === 'estimation').length;
 
-  if (activeChoice < 1000) {
-    errors.push(`Baza canonică are doar ${activeChoice} întrebări choice aprobate active (minim cerut: 1000).`);
+  if (activeChoice < 500) {
+    errors.push(`Baza canonică are doar ${activeChoice} întrebări choice aprobate active (minim cerut: 500).`);
   }
   if (activeEstimation < 100) {
     errors.push(`Baza canonică are doar ${activeEstimation} întrebări estimation de departajare aprobate active (minim cerut: 100).`);

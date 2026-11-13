@@ -1,0 +1,520 @@
+{
+  "totalCanonicalRecords": 6241,
+  "choiceRecordsTotal": 3351,
+  "estimationRecordsTotal": 2890,
+  "previouslyActiveChoice": 1167,
+  "previouslyActiveEstimation": 0,
+  "previouslyActiveTotal": 1167,
+  "keptChoice": 299,
+  "disabledFromPreviousActiveChoice": 868,
+  "replacedChoiceWithNewCurated": 271,
+  "finalActiveChoice": 570,
+  "keptEstimation": 0,
+  "disabledFromPreviousActiveEstimation": 0,
+  "replacedEstimationWithNewCurated": 140,
+  "finalActiveEstimation": 140,
+  "finalActiveTotal": 710,
+  "disabledReasonsBreakdown": {
+    "template_chemistry_academic": 72,
+    "template_county_series": 143,
+    "template_world_series": 221,
+    "duplicate_fact_or_reversal": 280,
+    "obscure_or_formula_choice": 152,
+    "estimation_county_area_sum": 0,
+    "estimation_obscure_peaks_rivers": 0,
+    "estimation_robotic_sport_templates": 0,
+    "estimation_robotic_tech_http_tcp": 0,
+    "estimation_math_conversion_or_duplicate": 0
+  },
+  "disabledExamples": [
+    {
+      "id": "hist_leader_choice_26",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce ministru de externe a rostit în Parlament declarația de independență la 9 mai 1877?"
+    },
+    {
+      "id": "hist_leader_choice_52",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cine a fost primul om din istorie care a zburat în spațiul cosmic în 1961?"
+    },
+    {
+      "id": "sport_champ_7",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce tenismen român a câștigat turneul de la Roland Garros fără set pierdut în 1973?"
+    },
+    {
+      "id": "sport_champ_20",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce echipă națională a cucerit al patrulea său titlu mondial la handbal masculin în 1974?"
+    },
+    {
+      "id": "extra_arta_ch_subj_1",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce oraș din România se află Ansamblul monumental „Calea Eroilor” realizat de Constantin Brâncuși?"
+    },
+    {
+      "id": "extra_arta_ch_subj_2",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce operă a lui Constantin Brâncuși de la Târgu Jiu este înconjurată de 12 scaune?"
+    },
+    {
+      "id": "extra_arta_ch_subj_7",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce pictor francez a realizat pânza „Impresie, răsărit de soare”, care a dat numele impresionismului?"
+    },
+    {
+      "id": "extra_arta_ch_subj_12",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce mare pictor român a realizat tablourile „Carul cu boi” și „Atacul de la Smârdan”?"
+    },
+    {
+      "id": "extra_arta_ch_subj_15",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce pictor român din secolul al XIX-lea a pictat capodoperele „Stejarul” și „Iarna la Barbizon”?"
+    },
+    {
+      "id": "extra_arta_ch_subj_17",
+      "reason": "obscure_or_formula_choice",
+      "question": "În curtea cărui mare muzeu din Paris se află celebra Piramidă de sticlă și metal?"
+    },
+    {
+      "id": "extra_arta_ch_subj_20",
+      "reason": "obscure_or_formula_choice",
+      "question": "Pentru ce edificiu cultural din București s-a organizat Campania publică „Dați un leu pentru Ateneu”?"
+    },
+    {
+      "id": "extra_cinematografie_ch_subj_6",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce cineast român a câștigat Palme d’Or la Cannes în 1957 pentru animația „Scurtă istorie”?"
+    },
+    {
+      "id": "extra_cinematografie_ch_subj_12",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cine a regizat și a jucat rolul principal în filmul clasic „Cetățeanul Kane” din 1941?"
+    },
+    {
+      "id": "extra_cinematografie_ch_subj_20",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cine a regizat filmul sud-coreean „Parazit” (Parasite), câștigător al Oscarului pentru cel mai bun film?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_1",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cine a realizat la Kitty Hawk, în 1903, primul zbor mecanic controlat cu un avion?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_3",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce inginer și pilot român din Binținți a zburat pe Câmpul Cotrocenilor în iunie 1910?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_4",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce fizician născut la Sibiu este considerat unul dintre părinții fondatori ai rachetelor și astronauticii?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_6",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce inventator român a brevetat în Franța „cabina catapultabilă”, precursoarea scaunului ejectabil?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_24",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce oraș din România a devenit în 1884 primul oraș iluminat electric stradal din Europa?"
+    },
+    {
+      "id": "extra_tehnologie_ch_subj_25",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce inginer și savant român a întemeiat o nouă știință tehnică numită teoria sonicității?"
+    },
+    {
+      "id": "extra_sport_ch_subj_24",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce probă atletică a cucerit Lia Manoliu titlul olimpic la Jocurile Olimpice din 1968?"
+    },
+    {
+      "id": "extra_literatura_ch_subj_21",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cărui jude al Brașovului îi era adresată Scrisoarea lui Neacșu din anul 1521?"
+    },
+    {
+      "id": "extra_cultura_generala_ch_subj_2",
+      "reason": "obscure_or_formula_choice",
+      "question": "Cine este considerat fondatorul Băncii Naționale a României din 1880, alături de Ion C. Brătianu?"
+    },
+    {
+      "id": "extra_cultura_generala_ch_subj_11",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce inventator suedez a instituit prin testament celebrele premii internaționale decernate din 1901?"
+    },
+    {
+      "id": "extra_cultura_generala_ch_subj_18",
+      "reason": "obscure_or_formula_choice",
+      "question": "Care este singura dintre cele Șapte Minuni ale Lumii Antice care s-a păstrat până astăzi?"
+    },
+    {
+      "id": "hist_place_choice_22",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce oraș a avut loc votul decisiv de la 24 ianuarie 1859 pentru Unire?"
+    },
+    {
+      "id": "hist_place_choice_28",
+      "reason": "obscure_or_formula_choice",
+      "question": "La ce oraș de pe Dunăre a fost inaugurat în 1895 podul lui Anghel Saligny?"
+    },
+    {
+      "id": "hist_place_choice_30",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce localitate din Vrancea s-a dat în vara anului 1917 cea mai mare bătălie?"
+    },
+    {
+      "id": "hist_place_choice_49",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce regiune de coastă a Franței a avut loc debarcarea aliată din iunie 1944?"
+    },
+    {
+      "id": "hist_place_choice_56",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce oraș olandez a fost semnat în 1992 tratatul care a creat Uniunea Europeană?"
+    },
+    {
+      "id": "geo_feat_name_34",
+      "reason": "obscure_or_formula_choice",
+      "question": "Ce râu important străbate Moldova de la nord la sud și se varsă în Dunăre?"
+    },
+    {
+      "id": "sport_host_15",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce oraș german a stabilit Usain Bolt recordul mondial la 100 m în 2009?"
+    },
+    {
+      "id": "geo_ro_code_ab",
+      "reason": "template_county_series",
+      "question": "Care este indicativul auto al județului Alba?"
+    },
+    {
+      "id": "geo_ro_region_ab",
+      "reason": "template_county_series",
+      "question": "În ce regiune istorică se află județul Alba?"
+    },
+    {
+      "id": "geo_ro_river_ab",
+      "reason": "template_county_series",
+      "question": "Ce râu important străbate județul Alba?"
+    },
+    {
+      "id": "geo_world_cap_romania",
+      "reason": "template_world_series",
+      "question": "Care este capitala statului România?"
+    },
+    {
+      "id": "geo_world_state_romania",
+      "reason": "template_world_series",
+      "question": "Cărui stat îi aparține capitala București?"
+    },
+    {
+      "id": "geo_world_curr_romania",
+      "reason": "template_world_series",
+      "question": "Care este moneda oficială din România?"
+    },
+    {
+      "id": "geo_world_cont_romania",
+      "reason": "template_world_series",
+      "question": "Pe ce continent se află statul România?"
+    },
+    {
+      "id": "geo_world_cap_franta",
+      "reason": "template_world_series",
+      "question": "Care este capitala statului Franța?"
+    },
+    {
+      "id": "geo_world_state_franta",
+      "reason": "template_world_series",
+      "question": "Cărui stat îi aparține capitala Paris?"
+    },
+    {
+      "id": "geo_world_curr_franta",
+      "reason": "template_world_series",
+      "question": "Care este moneda oficială din Franța?"
+    },
+    {
+      "id": "geo_world_cont_franta",
+      "reason": "template_world_series",
+      "question": "Pe ce continent se află statul Franța?"
+    },
+    {
+      "id": "geo_world_cap_germania",
+      "reason": "template_world_series",
+      "question": "Care este capitala statului Germania?"
+    },
+    {
+      "id": "geo_world_state_germania",
+      "reason": "template_world_series",
+      "question": "Cărui stat îi aparține capitala Berlin?"
+    },
+    {
+      "id": "hist_yr_choice_19",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a izbucnit marea răscoală din Transilvania condusă de Horea, Cloșca și Crișan?"
+    },
+    {
+      "id": "hist_yr_choice_21",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a avut loc Adunarea Națională de pe Câmpia Libertății de la Blaj?"
+    },
+    {
+      "id": "hist_yr_choice_32",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an au fost încoronați Regele Ferdinand I și Regina Maria la Alba Iulia?"
+    },
+    {
+      "id": "cult_year_choice_1",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Luceafărul” de Mihai Eminescu?"
+    },
+    {
+      "id": "cult_year_choice_2",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „O scrisoare pierdută” de Ion Luca Caragiale?"
+    },
+    {
+      "id": "cult_year_choice_3",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Amintiri din copilărie” de Ion Creangă?"
+    },
+    {
+      "id": "cult_year_choice_4",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Moara cu noroc” de Ioan Slavici?"
+    },
+    {
+      "id": "cult_year_choice_5",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Mara” de Ioan Slavici?"
+    },
+    {
+      "id": "cult_year_choice_6",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Ion” de Liviu Rebreanu?"
+    },
+    {
+      "id": "cult_year_choice_7",
+      "reason": "obscure_or_formula_choice",
+      "question": "În ce an a apărut opera „Pădurea spânzuraților” de Liviu Rebreanu?"
+    }
+  ],
+  "keptExamples": [
+    {
+      "id": "hist_leader_choice_1",
+      "category": "istorie",
+      "question": "Ce domnitor muntean a câștigat Bătălia de la Posada în anul 1330?",
+      "answer": "Basarab I"
+    },
+    {
+      "id": "hist_leader_choice_2",
+      "category": "istorie",
+      "question": "Ce domnitor al Moldovei a urcat pe tron în anul 1457?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_3",
+      "category": "istorie",
+      "question": "Ce domnitor român l-a înfruntat pe regele Matei Corvin la Baia în 1467?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_4",
+      "category": "istorie",
+      "question": "Cine a condus oastea Moldovei în victoria de la Podul Înalt din 1475?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_5",
+      "category": "istorie",
+      "question": "Ce domnitor moldovean a luptat împotriva lui Mahomed al II-lea la Valea Albă?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_6",
+      "category": "istorie",
+      "question": "Ce domnitor al Moldovei a ctitorit Mănăstirea Putna?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_7",
+      "category": "istorie",
+      "question": "Ce domnitor al Moldovei a ctitorit Mănăstirea Voroneț în anul 1488?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_8",
+      "category": "istorie",
+      "question": "Ce domnitor român l-a învins pe regele Ioan Albert în Codrii Cosminului?",
+      "answer": "Ștefan cel Mare"
+    },
+    {
+      "id": "hist_leader_choice_9",
+      "category": "istorie",
+      "question": "Ce mare voievod a urcat pe tronul Țării Românești în anul 1386?",
+      "answer": "Mircea cel Bătrân"
+    },
+    {
+      "id": "hist_leader_choice_10",
+      "category": "istorie",
+      "question": "Ce domnitor muntean a condus oastea română în Bătălia de la Rovine?",
+      "answer": "Mircea cel Bătrân"
+    },
+    {
+      "id": "hist_leader_choice_11",
+      "category": "istorie",
+      "question": "Ce domnitor muntean a condus Atacul de noapte împotriva lui Mahomed al II-lea?",
+      "answer": "Vlad Țepeș"
+    },
+    {
+      "id": "hist_leader_choice_12",
+      "category": "istorie",
+      "question": "În timpul cărui domnitor a fost emis primul document care atestă Cetatea Bucureștilor?",
+      "answer": "Vlad Țepeș"
+    },
+    {
+      "id": "hist_leader_choice_13",
+      "category": "istorie",
+      "question": "Ce voievod român l-a învins pe Sinan Pașa la Călugăreni în anul 1595?",
+      "answer": "Mihai Viteazul"
+    },
+    {
+      "id": "hist_leader_choice_14",
+      "category": "istorie",
+      "question": "Cine a câștigat Bătălia de la Șelimbăr în octombrie 1599?",
+      "answer": "Mihai Viteazul"
+    },
+    {
+      "id": "hist_leader_choice_15",
+      "category": "istorie",
+      "question": "Ce voievod a realizat în anul 1600 prima unire politică a țărilor române?",
+      "answer": "Mihai Viteazul"
+    }
+  ],
+  "newlyAddedExamples": [
+    {
+      "id": "cult_title_43",
+      "category": "cinematografie",
+      "question": "Ce actor îl interpretează pe Jack Sparrow în „Pirații din Caraibe”?",
+      "answer": "Johnny Depp"
+    },
+    {
+      "id": "cult_year_choice_43",
+      "category": "cinematografie",
+      "question": "Cum se numește școala de magie din seria „Harry Potter”?",
+      "answer": "Hogwarts"
+    },
+    {
+      "id": "cult_title_44",
+      "category": "cinematografie",
+      "question": "Ce actor joacă rolul lui Tony Stark (Iron Man) în filmele Marvel?",
+      "answer": "Robert Downey Jr."
+    },
+    {
+      "id": "cult_year_choice_44",
+      "category": "cinematografie",
+      "question": "Ce personaj din „Războiul Stelelor” rostește replica „Eu sunt tatăl tău”?",
+      "answer": "Darth Vader"
+    },
+    {
+      "id": "cult_title_45",
+      "category": "cinematografie",
+      "question": "Ce actor l-a interpretat pe Jack Dawson în filmul „Titanic”?",
+      "answer": "Leonardo DiCaprio"
+    },
+    {
+      "id": "cult_year_choice_45",
+      "category": "cinematografie",
+      "question": "Ce actriță a jucat rolul lui Rose în filmul „Titanic”?",
+      "answer": "Kate Winslet"
+    },
+    {
+      "id": "cult_title_46",
+      "category": "cinematografie",
+      "question": "Ce actor îl interpretează pe Neo în trilogia „Matrix”?",
+      "answer": "Keanu Reeves"
+    },
+    {
+      "id": "cult_year_choice_46",
+      "category": "cinematografie",
+      "question": "Cine a regizat trilogia cinematografică „Stăpânul Inelelor”?",
+      "answer": "Peter Jackson"
+    },
+    {
+      "id": "cult_title_47",
+      "category": "cinematografie",
+      "question": "În ce țară au fost filmate peisajele din trilogia „Stăpânul Inelelor”?",
+      "answer": "Noua Zeelandă"
+    },
+    {
+      "id": "cult_year_choice_47",
+      "category": "cinematografie",
+      "question": "Ce actor interpretează rolul generalului Maximus în filmul „Gladiatorul”?",
+      "answer": "Russell Crowe"
+    },
+    {
+      "id": "cult_title_48",
+      "category": "cinematografie",
+      "question": "Ce cod numeric poartă celebrul agent secret britanic James Bond?",
+      "answer": "007"
+    },
+    {
+      "id": "cult_year_choice_48",
+      "category": "cinematografie",
+      "question": "Cum se numește leul protagonist din filmul animat „Regele Leu”?",
+      "answer": "Simba"
+    },
+    {
+      "id": "cult_title_49",
+      "category": "cinematografie",
+      "question": "Ce pește-clovn este căutat de tatăl său în animația Pixar din 2003?",
+      "answer": "Nemo"
+    },
+    {
+      "id": "cult_year_choice_49",
+      "category": "cinematografie",
+      "question": "Cum se numește omul de zăpadă vorbitor din filmul „Regatul de gheață”?",
+      "answer": "Olaf"
+    },
+    {
+      "id": "cult_title_50",
+      "category": "cinematografie",
+      "question": "Ce jucărie de cowboy este personajul principal în seria „Toy Story”?",
+      "answer": "Șeriful Woody"
+    },
+    {
+      "id": "cult_year_choice_50",
+      "category": "cinematografie",
+      "question": "Ce căpcăun verde trăiește într-o mlaștină alături de Măgăruș în seria animată?",
+      "answer": "Shrek"
+    },
+    {
+      "id": "extra_cinematografie_ch_val_1",
+      "category": "cinematografie",
+      "question": "Ce actor l-a interpretat pe Vito Corleone în primul film „Nașul”?",
+      "answer": "Marlon Brando"
+    },
+    {
+      "id": "extra_cinematografie_ch_comp_1_s1",
+      "category": "cinematografie",
+      "question": "Ce actor a jucat rolul lui Forrest Gump în filmul din 1994?",
+      "answer": "Tom Hanks"
+    },
+    {
+      "id": "extra_cinematografie_ch_comp_1_s2",
+      "category": "cinematografie",
+      "question": "Ce actor îl interpretează pe arheologul aventurier Indiana Jones?",
+      "answer": "Harrison Ford"
+    },
+    {
+      "id": "extra_cinematografie_ch_comp_1_s3",
+      "category": "cinematografie",
+      "question": "Ce regizor a realizat filmele „Jurassic Park” și „E.T. Extraterestrul”?",
+      "answer": "Steven Spielberg"
+    }
+  ]
+}
