@@ -605,11 +605,6 @@ for (const replacement of GENERAL_KNOWLEDGE_NUMERIC_REPLACEMENTS) {
   activePrompts.add(normalizeQuestionText(record.question));
 }
 
-// Fix a misleading answer leak in the active general-knowledge bank.
-const unescoBlouseQuestion = choiceList.find((q) => q.id === 'geo_world_curr_spania');
-if (!unescoBlouseQuestion) throw new Error('Missing choice question geo_world_curr_spania');
-unescoBlouseQuestion.question = 'Ce piesă vestimentară tradițională, brodată manual, a fost inclusă în patrimoniul UNESCO?';
-
 // Restore approved legacy numeric questions without overlapping the curated set.
 const ESTIMATION_QUESTION_REWRITES = {"est_cult_year_43":"În ce an a apărut filmul Nașul?","est_cult_year_44":"În ce an a apărut filmul Pulp Fiction?","est_cult_year_45":"În ce an a apărut filmul Titanic?","est_cult_year_46":"În ce an a apărut filmul românesc 4 luni, 3 săptămâni și 2 zile?","est_cult_year_47":"În ce an a apărut filmul Moartea domnului Lăzărescu?","est_cult_year_48":"În ce an a apărut filmul Poziția copilului?","est_cult_year_49":"În ce an a apărut filmul românesc Aferim?","est_cult_year_50":"În ce an a apărut filmul Oppenheimer?","est_cult_year_22":"În ce an a fost ridicată Coloana Infinitului?","est_cult_year_36":"În ce an a pictat Van Gogh Noapte înstelată?","est_cult_year_37":"În ce an a pictat Picasso Guernica?","est_cult_year_38":"În ce an a pictat Dalí Persistența memoriei?","est_hist_year_10":"În ce an a avut loc Bătălia de la Rovine?"};
 for (const id of RESTORED_ESTIMATION_IDS) {
