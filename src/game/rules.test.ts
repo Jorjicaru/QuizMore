@@ -3713,7 +3713,7 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
 
     // Advance past the 2.8s question result reveal timer into territory picking
     (gm as any).clearRoomTimers(cRoom.roomId);
-    cGame.conquestPickQueue = [...(cGame.currentQuestion!.winnerIds || [])];
+    cGame.conquestPickQueue = [...(cq2.winnerIds || [])];
     cGame.currentQuestion = null;
     (gm as any).processNextConquestPick(cGame);
 
@@ -3756,14 +3756,15 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
     // Round 2 fixed order is ['u_turn_2', 'u_turn_3', 'u_turn_1']
     (gm as any).clearRoomTimers(cRoom.roomId);
     (gm as any).triggerNextConquestQuestion(cGame);
-    const cq2 = cGame.currentQuestion as NonNullable<GameState['currentQuestion']>;
+    const cq2 = (cGame as GameState).currentQuestion as unknown as NonNullable<GameState['currentQuestion']>;
+    assert.ok(cq2, 'Întrebarea rundei 2 a fost pornită');
     const cq2Correct = cq2.question.correctAnswerIndex!;
     // u_turn_1 answers first, u_turn_2 answers second, u_turn_3 answers third -> order MUST be u_turn_2, u_turn_3, u_turn_1!
     gm.submitAnswer(cRoom.roomId, 'u_turn_1', cq2Correct, cq2.questionInstanceId);
     gm.submitAnswer(cRoom.roomId, 'u_turn_2', cq2Correct, cq2.questionInstanceId);
     gm.submitAnswer(cRoom.roomId, 'u_turn_3', cq2Correct, cq2.questionInstanceId);
 
-    assert.deepEqual(cGame.currentQuestion?.winnerIds, ['u_turn_2', 'u_turn_3', 'u_turn_1']);
+    assert.deepEqual(cq2.winnerIds, ['u_turn_2', 'u_turn_3', 'u_turn_1']);
     (gm as any).clearRoomTimers(cRoom.roomId);
     cGame.conquestPickQueue = [...(cGame.currentQuestion!.winnerIds || [])];
     cGame.currentQuestion = null;
