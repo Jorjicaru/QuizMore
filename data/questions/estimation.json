@@ -771,7 +771,7 @@
     "type": "estimation",
     "question": "Câți membri avea formația Beatles în componența clasică?",
     "targetNumber": 4,
-    "unit": "",
+    "unit": "membri",
     "explanation": "Componența clasică avea patru membri.",
     "sourceUrl": "https://academic.oup.com/reference/62400/reference-article-abstract/555408789",
     "sourceTitle": "The Beatles — Oxford Reference",
@@ -856,7 +856,7 @@
     "type": "estimation",
     "question": "Câte cărți cuprinde seria principală Harry Potter?",
     "targetNumber": 7,
-    "unit": "",
+    "unit": "volume",
     "explanation": "Seria principală este alcătuită din șapte cărți.",
     "sourceUrl": "https://www.bloomsbury.com/uk/discover/harry-potter/resources/series-overview/",
     "sourceTitle": "Harry Potter series overview — Bloomsbury",
@@ -873,7 +873,7 @@
     "type": "estimation",
     "question": "Câte inele sunt în simbolul olimpic?",
     "targetNumber": 5,
-    "unit": "",
+    "unit": "inele",
     "explanation": "Simbolul olimpic este format din cinci inele întrețesute.",
     "sourceUrl": "https://www.olympics.com/ioc/olympic-rings",
     "sourceTitle": "Olympic Rings — IOC",
@@ -1145,7 +1145,7 @@
     "type": "estimation",
     "question": "Câte planete are Sistemul Solar?",
     "targetNumber": 8,
-    "unit": "",
+    "unit": "planete",
     "explanation": "NASA enumeră opt planete în Sistemul Solar.",
     "sourceUrl": "https://science.nasa.gov/solar-system/planets/",
     "sourceTitle": "About the Planets — NASA",
@@ -1162,7 +1162,7 @@
     "type": "estimation",
     "question": "Câte piese are fiecare jucător la începutul unei partide de șah?",
     "targetNumber": 16,
-    "unit": "",
+    "unit": "piese",
     "explanation": "La început, fiecare jucător are șaisprezece piese.",
     "sourceUrl": "https://handbook.fide.com/chapter/e012023",
     "sourceTitle": "Laws of Chess — FIDE",
@@ -1179,7 +1179,7 @@
     "type": "estimation",
     "question": "Câți jucători are o echipă de fotbal pe teren?",
     "targetNumber": 11,
-    "unit": "",
+    "unit": "jucători",
     "explanation": "O echipă poate avea cel mult unsprezece jucători pe teren.",
     "sourceUrl": "https://theifab.com/laws/latest/the-players/",
     "sourceTitle": "Law 3: The Players — IFAB",
@@ -1196,7 +1196,7 @@
     "type": "estimation",
     "question": "Câte cărți are un pachet standard de joc?",
     "targetNumber": 52,
-    "unit": "",
+    "unit": "cărți",
     "explanation": "Pachetul standard are cincizeci și două de cărți.",
     "sourceUrl": "https://en.wikipedia.org/wiki/Standard_52-card_deck",
     "sourceTitle": "Standard 52-card deck — Wikipedia",
@@ -1213,7 +1213,7 @@
     "type": "estimation",
     "question": "Câte suite are un pachet standard de cărți?",
     "targetNumber": 4,
-    "unit": "",
+    "unit": "suite",
     "explanation": "Pachetul standard are patru suite.",
     "sourceUrl": "https://en.wikipedia.org/wiki/Standard_52-card_deck",
     "sourceTitle": "Standard 52-card deck — Wikipedia",
@@ -1230,7 +1230,7 @@
     "type": "estimation",
     "question": "Câte muze sunt în mitologia greacă tradițională?",
     "targetNumber": 9,
-    "unit": "",
+    "unit": "muze",
     "explanation": "Tradiția greacă a consacrat numărul de nouă muze.",
     "sourceUrl": "https://www.theoi.com/Ouranios/Mousai.html",
     "sourceTitle": "Muses — Theoi Project",
@@ -1247,7 +1247,7 @@
     "type": "estimation",
     "question": "Câte planete pitice recunoaște oficial NASA în Sistemul Solar?",
     "targetNumber": 5,
-    "unit": "",
+    "unit": "planete pitice",
     "explanation": "NASA enumeră cinci planete pitice recunoscute oficial.",
     "sourceUrl": "https://science.nasa.gov/solar-system/planets/",
     "sourceTitle": "About the Planets — NASA",
@@ -1264,7 +1264,7 @@
     "type": "estimation",
     "question": "Câte luni are anul calendaristic obișnuit?",
     "targetNumber": 12,
-    "unit": "",
+    "unit": "luni",
     "explanation": "Calendarul gregorian are douăsprezece luni.",
     "sourceUrl": "https://www.britannica.com/science/Gregorian-calendar",
     "sourceTitle": "Gregorian calendar — Encyclopaedia Britannica",
@@ -8844,7 +8844,7 @@
     "category": "istorie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a petrecut: Bătălia de la Rovine?",
+    "question": "În ce an a avut loc Bătălia de la Rovine?",
     "targetNumber": 1395,
     "unit": "an",
     "explanation": "Bătălia de la Rovine, purtată de Mircea cel Bătrân împotriva lui Baiazid I a avut loc în anul 1395.",
@@ -8852,9 +8852,9 @@
     "sourceTitle": "Cronologia Istorică a României și Universală – Bătălia de la Rovine, purtată de Mircea cel Bătrân împotriva lui Baiazid I (1395)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_hist_year_10",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_hist_span1918_10",
@@ -10476,7 +10476,7 @@
     "category": "arta",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Coloana Infinitului de la” (Constantin Brâncuși)?",
+    "question": "În ce an a fost ridicată Coloana Infinitului?",
     "targetNumber": 1938,
     "unit": "an",
     "explanation": "Opera „Coloana Infinitului de la Târgu Jiu” de Constantin Brâncuși datează din anul 1938.",
@@ -10484,9 +10484,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Coloana Infinitului de la Târgu Jiu” de Constantin Brâncuși (1938)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_22",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_23",
@@ -10714,7 +10714,7 @@
     "category": "arta",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Noaptea înstelată” (Vincent van Gogh)?",
+    "question": "În ce an a pictat Van Gogh Noapte înstelată?",
     "targetNumber": 1889,
     "unit": "an",
     "explanation": "Opera „Noaptea înstelată” de Vincent van Gogh datează din anul 1889.",
@@ -10722,16 +10722,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Noaptea înstelată” de Vincent van Gogh (1889)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_36",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_37",
     "category": "arta",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Guernica” (Pablo Picasso)?",
+    "question": "În ce an a pictat Picasso Guernica?",
     "targetNumber": 1937,
     "unit": "an",
     "explanation": "Opera „Guernica” de Pablo Picasso datează din anul 1937.",
@@ -10739,16 +10739,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Guernica” de Pablo Picasso (1937)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_37",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_38",
     "category": "arta",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Persistența memoriei” (Salvador Dali)?",
+    "question": "În ce an a pictat Dalí Persistența memoriei?",
     "targetNumber": 1931,
     "unit": "an",
     "explanation": "Opera „Persistența memoriei (Ceasurile topite)” de Salvador Dali datează din anul 1931.",
@@ -10756,9 +10756,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Persistența memoriei (Ceasurile topite)” de Salvador Dali (1931)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_38",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_39",
@@ -10833,7 +10833,7 @@
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Nașul” (Francis Ford Coppola)?",
+    "question": "În ce an a apărut filmul Nașul?",
     "targetNumber": 1972,
     "unit": "an",
     "explanation": "Opera „Nașul (The Godfather)” de Francis Ford Coppola datează din anul 1972.",
@@ -10841,16 +10841,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Nașul (The Godfather)” de Francis Ford Coppola (1972)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_43",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_44",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Pulp Fiction” (Quentin Tarantino)?",
+    "question": "În ce an a apărut filmul Pulp Fiction?",
     "targetNumber": 1994,
     "unit": "an",
     "explanation": "Opera „Pulp Fiction” de Quentin Tarantino datează din anul 1994.",
@@ -10858,16 +10858,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Pulp Fiction” de Quentin Tarantino (1994)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_44",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_45",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Titanic” (James Cameron)?",
+    "question": "În ce an a apărut filmul Titanic?",
     "targetNumber": 1997,
     "unit": "an",
     "explanation": "Opera „Titanic (filmul distins cu 11 premii Oscar)” de James Cameron datează din anul 1997.",
@@ -10875,16 +10875,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Titanic (filmul distins cu 11 premii Oscar)” de James Cameron (1997)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_45",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_46",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „4 luni” (Cristian Mungiu)?",
+    "question": "În ce an a apărut filmul românesc 4 luni, 3 săptămâni și 2 zile?",
     "targetNumber": 2007,
     "unit": "an",
     "explanation": "Opera „4 luni, 3 săptămâni și 2 zile (distins cu Palme d'Or)” de Cristian Mungiu datează din anul 2007.",
@@ -10892,16 +10892,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „4 luni, 3 săptămâni și 2 zile (distins cu Palme d'Or)” de Cristian Mungiu (2007)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_46",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_47",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Moartea domnului Lăzărescu” (Cristi Puiu)?",
+    "question": "În ce an a apărut filmul Moartea domnului Lăzărescu?",
     "targetNumber": 2005,
     "unit": "an",
     "explanation": "Opera „Moartea domnului Lăzărescu” de Cristi Puiu datează din anul 2005.",
@@ -10909,16 +10909,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Moartea domnului Lăzărescu” de Cristi Puiu (2005)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_47",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_48",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Poziția copilului” (Călin Peter Netzer)?",
+    "question": "În ce an a apărut filmul Poziția copilului?",
     "targetNumber": 2013,
     "unit": "an",
     "explanation": "Opera „Poziția copilului (distins cu Ursul de Aur la Berlin)” de Călin Peter Netzer datează din anul 2013.",
@@ -10926,16 +10926,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Poziția copilului (distins cu Ursul de Aur la Berlin)” de Călin Peter Netzer (2013)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_48",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_49",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Aferim!” (Radu Jude)?",
+    "question": "În ce an a apărut filmul românesc Aferim?",
     "targetNumber": 2015,
     "unit": "an",
     "explanation": "Opera „Aferim! (distins cu Ursul de Argint la Berlin)” de Radu Jude datează din anul 2015.",
@@ -10943,16 +10943,16 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Aferim! (distins cu Ursul de Argint la Berlin)” de Radu Jude (2015)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_49",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_cult_year_50",
     "category": "cinematografie",
     "difficulty": "mediu",
     "type": "estimation",
-    "question": "În ce an s-a lansat „Oppenheimer” (Christopher Nolan)?",
+    "question": "În ce an a apărut filmul Oppenheimer?",
     "targetNumber": 2023,
     "unit": "an",
     "explanation": "Opera „Oppenheimer (distins cu Oscarul pentru cel mai bun film)” de Christopher Nolan datează din anul 2023.",
@@ -10960,9 +10960,9 @@
     "sourceTitle": "Repertoriul Cultural și Artistic – „Oppenheimer (distins cu Oscarul pentru cel mai bun film)” de Christopher Nolan (2023)",
     "sourceCheckedAt": "2026-11-10",
     "factKey": "fact_cult_year_50",
-    "reviewStatus": "disabled",
-    "verified": false,
-    "isDisabled": true
+    "reviewStatus": "approved",
+    "verified": true,
+    "isDisabled": false
   },
   {
     "id": "est_geo_feat_1",
@@ -12169,7 +12169,7 @@
     "factKey": "fact_tech_metric_2",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_3",
@@ -12203,7 +12203,7 @@
     "factKey": "fact_tech_metric_3",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_4",
@@ -12237,7 +12237,7 @@
     "factKey": "fact_tech_metric_4",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_5",
@@ -12305,7 +12305,7 @@
     "factKey": "fact_tech_metric_6",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_metric_7",
@@ -12322,7 +12322,7 @@
     "factKey": "fact_tech_metric_7",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_8",
@@ -12356,7 +12356,7 @@
     "factKey": "fact_tech_metric_8",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_9",
@@ -12492,7 +12492,7 @@
     "factKey": "fact_tech_metric_12",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_tech_yr_13",
@@ -12696,7 +12696,7 @@
     "factKey": "fact_geo_sum_area_ab_ar",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_bt",
@@ -12713,7 +12713,7 @@
     "factKey": "fact_geo_sum_area_ab_bt",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_cl",
@@ -12730,7 +12730,7 @@
     "factKey": "fact_geo_sum_area_ab_cl",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_dj",
@@ -12747,7 +12747,7 @@
     "factKey": "fact_geo_sum_area_ab_dj",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_hd",
@@ -12764,7 +12764,7 @@
     "factKey": "fact_geo_sum_area_ab_hd",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_mh",
@@ -12781,7 +12781,7 @@
     "factKey": "fact_geo_sum_area_ab_mh",
     "reviewStatus": "approved",
     "verified": true,
-    "isDisabled": false
+    "isDisabled": true
   },
   {
     "id": "est_geo_ro_sum_area_ab_sm",
