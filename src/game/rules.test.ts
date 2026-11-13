@@ -3678,7 +3678,8 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
     // Trigger conquest question 1 (Round 1 fixed order: u_turn_1, u_turn_2, u_turn_3)
     (gm as any).clearRoomTimers(cRoom.roomId);
     (gm as any).triggerNextConquestQuestion(cGame);
-    assert.ok(cGame.currentQuestion, 'Întrebarea de cucerire a pornit');
+    const cq1 = gm.getRoom(cRoom.roomId)?.currentQuestion;
+    assert.ok(cq1, 'Întrebarea de cucerire a pornit');
 
     // During the question, canPlayerSelectTerritoryNow is FALSE for all players
     assert.equal(
@@ -3690,7 +3691,6 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
     // =========================================================================
     // 3. ORDINE FIXĂ A JUCĂTORILOR PENTRU CUCERIRI (INDIFERENT DE VITEZA RĂSPUNSULUI)
     // =========================================================================
-    const cq1 = cGame.currentQuestion!;
     const cq1Correct = cq1.question.correctAnswerIndex!;
     const cq1Wrong = (cq1Correct + 1) % 4;
 
@@ -3700,14 +3700,16 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
     gm.submitAnswer(cRoom.roomId, 'u_turn_2', cq1Wrong, cq1.questionInstanceId);
     gm.submitAnswer(cRoom.roomId, 'u_turn_1', cq1Correct, cq1.questionInstanceId);
 
-    assert.equal(cGame.currentQuestion?.resolved, true, 'Întrebarea s-a rezolvat');
+    const resolvedQuestion = gm.getRoom(cRoom.roomId)?.currentQuestion;
+    assert.ok(resolvedQuestion, 'Instanța întrebării rămâne disponibilă după răspunsuri');
+    assert.equal(resolvedQuestion.resolved, true, 'Întrebarea s-a rezolvat');
     assert.deepEqual(
-      cGame.currentQuestion?.winnerIds,
+      resolvedQuestion.winnerIds,
       ['u_turn_1', 'u_turn_3'],
       'Câștigătorii sunt ordonați după ordinea fixă a rundei 1, nu după viteza de răspuns'
     );
-    assert.equal(cGame.currentQuestion?.playerAnswers['u_turn_1']?.rank, 1);
-    assert.equal(cGame.currentQuestion?.playerAnswers['u_turn_3']?.rank, 2);
+    assert.equal(resolvedQuestion.playerAnswers['u_turn_1']?.rank, 1);
+    assert.equal(resolvedQuestion.playerAnswers['u_turn_3']?.rank, 2);
     assert.equal(
       canPlayerSelectTerritoryNow(cGame, 'u_turn_1'),
       false,
@@ -3716,7 +3718,7 @@ test('V11 Test 40: Administrare conturi & clasament (cu manualRankOverride și p
 
     // Advance past the 2.8s question result reveal timer into territory picking
     (gm as any).clearRoomTimers(cRoom.roomId);
-    cGame.conquestPickQueue = [...(cq1.winnerIds || [])];
+    cGame.conquestPickQueue = [...(resolvedQuestion.winnerIds || [])];
     cGame.currentQuestion = null;
     (gm as any).processNextConquestPick(cGame);
 
